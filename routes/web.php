@@ -17,4 +17,5 @@ Route::middleware('auth.simple')->group(function () {
     Route::view('/payroll-processing', 'payroll_processing')->name('payroll.processing');
     Route::view('/payslip', 'payslip')->name('payslip');
     Route::view('/report', 'report')->name('report');
+    Route::view('/settings', 'layouts.settings')->name('settings');
 });

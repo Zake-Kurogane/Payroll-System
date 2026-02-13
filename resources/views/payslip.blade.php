@@ -12,7 +12,7 @@
 <body>
     <div class="shell">
 
-        <!-- SIDEBAR (same style as your other pages) -->
+        <!-- SIDEBAR -->
         <aside class="side">
             <div class="brand">
                 <div class="brand__mark">
@@ -156,7 +156,7 @@
                             <select id="cutoffInput">
                                 <option value="All" selected>All</option>
                                 <option value="1-15">1–15</option>
-                                <option value="16-End">16–End</option>
+                                <option value="16–End">16–End</option>
                             </select>
                         </div>
 
@@ -239,7 +239,6 @@
                             <div class="muted small" id="resultsMeta">Select a run to view payslips.</div>
                         </div>
 
-                        <!-- BULK BAR -->
                         <div class="bulk" id="bulkBar" aria-hidden="true" style="display:none">
                             <span class="bulk__text">Selected: <span id="selectedCount">0</span></span>
                             <button class="btn btn--soft" type="button" id="bulkPdfBtn">Download Selected
@@ -275,9 +274,7 @@
                                 </tr>
                             </thead>
 
-                            <tbody id="payslipTbody">
-                                <!-- rows injected by JS -->
-                            </tbody>
+                            <tbody id="payslipTbody"></tbody>
                         </table>
                     </div>
 
@@ -339,7 +336,6 @@
         </div>
 
         <div class="drawer__body">
-            <!-- This is the detailed payslip layout -->
             <div class="payslipPaper paystub" id="psPaper">
                 <div class="psHead">
                     <div class="psHeadLeft">
@@ -353,7 +349,6 @@
                     </div>
                 </div>
 
-
                 <div class="psInfoGrid">
                     <div class="psInfoCol">
                         <div class="psInfoTitle">EMPLOYEE</div>
@@ -364,10 +359,14 @@
                         <div class="psInfoRow"><span>Type</span><strong id="psType">—</strong></div>
                         <div class="psInfoRow"><span>Assignment</span><strong id="psAssign">—</strong></div>
                     </div>
+
                     <div class="psInfoCol">
                         <div class="psInfoTitle">PAY PERIOD</div>
                         <div class="psInfoRow"><span>Payroll Month</span><strong id="psMonth">—</strong></div>
                         <div class="psInfoRow"><span>Cutoff</span><strong id="psCutoff">—</strong></div>
+                        <!-- ✅ Added cutoff date range -->
+                        <div class="psInfoRow"><span>Cutoff Dates</span><strong id="psCutoffDates">—</strong></div>
+
                         <div class="psInfoRow"><span>Pay Date</span><strong id="psPayDate">—</strong></div>
                         <div class="psInfoRow"><span>Payment Method</span><strong id="psPayMethod">—</strong></div>
                         <div class="psInfoRow"><span>Account</span><strong id="psAccount">—</strong></div>
@@ -387,7 +386,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Daily Rate</td>
+                            <td>Basic / Attendance Pay</td>
                             <td class="num" id="psDailyRate">₱ 0.00</td>
                             <td class="num"><span id="psPresentDays">0</span> / <span id="psLeaveDays">0</span> /
                                 <span id="psAbsentDays">0</span>
@@ -400,10 +399,14 @@
                             <td class="num" id="psOtHours">0.00</td>
                             <td class="num" id="psOtPay">₱ 0.00</td>
                         </tr>
-                        <tr class="psTotalRow">
-                            <td colspan="2">TOTAL GROSS EARNINGS</td>
-                            <td class="num" id="psGross" colspan="2">₱ 0.00</td>
-                        </tr>
+
+                        <!-- ✅ Earnings adjustments injected here -->
+                    <tbody id="psEarnAdjRows"></tbody>
+
+                    <tr class="psTotalRow">
+                        <td colspan="2">TOTAL GROSS EARNINGS</td>
+                        <td class="num" id="psGross" colspan="2">₱ 0.00</td>
+                    </tr>
                     </tbody>
                 </table>
 
@@ -418,10 +421,11 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Attendance Deductions</td>
+                            <td>Attendance Deductions (Late/UT/Absent)</td>
                             <td class="num">—</td>
                             <td class="num" id="psAttDedTotal">₱ 0.00</td>
                         </tr>
+
                         <tr>
                             <td>SSS (EE)</td>
                             <td class="num">—</td>
@@ -447,20 +451,26 @@
                             <td class="num">—</td>
                             <td class="num" id="psStatEeTotal">₱ 0.00</td>
                         </tr>
-                        <tr>
-                            <td>Other Deductions</td>
-                            <td class="num">—</td>
-                            <td class="num" id="psOtherDedTotal">₱ 0.00</td>
-                        </tr>
+
                         <tr>
                             <td>Cash Advance</td>
                             <td class="num">—</td>
                             <td class="num" id="psCashAdv">₱ 0.00</td>
                         </tr>
-                        <tr class="psTotalRow">
-                            <td colspan="2">TOTAL DEDUCTIONS</td>
-                            <td class="num" id="psDedTotal" colspan="2">₱ 0.00</td>
+
+                        <tr>
+                            <td>Other Deductions (manual/recurring)</td>
+                            <td class="num">—</td>
+                            <td class="num" id="psOtherDedTotal">₱ 0.00</td>
                         </tr>
+
+                        <!-- ✅ Deductions adjustments injected here -->
+                    <tbody id="psDedAdjRows"></tbody>
+
+                    <tr class="psTotalRow">
+                        <td colspan="2">TOTAL DEDUCTIONS</td>
+                        <td class="num" id="psDedTotal" colspan="2">₱ 0.00</td>
+                    </tr>
                     </tbody>
                 </table>
 
@@ -522,6 +532,7 @@
                 </div>
             </div>
         </div>
+
         <div class="drawer__foot">
             <button class="btn" type="button" id="psCloseFooterBtn">Close</button>
         </div>

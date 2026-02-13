@@ -128,6 +128,9 @@
 
                         <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
                             <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
+                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
+
+                            <div class="user-dropdown__divider" aria-hidden="true"></div>
                             <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
                         </div>
                     </div>

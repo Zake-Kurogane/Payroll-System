@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", () => {
+﻿document.addEventListener("DOMContentLoaded", () => {
   // ===== Clock =====
   const clockEl = document.getElementById("clock");
   const dateEl = document.getElementById("date");
@@ -49,7 +49,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===== Constants =====
   const AREA_PLACES = ["Laak", "Pantukan", "Maragusan"];
 
-  // ===== Demo data =====
+  // ===== Payroll Required Field Rules =====
+  const PAYROLL_REQUIRED = {
+    requirePayGroup: true,
+    requireAssignment: true,
+    requireBasicPay: true,
+    requireGovIds: true, // requires ALL gov ids below
+    govRequiredFields: ["sss", "ph", "pagibig", "tin"], // adjust if needed
+  };
+
+  // ===== Demo data (3 employees) =====
   let employees = [
     {
       empId: "1023",
@@ -62,6 +71,8 @@ document.addEventListener("DOMContentLoaded", () => {
       status: "Active",
       payType: "Monthly",
       rate: 20000,
+      payGroup: "", // intentionally missing to show badge
+
       assignmentType: "Area",
       areaPlace: "Pantukan",
       birthday: "1998-06-15",
@@ -70,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
       email: "juan@example.com",
       address: "Tagum City",
       sss: "12-3456789-0",
-      ph: "12-345678901-2",
+      ph: "", // missing to show badge
       pagibig: "1234-5678-9012",
       tin: ""
     },
@@ -85,6 +96,8 @@ document.addEventListener("DOMContentLoaded", () => {
       status: "Active",
       payType: "Monthly",
       rate: 24000,
+      payGroup: "Davao • Semi-monthly (1–15 / 16–End)",
+
       assignmentType: "Davao",
       areaPlace: "",
       birthday: "1999-11-02",
@@ -107,7 +120,9 @@ document.addEventListener("DOMContentLoaded", () => {
       type: "Contractual",
       status: "Inactive",
       payType: "Monthly",
-      rate: 19000,
+      rate: 0, // intentionally missing basic pay to show badge
+      payGroup: "",
+
       assignmentType: "Tagum",
       areaPlace: "",
       birthday: "2000-03-10",
@@ -126,10 +141,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const tbody = document.getElementById("empTbody");
   const resultsMeta = document.getElementById("resultsMeta");
 
-  // ✅ NEW: top controls (same IDs as HTML)
+  // top controls
   const searchInput = document.getElementById("searchInput");
   const deptFilter = document.getElementById("deptFilter");
-  const statusFilter = document.getElementById("statusFilter"); // ✅ added
+  const statusFilter = document.getElementById("statusFilter");
 
   // import/export
   const exportBtn = document.getElementById("exportBtn");
@@ -160,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // sorting state
   let sortState = { key: "name", dir: "asc" };
 
-  // drawer (keep your existing drawer wiring if you have it)
+  // drawer controls
   const drawer = document.getElementById("drawer");
   const drawerOverlay = document.getElementById("drawerOverlay");
   const closeDrawerBtn = document.getElementById("closeDrawerBtn");
@@ -168,10 +183,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const cancelBtn = document.getElementById("cancelBtn");
   const deleteBtn = document.getElementById("deleteBtn");
   const empForm = document.getElementById("empForm");
+  const drawerTitleEl = document.getElementById("drawerTitle");
+  const drawerSubEl = document.getElementById("drawerSubtitle");
 
   const F = (id) => document.getElementById(id);
 
-  // form fields (keep same ids from your form)
+  // form fields
   const f_empId = F("f_empId");
   const f_status = F("f_status");
   const f_first = F("f_first");
@@ -187,6 +204,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const f_hired = F("f_hired");
   const f_payType = F("f_payType");
   const f_rate = F("f_rate");
+  const f_payGroup = F("f_payGroup");
 
   const f_assignmentType = F("f_assignmentType");
   const f_areaPlace = F("f_areaPlace");
@@ -203,6 +221,95 @@ document.addEventListener("DOMContentLoaded", () => {
   // state
   let selectedEmpId = null;
   let selectedIds = new Set();
+
+  // ===== Drawer helpers =====
+  function openDrawer(title, subtitle) {
+    if (!drawer) return;
+    drawer.classList.add("is-open");
+    drawer.setAttribute("aria-hidden", "false");
+    if (drawerOverlay) drawerOverlay.removeAttribute("hidden");
+    if (drawerTitleEl) drawerTitleEl.textContent = title;
+    if (drawerSubEl) drawerSubEl.textContent = subtitle;
+    if (deleteBtn) deleteBtn.style.display = selectedEmpId ? "inline-flex" : "none";
+  }
+
+  function closeDrawer() {
+    if (!drawer) return;
+    drawer.classList.remove("is-open");
+    drawer.setAttribute("aria-hidden", "true");
+    if (drawerOverlay) drawerOverlay.setAttribute("hidden", "");
+    selectedEmpId = null;
+  }
+
+  function clearForm() {
+    empForm?.reset();
+    if (f_assignmentType) f_assignmentType.value = "Davao";
+    if (f_areaPlace) f_areaPlace.value = "";
+    if (f_status) f_status.value = "Active";
+    if (f_payGroup) f_payGroup.value = "";
+    syncAssignmentUI();
+    syncCashAdvanceFields();
+  }
+
+  function fillForm(emp) {
+    if (!emp) return;
+    f_empId && (f_empId.value = emp.empId || "");
+    f_status && (f_status.value = emp.status || "Active");
+    f_first && (f_first.value = emp.first || "");
+    f_last && (f_last.value = emp.last || "");
+    f_middle && (f_middle.value = emp.middle || "");
+    f_bday && (f_bday.value = emp.birthday || "");
+    f_mobile && (f_mobile.value = emp.mobile || "");
+    f_email && (f_email.value = emp.email || "");
+    f_address && (f_address.value = emp.address || "");
+    f_dept && (f_dept.value = emp.dept || "");
+    f_position && (f_position.value = emp.position || "");
+    f_type && (f_type.value = emp.type || "");
+    f_hired && (f_hired.value = emp.hired || "");
+    f_payType && (f_payType.value = emp.payType || "");
+    f_rate && (f_rate.value = emp.rate ?? "");
+    f_payGroup && (f_payGroup.value = emp.payGroup || "");
+
+    f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
+    f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
+
+    f_sss && (f_sss.value = emp.sss || "");
+    f_ph && (f_ph.value = emp.ph || "");
+    f_pagibig && (f_pagibig.value = emp.pagibig || "");
+    f_tin && (f_tin.value = emp.tin || "");
+
+    syncAssignmentUI();
+    syncCashAdvanceFields();
+  }
+
+  function collectForm() {
+    return {
+      empId: f_empId?.value?.trim(),
+      status: f_status?.value?.trim(),
+      first: f_first?.value?.trim(),
+      last: f_last?.value?.trim(),
+      middle: f_middle?.value?.trim(),
+      birthday: f_bday?.value || "",
+      mobile: f_mobile?.value?.trim(),
+      email: f_email?.value?.trim(),
+      address: f_address?.value?.trim(),
+      dept: f_dept?.value?.trim(),
+      position: f_position?.value?.trim(),
+      type: f_type?.value?.trim(),
+      hired: f_hired?.value || "",
+      payType: f_payType?.value?.trim(),
+      rate: Number(f_rate?.value || 0),
+      payGroup: f_payGroup?.value?.trim(),
+
+      assignmentType: f_assignmentType?.value?.trim(),
+      areaPlace: f_areaPlace?.value?.trim(),
+
+      sss: f_sss?.value?.trim(),
+      ph: f_ph?.value?.trim(),
+      pagibig: f_pagibig?.value?.trim(),
+      tin: f_tin?.value?.trim(),
+    };
+  }
 
   // ===== Helpers =====
   function fullName(emp) {
@@ -287,6 +394,57 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // ===== Payroll Required Helpers =====
+  function getPayrollMissing(emp) {
+    const missing = [];
+
+    if (PAYROLL_REQUIRED.requireBasicPay) {
+      const r = Number(emp.rate || 0);
+      if (!Number.isFinite(r) || r <= 0) missing.push("Basic Pay");
+    }
+
+    if (PAYROLL_REQUIRED.requireAssignment) {
+      const t = (emp.assignmentType || "").trim();
+      if (!t) missing.push("Assignment");
+      if (t === "Area") {
+        const ap = (emp.areaPlace || "").trim();
+        if (!ap) missing.push("Area Place");
+      }
+    }
+
+    if (PAYROLL_REQUIRED.requirePayGroup) {
+      const pg = (emp.payGroup || "").trim();
+      if (!pg) missing.push("Pay Group");
+    }
+
+    if (PAYROLL_REQUIRED.requireGovIds) {
+      const req = PAYROLL_REQUIRED.govRequiredFields || [];
+      const missingGov = req.filter(k => !(emp[k] || "").trim());
+      if (missingGov.length) missing.push("Gov IDs");
+    }
+
+    return missing;
+  }
+
+  function isPayrollEligible(emp) {
+    return getPayrollMissing(emp).length === 0;
+  }
+
+  function payrollBadgeHTML(emp) {
+    const missing = getPayrollMissing(emp);
+
+    if (!missing.length) {
+      return `<span class="badge badge--ok">✅ Complete</span>`;
+    }
+
+    const badges = missing.map(m => {
+      const bad = (m === "Gov IDs" || m === "Pay Group" || m === "Basic Pay");
+      return `<span class="badge ${bad ? "badge--bad" : "badge--warn"}">⚠️ Missing ${m}</span>`;
+    }).join("");
+
+    return `<div class="badges">${badges}</div>`;
+  }
+
   // ===== Sorting =====
   function updateSortIcons() {
     document.querySelectorAll("th.sortable").forEach(th => {
@@ -336,14 +494,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ✅ Filters/Search (NOW includes Status)
+  // ✅ Filters/Search
   function applyFilters(list) {
     const q = (searchInput?.value || "").trim().toLowerCase();
     const dept = deptFilter?.value || "All";
     const status = statusFilter?.value || "All";
 
     return list.filter(emp => {
-      const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${govShort(emp)}`
+      const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${emp.payGroup || ""} ${govShort(emp)}`
         .toLowerCase();
 
       const okQ = !q || text.includes(q);
@@ -354,7 +512,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ===== Render (filters + sort + paginate) =====
+  // ===== Render =====
   function render() {
     if (!tbody) return;
 
@@ -398,6 +556,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${emp.type || "—"}</td>
         <td>${assignmentText(emp)}</td>
         <td>${money(emp.rate)} <span class="muted small">(${emp.payType || "—"})</span></td>
+
+        <!-- ✅ NEW -->
+        <td>${payrollBadgeHTML(emp)}</td>
+
         <td>${govShort(emp)}</td>
         <td class="actions">
           <button class="iconbtn" type="button" data-action="edit" data-id="${emp.empId}" title="Edit" aria-label="Edit">
@@ -437,7 +599,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===== Events =====
-  // ✅ filters
   [searchInput, deptFilter, statusFilter].forEach(el => {
     if (!el) return;
     el.addEventListener(el === searchInput ? "input" : "change", () => {
@@ -501,7 +662,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const emp = employees.find(x => x.empId === id);
     if (!emp) return;
 
-    if (action === "edit") alert(`Edit ${fullName(emp)} (wire to drawer as you already have)`);
+    if (action === "edit") {
+      selectedEmpId = id;
+      fillForm(emp);
+      openDrawer("Edit Employee", `${fullName(emp)} • ${emp.empId}`);
+    }
     if (action === "delete") {
       if (confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) {
         employees = employees.filter(x => x.empId !== id);
@@ -521,10 +686,73 @@ document.addEventListener("DOMContentLoaded", () => {
     importFile.value = "";
   });
 
+  // drawer events
+  openAddBtn && openAddBtn.addEventListener("click", () => {
+    selectedEmpId = null;
+    clearForm();
+    openDrawer("Add Employee", "Fill in the details then click Save.");
+  });
+
+  closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
+  cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
+  drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+
+  // live cash advance preview
+  f_type && f_type.addEventListener("change", syncCashAdvanceFields);
+  f_rate && f_rate.addEventListener("input", syncCashAdvanceFields);
+
+  deleteBtn && deleteBtn.addEventListener("click", () => {
+    if (!selectedEmpId) return;
+    const emp = employees.find(e => e.empId === selectedEmpId);
+    if (!emp) return;
+    if (confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) {
+      employees = employees.filter(e => e.empId !== selectedEmpId);
+      selectedIds.delete(selectedEmpId);
+      closeDrawer();
+      render();
+    }
+  });
+
+  empForm && empForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const data = collectForm();
+
+    // required fields
+    if (!data.empId || !data.first || !data.last || !data.dept || !data.position) {
+      alert("Please fill required fields (Employee ID, First, Last, Department, Position).");
+      return;
+    }
+    if (!Number.isFinite(data.rate) || data.rate < 0) {
+      alert("Basic Pay must be a valid number.");
+      return;
+    }
+    if (PAYROLL_REQUIRED.requirePayGroup && !data.payGroup) {
+      alert("Pay Group is required.");
+      return;
+    }
+
+    if (selectedEmpId) {
+      employees = employees.map(emp => emp.empId === selectedEmpId ? { ...emp, ...data } : emp);
+    } else {
+      const exists = employees.some(emp => emp.empId === data.empId);
+      if (exists && !confirm("Employee ID already exists. Overwrite?")) return;
+      employees = employees.filter(emp => emp.empId !== data.empId);
+      employees.push(data);
+    }
+
+    render();
+    closeDrawer();
+  });
+
   // Init
   syncAssignmentUI();
   syncCashAdvanceFields();
   wireHeaderSorting();
   updateSortIcons();
   render();
+
+  // ===== Expose helpers (optional) =====
+  // You can reuse these in payroll processing by copying these functions there
+  window.__payrollRequired = { getPayrollMissing, isPayrollEligible };
 });

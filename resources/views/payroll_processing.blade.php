@@ -133,7 +133,7 @@
                 <div class="headline">
                     <div>
                         <h1>PAYROLL PROCESSING</h1>
-                        <div class="muted small" id="metaLine">Select a period, compute preview, then process (lock).
+                        <div class="muted small" id="metaLine">Select a period, compute preview, then lock (finalize).
                         </div>
                     </div>
                 </div>
@@ -171,6 +171,80 @@
                                     aria-selected="false">Davao</button>
                                 <button class="seg__btn" type="button" data-assign="Area"
                                     aria-selected="false">Area</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- NEW: RUN STATUS + SUMMARY (SANITY CHECK) -->
+                <section class="card">
+                    <div class="tablecard__head">
+                        <div>
+                            <div class="card__title big">Payroll Run</div>
+                            <div class="muted small">Status, lock, and totals sanity check.</div>
+                        </div>
+                        <div class="tableActions" style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn--soft" type="button" id="newRunBtn">New Run</button>
+                            <button class="btn btn--maroon" type="button" id="lockRunBtn">Lock Run</button>
+                            <button class="btn" type="button" id="unlockRunBtn" disabled>Unlock</button>
+                            <button class="btn" type="button" id="releaseRunBtn" disabled>Release
+                                (Optional)</button>
+                        </div>
+                    </div>
+
+                    <div class="gridRow" style="grid-template-columns: 1fr 1fr;">
+                        <div class="card" style="box-shadow:none; border:1px solid var(--line);">
+                            <div class="card__title">Run Metadata</div>
+                            <div class="mini" style="margin-top:12px;">
+                                <div class="mini__k">Run ID</div>
+                                <div class="mini__v" id="runId">—</div>
+
+                                <div class="mini__k">Period</div>
+                                <div class="mini__v" id="runPeriod">—</div>
+
+                                <div class="mini__k">Status</div>
+                                <div class="mini__v" id="runStatus">Draft</div>
+
+                                <div class="mini__k">Created By</div>
+                                <div class="mini__v" id="runCreatedBy">ADMIN</div>
+
+                                <div class="mini__k">Created At</div>
+                                <div class="mini__v" id="runCreatedAt">—</div>
+
+                                <div class="mini__k">Locked At</div>
+                                <div class="mini__v" id="runLockedAt">—</div>
+
+                                <div class="mini__k">Released At</div>
+                                <div class="mini__v" id="runReleasedAt">—</div>
+                            </div>
+                        </div>
+
+                        <div class="card" style="box-shadow:none; border:1px solid var(--line);">
+                            <div class="card__title">Run Summary + Variance</div>
+                            <div class="summaryLines" style="margin-top:12px;">
+                                <div class="summaryLine">
+                                    <span>Headcount</span>
+                                    <strong id="sumHeadcount">0</strong>
+                                </div>
+                                <div class="summaryLine">
+                                    <span>Total Gross</span>
+                                    <strong id="sumGross">₱ 0</strong>
+                                </div>
+                                <div class="summaryLine">
+                                    <span>Total Deductions</span>
+                                    <strong id="sumDed">₱ 0</strong>
+                                </div>
+                                <div class="summaryLine summaryLine--total">
+                                    <span>Total Net</span>
+                                    <strong id="sumNet">₱ 0</strong>
+                                </div>
+                                <div class="summaryLine">
+                                    <span>Variance vs Previous Cutoff</span>
+                                    <strong id="sumVariance">—</strong>
+                                </div>
+                            </div>
+                            <div class="muted small" style="margin-top:10px;">
+                                Tip: Lock after totals look correct. Unlock requires a reason.
                             </div>
                         </div>
                     </div>
@@ -273,11 +347,11 @@
             <!-- STICKY FOOTER ACTIONS -->
             <footer class="sticky">
                 <div class="sticky__left">
-                    <div class="muted small" id="stickyHint">Compute preview before processing.</div>
+                    <div class="muted small" id="stickyHint">Compute preview before locking.</div>
                 </div>
                 <div class="sticky__right">
                     <button class="btn btn--soft" type="button" id="computeBtn">Compute / Refresh Preview</button>
-                    <button class="btn btn--maroon" type="button" id="processBtn">Process Payroll</button>
+                    <button class="btn btn--maroon" type="button" id="processBtn">Process Payroll (Lock)</button>
                     <button class="btn" type="button" id="payslipBtn" disabled>Generate Payslips</button>
                 </div>
             </footer>
@@ -292,102 +366,105 @@
     <aside class="drawer" id="drawer" aria-hidden="true">
         <div class="drawer__head">
             <div>
-                <div class="drawer__title" id="drawerTitle">Adjust Payroll</div>
-                <div class="drawer__sub muted small" id="drawerSub">Override OT / deductions for this employee.</div>
+                <div class="drawer__title">Adjust Payroll</div>
+                <div class="drawer__sub muted small" id="drawerSub">
+                    Override & one-time adjustments for this cutoff.
+                </div>
             </div>
-            <button class="iconx" type="button" id="closeDrawerBtn" aria-label="Close drawer">✕</button>
+            <button class="iconx" type="button" id="closeDrawerBtn">✕</button>
         </div>
 
         <div class="drawer__body">
+
             <div class="mini">
                 <div class="mini__k">Employee</div>
                 <div class="mini__v" id="adjEmpName">—</div>
+
                 <div class="mini__k">Emp ID</div>
                 <div class="mini__v" id="adjEmpId">—</div>
+
                 <div class="mini__k">Assignment</div>
                 <div class="mini__v" id="adjAssign">—</div>
+
+                <div class="mini__k">Status</div>
+                <div class="mini__v" id="adjStatus">Draft</div>
             </div>
 
-            <div class="sectionTitle">Adjustments</div>
+            <div class="sectionTitle">Overtime</div>
 
-            <div class="grid2">
-                <div class="field">
-                    <label>OT Hours (override)</label>
-                    <input id="adjOtHours" type="number" min="0" step="0.25" />
-                </div>
+            <div class="field">
+                <label>Computed OT Hours</label>
+                <input id="adjComputedOt" type="number" readonly />
+            </div>
 
-                <div class="field">
-                    <label>One-time Deduction</label>
-                    <input id="adjOneDed" type="number" min="0" step="0.01" />
-                </div>
+            <div class="field field--switch">
+                <label>Override OT?</label>
+                <label class="switch">
+                    <input type="checkbox" id="adjOverrideToggle" />
+                    <span class="switch__ui"></span>
+                </label>
             </div>
 
             <div class="field">
-                <label>Cash Advance Deduction (optional)</label>
-                <input id="adjCashAdv" type="number" min="0" step="0.01" />
-                <div class="muted small" id="adjCashHint">Eligible only if Regular.</div>
+                <label>OT Hours (Override)</label>
+                <input id="adjOtHours" type="number" min="0" step="0.25" disabled />
             </div>
 
             <div class="field">
-                <label>Notes (optional)</label>
-                <textarea id="adjNotes" rows="3" placeholder="Reason / note…"></textarea>
+                <label>OT Amount Preview</label>
+                <input id="adjOtAmountPreview" type="text" readonly />
             </div>
 
-            <input type="hidden" id="adjEmpKey" value="" />
-        </div>
+            <div class="sectionTitle">Adjustments (One-time)</div>
 
-        <div class="drawer__foot">
-            <button class="btn" type="button" id="cancelBtn">Cancel</button>
-            <button class="btn btn--maroon" type="button" id="applyAdjBtn">Apply</button>
-        </div>
-    </aside>
+            <div id="adjustmentList"></div>
 
-    <div class="overlay" id="summaryOverlay" hidden></div>
-    <section class="summaryModal" id="summaryModal" aria-hidden="true">
-        <div class="summaryModal__head">
-            <div class="summaryModal__title">Payroll Preview Summary</div>
-            <button class="iconx" type="button" id="closeSummaryBtn" aria-label="Close summary">✕</button>
-        </div>
-        <div class="summaryModal__body">
-            <div class="summaryGrid">
-                <div class="summaryCard">
-                    <div class="summaryCard__k">Employees</div>
-                    <div class="summaryCard__v" id="sumEmpCount">0</div>
-                </div>
-                <div class="summaryCard">
-                    <div class="summaryCard__k">Ready</div>
-                    <div class="summaryCard__v" id="sumReadyCount">0</div>
-                </div>
-                <div class="summaryCard">
-                    <div class="summaryCard__k">With Issues</div>
-                    <div class="summaryCard__v" id="sumIssueCount">0</div>
-                </div>
+            <button class="btn btn--soft" type="button" id="addAdjustmentBtn">
+                + Add Adjustment
+            </button>
+
+            <div class="sectionTitle">Cash Advance</div>
+
+            <div class="field">
+                <label>Manual Cash Advance Deduction</label>
+                <input id="adjCashAdvance" type="number" min="0" step="0.01" />
             </div>
+
+            <div class="sectionTitle">Summary Preview</div>
 
             <div class="summaryLines">
                 <div class="summaryLine">
-                    <span>Basic Pay</span>
-                    <strong id="sumBasicPay">₱ 0</strong>
+                    <span>Base Pay</span>
+                    <strong id="sumBase">₱ 0</strong>
                 </div>
                 <div class="summaryLine">
-                    <span>OT Pay</span>
-                    <strong id="sumOtPay">₱ 0</strong>
+                    <span>OT</span>
+                    <strong id="sumOt">₱ 0</strong>
                 </div>
                 <div class="summaryLine">
-                    <span>Deductions</span>
-                    <strong id="sumDeductions">₱ 0</strong>
+                    <span>Other Earnings</span>
+                    <strong id="sumOtherEarn">₱ 0</strong>
+                </div>
+                <div class="summaryLine">
+                    <span>Other Deductions</span>
+                    <strong id="sumOtherDed">₱ 0</strong>
                 </div>
                 <div class="summaryLine summaryLine--total">
-                    <span>Net Pay</span>
-                    <strong id="sumNetPay">₱ 0</strong>
+                    <span>Net Pay Preview</span>
+                    <strong id="sumNetPreview">₱ 0</strong>
                 </div>
             </div>
-        </div>
-        <div class="summaryModal__foot">
-            <button class="btn btn--maroon" type="button" id="closeSummaryFooter">Close</button>
-        </div>
-    </section>
 
+            <input type="hidden" id="adjEmpKey" />
+        </div>
+
+        <div class="drawer__foot">
+            <button class="btn" id="cancelBtn">Cancel</button>
+            <button class="btn btn--maroon" id="applyAdjBtn">
+                Apply Adjustments
+            </button>
+        </div>
+    </aside>
 
 </body>
 

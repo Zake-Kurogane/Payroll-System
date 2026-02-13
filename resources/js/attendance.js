@@ -535,13 +535,32 @@ tbody && tbody.addEventListener("click", (e) => {
     syncCheckAll();
   }
 
-  // Click employee name -> open employee drawer
+  // Table row actions: view employee, edit, delete
   tbody && tbody.addEventListener("click", (e) => {
     const empBtn = e.target.closest("button.empLink");
     if (empBtn) {
       const empId = empBtn.dataset.emp || "";
       if (empId) openEmpDrawer(empId);
       return;
+    }
+
+    const actionBtn = e.target.closest("button[data-action]");
+    if (actionBtn) {
+      const id = actionBtn.dataset.id;
+      const action = actionBtn.dataset.action;
+      const record = records.find(r => r.id === id);
+      if (!record) return;
+
+      if (action === "edit") {
+        openDrawer("edit", record);
+      }
+      if (action === "delete") {
+        if (confirm(`Delete attendance record ${record.empId} on ${record.date}?`)) {
+          records = records.filter(r => r.id !== id);
+          saveRecentImport(records);
+          render();
+        }
+      }
     }
   });
 

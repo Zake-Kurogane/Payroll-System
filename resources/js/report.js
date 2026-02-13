@@ -468,6 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderRegister(rows) {
     if (!regTbody) return;
     regTbody.innerHTML = "";
+    if (resultsMeta) resultsMeta.textContent = `Showing ${rows.length} employee(s)`;
 
     rows.forEach((r) => {
       const tr = document.createElement("tr");

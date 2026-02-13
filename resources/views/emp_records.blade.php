@@ -68,7 +68,6 @@
                     <span>PAYROLL<br />PROCESSING</span>
                 </a>
 
-
                 <a class="menu__item {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
                     href="{{ route('payslip') }}">
                     <span class="menu__icon" aria-hidden="true">
@@ -162,6 +161,17 @@
                                     <option value="Resigned">Resigned</option>
                                 </select>
                             </div>
+
+                            <div class="seg seg--pill" role="group" aria-label="Assignment filter">
+                                <button type="button" class="seg__btn seg__btn--emp is-active"
+                                    data-assign="All">All</button>
+                                <button type="button" class="seg__btn seg__btn--emp"
+                                    data-assign="Tagum">Tagum</button>
+                                <button type="button" class="seg__btn seg__btn--emp"
+                                    data-assign="Davao">Davao</button>
+                                <button type="button" class="seg__btn seg__btn--emp"
+                                    data-assign="Area">Area</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -174,10 +184,25 @@
                             <div class="muted small" id="resultsMeta">Showing 0 employees</div>
                         </div>
                         <div class="actionsTop">
-                            <button class="btn btn--soft" type="button" id="exportBtn">? EXPORT</button>
-                            <button class="btn btn--soft" type="button" id="importBtn">? IMPORT</button>
+                            <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
+                                <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <path d="M7 10l5-5 5 5" />
+                                    <path d="M12 5v14" />
+                                </svg>
+                                EXPORT
+                            </button>
+                            <button class="btn btn--soft btn--icon" type="button" id="importBtn">
+                                <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <path d="M7 10l5 5 5-5" />
+                                    <path d="M12 4v11" />
+                                </svg>
+                                IMPORT
+                            </button>
                             <button class="btn btn--maroon" type="button" id="openAddBtn">+ ADD EMPLOYEE</button>
                             <input id="importFile" type="file" accept=".csv,.xlsx" hidden />
+
                             <div class="bulk" id="bulkBarEmp" aria-hidden="true" style="display:none">
                                 <span class="bulk__text"><span id="selectedCountEmp">0</span> selected</span>
                                 <button class="btn btn--soft" type="button" id="bulkDeleteEmpBtn">Delete
@@ -209,8 +234,7 @@
                                     <th class="sortable" data-sort="name">Name <span class="sortIcon"
                                             aria-hidden="true"></span></th>
                                     <th class="sortable" data-sort="dept">Department <span class="sortIcon"
-                                            aria-hidden="true"></span>
-                                    </th>
+                                            aria-hidden="true"></span></th>
                                     <th class="sortable" data-sort="position">Position <span class="sortIcon"
                                             aria-hidden="true"></span></th>
                                     <th class="sortable" data-sort="type">Employment Type <span class="sortIcon"
@@ -219,6 +243,10 @@
                                             aria-hidden="true"></span></th>
                                     <th class="sortable" data-sort="rate">Rate/Salary <span class="sortIcon"
                                             aria-hidden="true"></span></th>
+
+                                    <!-- ✅ NEW -->
+                                    <th>Payroll Required</th>
+
                                     <th>Gov’t IDs</th>
                                     <th>Actions</th>
                                 </tr>
@@ -263,7 +291,7 @@
                     </div>
                 </section>
 
-                <!-- DRAWER (ADD/EDIT) - kept from your structure -->
+                <!-- DRAWER -->
                 <aside class="drawer" id="drawer" aria-hidden="true">
                     <div class="drawer__overlay" id="drawerOverlay"></div>
 
@@ -375,6 +403,20 @@
                                     <label>Basic Pay / Salary *</label>
                                     <input type="number" id="f_rate" required placeholder="e.g. 12000"
                                         min="0" />
+                                </div>
+
+                                <!-- ✅ NEW: Pay Group -->
+                                <div class="field field--full">
+                                    <label>Pay Group *</label>
+                                    <select id="f_payGroup" required>
+                                        <option value="">Select pay group</option>
+                                        <option value="Tagum • Semi-monthly (1–15 / 16–End)">Tagum • Semi-monthly (1–15
+                                            / 16–End)</option>
+                                        <option value="Davao • Semi-monthly (1–15 / 16–End)">Davao • Semi-monthly (1–15
+                                            / 16–End)</option>
+                                        <option value="Area • Semi-monthly (1–15 / 16–End)">Area • Semi-monthly (1–15 /
+                                            16–End)</option>
+                                    </select>
                                 </div>
                             </div>
 

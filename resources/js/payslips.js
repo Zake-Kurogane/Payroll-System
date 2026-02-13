@@ -1,5 +1,4 @@
 document.addEventListener("DOMContentLoaded", () => {
-
   // =========================================================
   // HELPERS
   // =========================================================
@@ -27,13 +26,40 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-    // =========================================================
-  // SIDEBAR CLOCK (footer time/date)
-  // Needs: <div id="clock"></div> and <div id="date"></div>
+  const sumAmounts = (arr) =>
+    (Array.isArray(arr) ? arr : []).reduce((a, r) => a + Number(r?.amount || 0), 0);
+
+  function safeText(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value;
+  }
+
+  // month yyyy-mm + cutoff -> cutoff date range (simple demo)
+  // Replace later with your Payroll Calendar rules if needed.
+  function cutoffDates(periodMonth, cutoffLabel) {
+    // cutoffLabel examples: "1–15", "16–End"
+    if (!periodMonth) return { from: "—", to: "—" };
+
+    const [yStr, mStr] = String(periodMonth).split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+
+    // last day of month
+    const lastDay = new Date(y, m, 0).getDate(); // JS month in Date is 1-based here due to using (y, m, 0)
+    if (cutoffLabel === "1–15") {
+      return { from: `${periodMonth}-01`, to: `${periodMonth}-15` };
+    }
+    if (cutoffLabel === "16–End") {
+      return { from: `${periodMonth}-16`, to: `${periodMonth}-${pad(lastDay)}` };
+    }
+    return { from: "—", to: "—" };
+  }
+
+  // =========================================================
+  // SIDEBAR CLOCK
   // =========================================================
   const clockEl = $("clock");
   const dateEl = $("date");
-
   function tick() {
     const d = new Date();
     let h = d.getHours();
@@ -49,8 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(tick, 1000);
 
   // =========================================================
-  // USER DROPDOWN (top right ADMIN menu)
-  // Needs: #userMenuBtn and #userMenu
+  // USER DROPDOWN
   // =========================================================
   const userMenuBtn = $("userMenuBtn");
   const userMenu = $("userMenu");
@@ -60,7 +85,6 @@ document.addEventListener("DOMContentLoaded", () => {
     userMenu.classList.remove("is-open");
     userMenuBtn.setAttribute("aria-expanded", "false");
   }
-
   function toggleUserMenu() {
     if (!userMenuBtn || !userMenu) return;
     const isOpen = userMenu.classList.contains("is-open");
@@ -73,75 +97,56 @@ document.addEventListener("DOMContentLoaded", () => {
       e.stopPropagation();
       toggleUserMenu();
     });
-
     document.addEventListener("click", (e) => {
       if (!userMenu.contains(e.target) && e.target !== userMenuBtn) closeUserMenu();
     });
-
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeUserMenu();
     });
   }
 
-  function safeText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value;
-  }
-
-  function safeHTML(id, value) {
-    const el = $(id);
-    if (el) el.innerHTML = value;
-  }
-
+  // =========================================================
+  // ELEMENTS (MATCH YOUR HTML)
+  // =========================================================
   const monthInput = $("monthInput");
-  const cutoffSelect = $("cutoffSelect");
+  const cutoffInput = $("cutoffInput");
   const searchInput = $("searchInput");
   const segBtns = $$(".seg__btn");
-  const areaWrap = $("areaWrap");
+  const areaFilterWrap = $("areaFilterWrap");
   const areaPlaceFilter = $("areaPlaceFilter");
 
-  // Run selector
   const runSelect = $("runSelect");
-  const runBadge = $("runBadge");
   const runEmployees = $("runEmployees");
   const runTotalNet = $("runTotalNet");
   const runProcessedAt = $("runProcessedAt");
   const runProcessedBy = $("runProcessedBy");
-
-  const openRunSummaryBtn = $("openRunSummaryBtn");
   const releaseAllBtn = $("releaseAllBtn");
 
-  // Actions (disabled until run selected)
-  const exportPdfSelectedBtn = $("exportPdfSelectedBtn");
-  const exportPdfAllBtn = $("exportPdfAllBtn");
+  const exportPdfBtn = $("exportPdfBtn");
   const exportCsvBtn = $("exportCsvBtn");
-  const printSelectedBtn = $("printSelectedBtn");
-  const printAllBtn = $("printAllBtn");
+  const printBtn = $("printBtn");
 
-  // Table
   const tbody = $("payslipTbody");
   const resultsMeta = $("resultsMeta");
 
-  // Selection / bulk bar (optional)
-  const checkAll = $("checkAll");
   const bulkBar = $("bulkBar");
   const selectedCount = $("selectedCount");
+  const bulkPdfBtn = $("bulkPdfBtn");
   const bulkPrintBtn = $("bulkPrintBtn");
-  const bulkMarkReleasedBtn = $("bulkMarkReleasedBtn");
-  const bulkDownloadBtn = $("bulkDownloadBtn");
-  const bulkClearBtn = $("bulkClearBtn");
+  const bulkReleaseBtn = $("bulkReleaseBtn");
+  const bulkCancelBtn = $("bulkCancelBtn");
 
-  // Pagination
+  const checkAll = $("checkAll");
+
   const rowsPerPage = $("rowsPerPage");
   const pagePrev = $("pagePrev");
   const pageNext = $("pageNext");
-  const pageLabel = $("pageLabel");
   const firstPage = $("firstPage");
   const lastPage = $("lastPage");
   const pageInput = $("pageInput");
   const totalPages = $("totalPages");
+  const pageLabel = $("pageLabel");
 
-  // Payslip Preview Drawer elements (from the previous snippet)
   const psDrawer = $("psDrawer");
   const psOverlay = $("psOverlay");
   const psCloseBtn = $("psCloseBtn");
@@ -151,14 +156,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const psReleaseBtn = $("psReleaseBtn");
   const psDrawerMeta = $("psDrawerMeta");
 
+  // new: adjustment containers in preview
+  const psEarnAdjRows = $("psEarnAdjRows");
+  const psDedAdjRows = $("psDedAdjRows");
 
+  // =========================================================
+  // DEMO DATA (replace with backend later)
+  // =========================================================
   const RUNS = [
     {
       id: "RUN-2026-01-16E-ALL",
       month: "2026-01",
       cutoff: "16–End",
       assignment: "All",
-      status: "Processed", // Processed / Released
+      status: "Processed",
       employees: 32,
       totalNet: 512345.67,
       processedAt: "2026-01-31 17:20",
@@ -177,7 +188,6 @@ document.addEventListener("DOMContentLoaded", () => {
     },
   ];
 
-  // Each payslip belongs to a run
   const PAYSLIPS = [
     {
       id: "PS-0001",
@@ -187,14 +197,13 @@ document.addEventListener("DOMContentLoaded", () => {
       department: "Sales",
       position: "Field Representative",
       empType: "Regular",
-      assignmentType: "Tagum", // Tagum/Davao/Area
+      assignmentType: "Tagum",
       areaPlace: "",
       periodMonth: "2026-01",
       cutoff: "16–End",
       netPay: 7997.5,
-      releaseStatus: "Draft", // Draft/Released/Voided
+      releaseStatus: "Draft",
 
-      // preview fields (demo)
       payslipNo: "PS-2026-01-00123",
       generatedDate: "2026-02-10",
       payDate: "—",
@@ -206,39 +215,31 @@ document.addEventListener("DOMContentLoaded", () => {
       leaveDays: 0,
       absentDays: 1,
       attendancePay: 7320,
+
       otHours: 4.5,
       otRate: 95,
       otPay: 427.5,
-      riceAllowance: 500,
-      transportAllowance: 300,
-      allowanceTotal: 800,
-      gross: 8547.5,
 
-      lateDeduction: 0,
-      undertimeDeduction: 0,
-      unpaidLeaveDeduction: 0,
+      // ✅ NEW: adjustments
+      earningsAdjustments: [{ name: "Allowance (one-time)", amount: 800 }],
+      deductionAdjustments: [{ name: "Penalty (policy)", amount: 50 }],
+
       attendanceDeductionTotal: 0,
-
       sssEe: 300,
       philhealthEe: 150,
       pagibigEe: 100,
       withholdingTax: 0,
-      statutoryEeTotal: 550,
 
-      cashAdvance: 0,
-      oneTimeDeduction: 0,
-      loans: 0,
       otherDeductionTotal: 0,
-
-      deductionTotal: 550,
+      cashAdvance: 0,
 
       sssEr: 650,
       philhealthEr: 300,
       pagibigEr: 200,
-      employerShareTotal: 1150,
 
       notes: "—",
     },
+
     {
       id: "PS-0002",
       runId: "RUN-2026-01-16E-ALL",
@@ -265,95 +266,26 @@ document.addEventListener("DOMContentLoaded", () => {
       leaveDays: 0,
       absentDays: 0,
       attendancePay: 8400,
+
       otHours: 2,
       otRate: 105,
       otPay: 210,
-      riceAllowance: 300,
-      transportAllowance: 0,
-      allowanceTotal: 300,
-      gross: 8910,
 
-      lateDeduction: 0,
-      undertimeDeduction: 0,
-      unpaidLeaveDeduction: 0,
+      earningsAdjustments: [],
+      deductionAdjustments: [{ name: "Cash bond", amount: 120 }],
+
       attendanceDeductionTotal: 0,
-
       sssEe: 320,
       philhealthEe: 160,
       pagibigEe: 100,
       withholdingTax: 0,
-      statutoryEeTotal: 580,
 
-      cashAdvance: 0,
-      oneTimeDeduction: 0,
-      loans: 0,
       otherDeductionTotal: 0,
-
-      deductionTotal: 580,
+      cashAdvance: 0,
 
       sssEr: 680,
       philhealthEr: 320,
       pagibigEr: 200,
-      employerShareTotal: 1200,
-
-      notes: "—",
-    },
-    {
-      id: "PS-0101",
-      runId: "RUN-2026-02-115-TAGUM",
-      empId: "1102",
-      empName: "Garcia, Leo",
-      department: "Operations",
-      position: "Logistics Aide",
-      empType: "Contractual",
-      assignmentType: "Tagum",
-      areaPlace: "",
-      periodMonth: "2026-02",
-      cutoff: "1–15",
-      netPay: 6200,
-      releaseStatus: "Released",
-
-      payslipNo: "PS-2026-02-00088",
-      generatedDate: "2026-02-15",
-      payDate: "—",
-      payMethod: "Bank",
-      accountMasked: "****1234",
-
-      dailyRate: 500,
-      presentDays: 10,
-      leaveDays: 0,
-      absentDays: 0,
-      attendancePay: 5000,
-      otHours: 1,
-      otRate: 80,
-      otPay: 80,
-      riceAllowance: 200,
-      transportAllowance: 0,
-      allowanceTotal: 200,
-      gross: 5280,
-
-      lateDeduction: 0,
-      undertimeDeduction: 0,
-      unpaidLeaveDeduction: 0,
-      attendanceDeductionTotal: 0,
-
-      sssEe: 220,
-      philhealthEe: 120,
-      pagibigEe: 80,
-      withholdingTax: 0,
-      statutoryEeTotal: 420,
-
-      cashAdvance: 0,
-      oneTimeDeduction: 0,
-      loans: 0,
-      otherDeductionTotal: 0,
-
-      deductionTotal: 420,
-
-      sssEr: 450,
-      philhealthEr: 240,
-      pagibigEr: 160,
-      employerShareTotal: 850,
 
       notes: "—",
     },
@@ -365,21 +297,31 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedRunId = "";
   let assignmentFilter = "All";
   let sortKey = "empName";
-  let sortDir = "asc"; // asc/desc
+  let sortDir = "asc";
 
   let page = 1;
   let perPage = rowsPerPage ? Number(rowsPerPage.value || 20) : 20;
 
   // =========================================================
-  // INIT FILTER DEFAULTS
+  // INIT DEFAULTS
   // =========================================================
   if (monthInput && !monthInput.value) {
-    // default current month
     const d = new Date();
     monthInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
-  if (cutoffSelect && !cutoffSelect.value) cutoffSelect.value = "All";
-  if (areaWrap) areaWrap.style.display = "none";
+  if (cutoffInput && !cutoffInput.value) cutoffInput.value = "All";
+  if (areaFilterWrap) areaFilterWrap.hidden = true;
+
+  // =========================================================
+  // ENABLE/DISABLE TOP ACTIONS
+  // =========================================================
+  function setTopActionsEnabled(enabled) {
+    [exportPdfBtn, exportCsvBtn, printBtn, releaseAllBtn].forEach((btn) => {
+      if (btn) btn.disabled = !enabled;
+    });
+    if (checkAll) checkAll.disabled = !enabled;
+  }
+  setTopActionsEnabled(false);
 
   // =========================================================
   // RUN SELECTOR
@@ -387,7 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function initRunSelect() {
     if (!runSelect) return;
     runSelect.innerHTML =
-      `<option value="">— Select a payroll run —</option>` +
+      `<option value="" selected>— Select a run —</option>` +
       RUNS.map((r) => {
         const label = `${r.month} (${r.cutoff}) • ${r.assignment} • ${r.status} • ${r.employees} employees`;
         return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
@@ -396,7 +338,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setRunUI(run) {
     if (!run) {
-      safeText("runBadge", "—");
       safeText("runEmployees", "—");
       safeText("runTotalNet", "—");
       safeText("runProcessedAt", "—");
@@ -405,7 +346,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    safeText("runBadge", run.status);
     safeText("runEmployees", String(run.employees));
     safeText("runTotalNet", peso(run.totalNet));
     safeText("runProcessedAt", run.processedAt);
@@ -413,36 +353,24 @@ document.addEventListener("DOMContentLoaded", () => {
     setTopActionsEnabled(true);
   }
 
-  function setTopActionsEnabled(enabled) {
-    [
-      exportPdfSelectedBtn,
-      exportPdfAllBtn,
-      exportCsvBtn,
-      printSelectedBtn,
-      printAllBtn,
-      openRunSummaryBtn,
-      releaseAllBtn,
-    ].forEach((btn) => {
-      if (!btn) return;
-      btn.disabled = !enabled;
-    });
-  }
-
   initRunSelect();
   setRunUI(null);
 
   // =========================================================
-  // SORTING (DataTables-ish)
-  // Expect your <th> to have data-sort="empId" etc
-  // Keys supported: empId, empName, assignment, period, netPay, status
+  // SORTING + FILTERING
   // =========================================================
+  function assignmentText(p) {
+    if (p.assignmentType === "Area") return `Area (${p.areaPlace || "—"})`;
+    return p.assignmentType || "—";
+  }
+
   function getSortValue(p, key) {
     if (key === "empId") return String(p.empId || "");
     if (key === "empName") return String(p.empName || "");
     if (key === "assignment") return assignmentText(p);
     if (key === "period") return `${p.periodMonth || ""} ${p.cutoff || ""}`;
     if (key === "netPay") return Number(p.netPay || 0);
-    if (key === "status") return String(p.releaseStatus || "");
+    if (key === "releaseStatus") return String(p.releaseStatus || "");
     return String(p[key] || "");
   }
 
@@ -466,6 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
           sortKey = key;
           sortDir = "asc";
         }
+
         page = 1;
         updateSortIcons();
         render();
@@ -478,27 +407,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const ths = $$("th[data-sort]");
     ths.forEach((th) => {
       const key = th.dataset.sort;
-      const icon = th.querySelector(".sortIcon");
-      if (!icon) return;
-
-      if (key !== sortKey) icon.textContent = "↕";
-      else icon.textContent = sortDir === "asc" ? "↑" : "↓";
+      th.classList.remove("is-asc", "is-desc");
+      if (key === sortKey) th.classList.add(sortDir === "asc" ? "is-asc" : "is-desc");
     });
-  }
-
-  // =========================================================
-  // FILTERS + DATA PIPE
-  // =========================================================
-  function assignmentText(p) {
-    if (p.assignmentType === "Area") return `Area (${p.areaPlace || "—"})`;
-    return p.assignmentType || "—";
   }
 
   function applyFilters(list) {
     const q = normalize(searchInput?.value || "");
-    const monthVal = monthInput?.value || ""; // YYYY-MM
-    const cutoffVal = cutoffSelect?.value || "All";
-
+    const monthVal = monthInput?.value || "";
+    const cutoffVal = cutoffInput?.value || "All";
     const areaPlaceVal = areaPlaceFilter?.value || "All";
 
     return list
@@ -538,11 +455,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // TABLE RENDER
+  // TABLE + SELECTION
   // =========================================================
   function badge(status) {
     const s = String(status || "Draft");
-    // You can style these via CSS if you want (badge--released etc)
     return `<span class="badge">${escapeHtml(s)}</span>`;
   }
 
@@ -580,25 +496,39 @@ document.addEventListener("DOMContentLoaded", () => {
     const sorted = applySorting(filtered);
     const { pageItems, total, pages } = paginate(sorted);
 
-    if (resultsMeta) resultsMeta.textContent = `Showing ${pageItems.length} of ${total} payslip(s)`;
+    if (resultsMeta) {
+      resultsMeta.textContent = selectedRunId
+        ? `Showing ${pageItems.length} of ${total} payslip(s)`
+        : `Select a run to view payslips.`;
+    }
 
     if (pageLabel) pageLabel.textContent = `Page ${page} of ${pages}`;
     if (totalPages) totalPages.textContent = String(pages);
     if (pageInput) pageInput.value = String(page);
+
     if (pagePrev) pagePrev.disabled = page <= 1;
     if (pageNext) pageNext.disabled = page >= pages;
     if (firstPage) firstPage.disabled = page <= 1;
     if (lastPage) lastPage.disabled = page >= pages;
 
-    // preserve selection
+    tbody.innerHTML = "";
+    if (!selectedRunId) {
+      if (checkAll) {
+        checkAll.checked = false;
+        checkAll.indeterminate = false;
+      }
+      updateBulkBar();
+      return;
+    }
+
     const selected = new Set(selectedIds());
 
-    tbody.innerHTML = "";
     pageItems.forEach((p) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="col-check">
-          <input class="rowCheck" type="checkbox" data-id="${escapeHtml(p.id)}" ${selected.has(p.id) ? "checked" : ""} aria-label="Select ${escapeHtml(p.id)}">
+          <input class="rowCheck" type="checkbox" data-id="${escapeHtml(p.id)}"
+            ${selected.has(p.id) ? "checked" : ""} aria-label="Select ${escapeHtml(p.id)}">
         </td>
         <td>${escapeHtml(p.empId)}</td>
         <td>${escapeHtml(p.empName)}</td>
@@ -617,7 +547,6 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
-    // checkbox events
     $$("input.rowCheck").forEach((cb) => {
       cb.addEventListener("change", () => {
         updateBulkBar();
@@ -630,21 +559,66 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // PREVIEW DRAWER (LOW-FI DETAILED PAYSLIP)
+  // PREVIEW DRAWER (✅ Correctness: adjustments + cutoff dates)
   // =========================================================
+  function findPayslip(id) {
+    return PAYSLIPS.find((p) => p.id === id) || null;
+  }
+
+  function set(id, value) {
+    const el = $(id);
+    if (el) el.textContent = value ?? "—";
+  }
+  function setMoney(id, value) {
+    set(id, peso(value));
+  }
+
+  function renderAdjustmentRows(containerEl, items, mode) {
+    // mode: "earning" uses 4 columns table (EARNINGS), "deduction" uses 3 columns table (DEDUCTIONS)
+    if (!containerEl) return;
+    containerEl.innerHTML = "";
+
+    const list = Array.isArray(items) ? items.filter(x => Number(x?.amount || 0) !== 0) : [];
+    if (!list.length) return;
+
+    if (mode === "earning") {
+      list.forEach((a) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(a.name || "Adjustment (Earning)")}</td>
+          <td class="num">—</td>
+          <td class="num">—</td>
+          <td class="num">${escapeHtml(peso(a.amount))}</td>
+        `;
+        containerEl.appendChild(tr);
+      });
+      return;
+    }
+
+    // deduction (3 columns)
+    list.forEach((a) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(a.name || "Adjustment (Deduction)")}</td>
+        <td class="num">—</td>
+        <td class="num">${escapeHtml(peso(a.amount))}</td>
+      `;
+      containerEl.appendChild(tr);
+    });
+  }
+
   function openPayslipDrawer(p) {
     if (!psDrawer || !psOverlay) return;
 
-    // meta line on drawer head
     if (psDrawerMeta) {
-      psDrawerMeta.textContent =
-        `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: ${p.releaseStatus}`;
+      psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: ${p.releaseStatus}`;
     }
 
-    // Fill payslip fields
+    // header
     set("psNo", p.payslipNo || `PS-${p.id}`);
     set("psGenerated", p.generatedDate || todayISO());
 
+    // employee
     set("psEmpName", p.empName);
     set("psEmpId", p.empId);
     set("psDept", p.department || "—");
@@ -652,8 +626,14 @@ document.addEventListener("DOMContentLoaded", () => {
     set("psType", p.empType || "—");
     set("psAssign", assignmentText(p));
 
+    // pay period
     set("psMonth", p.periodMonth || "—");
     set("psCutoff", p.cutoff || "—");
+
+    // ✅ cutoff dates
+    const cd = cutoffDates(p.periodMonth, p.cutoff);
+    set("psCutoffDates", cd.from === "—" ? "—" : `${cd.from} to ${cd.to}`);
+
     set("psPayDate", p.payDate || "—");
     set("psPayMethod", p.payMethod || "—");
     set("psAccount", p.accountMasked || "—");
@@ -661,7 +641,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const statusBadge = $("psStatusBadge");
     if (statusBadge) statusBadge.textContent = p.releaseStatus || "Draft";
 
-    // Earnings
+    // earnings base
     setMoney("psDailyRate", p.dailyRate);
     set("psPresentDays", String(p.presentDays ?? 0));
     set("psLeaveDays", String(p.leaveDays ?? 0));
@@ -672,79 +652,86 @@ document.addEventListener("DOMContentLoaded", () => {
     setMoney("psOtRate", p.otRate);
     setMoney("psOtPay", p.otPay);
 
-    setMoney("psRice", p.riceAllowance);
-    setMoney("psTransport", p.transportAllowance);
-    setMoney("psAllowTotal", p.allowanceTotal);
+    // ✅ adjustments (earnings + deductions)
+    const earnAdj = Array.isArray(p.earningsAdjustments) ? p.earningsAdjustments : [];
+    const dedAdj = Array.isArray(p.deductionAdjustments) ? p.deductionAdjustments : [];
+    renderAdjustmentRows(psEarnAdjRows, earnAdj, "earning");
+    renderAdjustmentRows(psDedAdjRows, dedAdj, "deduction");
 
-    setMoney("psGross", p.gross);
+    // deductions base
+    const sssEe = Number(p.sssEe || 0);
+    const phEe = Number(p.philhealthEe || 0);
+    const piEe = Number(p.pagibigEe || 0);
+    const tax = Number(p.withholdingTax || 0);
 
-    // Deductions
-    setMoney("psAttDedTotal", p.attendanceDeductionTotal);
-    setMoney("psLateDed", p.lateDeduction);
-    setMoney("psUnderDed", p.undertimeDeduction);
-    setMoney("psUnpaidLeaveDed", p.unpaidLeaveDeduction);
+    const attendanceDed = Number(p.attendanceDeductionTotal || 0);
+    const cashAdv = Number(p.cashAdvance || 0);
+    const otherDed = Number(p.otherDeductionTotal || 0);
 
-    setMoney("psStatEeTotal", p.statutoryEeTotal);
-    setMoney("psSssEe", p.sssEe);
-    setMoney("psPhEe", p.philhealthEe);
-    setMoney("psPiEe", p.pagibigEe);
-    setMoney("psTax", p.withholdingTax);
+    const statutoryEeTotal = sssEe + phEe + piEe + tax;
+    setMoney("psAttDedTotal", attendanceDed);
+    setMoney("psSssEe", sssEe);
+    setMoney("psPhEe", phEe);
+    setMoney("psPiEe", piEe);
+    setMoney("psTax", tax);
+    setMoney("psStatEeTotal", statutoryEeTotal);
 
-    setMoney("psOtherDedTotal", p.otherDeductionTotal);
-    setMoney("psCashAdv", p.cashAdvance);
-    setMoney("psOneTimeDed", p.oneTimeDeduction);
-    setMoney("psLoans", p.loans);
+    setMoney("psCashAdv", cashAdv);
+    setMoney("psOtherDedTotal", otherDed);
 
-    setMoney("psDedTotal", p.deductionTotal);
+    // employer share
+    const sssEr = Number(p.sssEr || 0);
+    const phEr = Number(p.philhealthEr || 0);
+    const piEr = Number(p.pagibigEr || 0);
+    const erTotal = sssEr + phEr + piEr;
 
-    // Employer Share
-    setMoney("psErTotal", p.employerShareTotal);
-    setMoney("psSssEr", p.sssEr);
-    setMoney("psPhEr", p.philhealthEr);
-    setMoney("psPiEr", p.pagibigEr);
+    setMoney("psSssEr", sssEr);
+    setMoney("psPhEr", phEr);
+    setMoney("psPiEr", piEr);
+    setMoney("psErTotal", erTotal);
 
-    // Summary
-    setMoney("psSumGross", p.gross);
-    setMoney("psSumDed", p.deductionTotal);
-    setMoney("psNet", p.netPay);
+    // ✅ totals (computed to ensure correctness)
+    const totalEarnAdj = sumAmounts(earnAdj);
+    const totalDedAdj = sumAmounts(dedAdj);
+
+    const baseGross = Number(p.attendancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
+    const baseDed = attendanceDed + statutoryEeTotal + cashAdv + otherDed + totalDedAdj;
+    const computedNet = baseGross - baseDed;
+
+    setMoney("psGross", baseGross);
+    setMoney("psDedTotal", baseDed);
+
+    // summary
+    setMoney("psSumGross", baseGross);
+    setMoney("psSumDed", baseDed);
+
+    // net: show computed (to match breakdown)
+    setMoney("psNet", computedNet);
 
     const notes = $("psNotes");
     if (notes) notes.textContent = `Adjust Notes: ${p.notes || "—"}`;
 
-    // collapse breakdowns on open (screen)
-    $$(".psBreakdown").forEach((b) => b.setAttribute("hidden", ""));
-
+    // open UI
     psDrawer.classList.add("is-open");
     psDrawer.setAttribute("aria-hidden", "false");
     psOverlay.hidden = false;
     document.body.style.overflow = "hidden";
 
-    // hook buttons for this current payslip
-    if (psPrintBtn) {
-      psPrintBtn.onclick = () => {
-        // show breakdowns when printing
-        $$(".psBreakdown").forEach((b) => b.removeAttribute("hidden"));
-        window.print();
-      };
-    }
+    // actions
+    if (psPrintBtn) psPrintBtn.onclick = () => window.print();
 
-    if (psDownloadBtn) {
-      psDownloadBtn.onclick = () => {
-        alert("PDF download: connect to backend PDF generation later.");
-      };
-    }
+    if (psDownloadBtn) psDownloadBtn.onclick = () => alert("PDF download: connect to backend PDF generation later.");
 
     if (psReleaseBtn) {
       psReleaseBtn.disabled = p.releaseStatus === "Released";
       psReleaseBtn.onclick = () => {
         p.releaseStatus = "Released";
         render();
-        // refresh status in drawer
+
         const sb = $("psStatusBadge");
         if (sb) sb.textContent = "Released";
         if (psDrawerMeta) {
-          psDrawerMeta.textContent =
-            `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: Released`;
+          psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: Released`;
         }
         psReleaseBtn.disabled = true;
       };
@@ -759,175 +746,155 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.style.overflow = "";
   }
 
-  function set(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value ?? "—";
-  }
-  function setMoney(id, value) {
-    set(id, peso(value));
-  }
-
   psCloseBtn && psCloseBtn.addEventListener("click", closePayslipDrawer);
   psCloseFooterBtn && psCloseFooterBtn.addEventListener("click", closePayslipDrawer);
   psOverlay && psOverlay.addEventListener("click", closePayslipDrawer);
 
-  // Breakdown toggles inside preview (▾ breakdown)
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-toggle]");
-    if (!btn) return;
-    const key = btn.dataset.toggle;
-    const box = document.querySelector(`.psBreakdown[data-breakdown="${key}"]`);
-    if (!box) return;
-    const hidden = box.hasAttribute("hidden");
-    if (hidden) box.removeAttribute("hidden");
-    else box.setAttribute("hidden", "");
-  });
+  // =========================================================
+  // TABLE ACTIONS (delegated)
+  // =========================================================
+  tbody &&
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+
+      const id = btn.dataset.id || "";
+      const p = findPayslip(id);
+      if (!p) return;
+
+      const action = btn.dataset.action;
+      if (action === "view") return openPayslipDrawer(p);
+      if (action === "print") {
+        openPayslipDrawer(p);
+        setTimeout(() => window.print(), 50);
+        return;
+      }
+      if (action === "pdf") return alert("Row PDF download: connect to backend later.");
+    });
 
   // =========================================================
-  // TABLE ACTIONS + ROW CLICK
-  // =========================================================
-  function findPayslip(id) {
-    return PAYSLIPS.find((p) => p.id === id) || null;
-  }
-
-  // View / PDF / Print buttons (delegated)
-  tbody && tbody.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
-
-    const id = btn.dataset.id || "";
-    const p = findPayslip(id);
-    if (!p) return;
-
-    const action = btn.dataset.action;
-    if (action === "view") {
-      openPayslipDrawer(p);
-      return;
-    }
-    if (action === "print") {
-      openPayslipDrawer(p);
-      // print after opening (small delay so layout is ready)
-      setTimeout(() => {
-        $$(".psBreakdown").forEach((b) => b.removeAttribute("hidden"));
-        window.print();
-      }, 50);
-      return;
-    }
-    if (action === "pdf") {
-      alert("Row PDF download: connect to backend later.");
-      return;
-    }
-  });
-
-  // =========================================================
-  // SEGMENT FILTER (Assignment)
+  // SEGMENT FILTER
   // =========================================================
   segBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       segBtns.forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
-
       assignmentFilter = btn.dataset.assign || "All";
-
-      // show area place dropdown only if Area
-      if (areaWrap) areaWrap.style.display = assignmentFilter === "Area" ? "" : "none";
-
+      if (areaFilterWrap) areaFilterWrap.hidden = assignmentFilter !== "Area";
       page = 1;
       render();
     });
   });
 
-  // =========================================================
-  // FILTER EVENTS
-  // =========================================================
+  // filters
   monthInput && monthInput.addEventListener("change", () => { page = 1; render(); });
-  cutoffSelect && cutoffSelect.addEventListener("change", () => { page = 1; render(); });
+  cutoffInput && cutoffInput.addEventListener("change", () => { page = 1; render(); });
   searchInput && searchInput.addEventListener("input", () => { page = 1; render(); });
-
   areaPlaceFilter && areaPlaceFilter.addEventListener("change", () => { page = 1; render(); });
 
-  // =========================================================
-  // RUN SELECT CHANGE
-  // =========================================================
-  runSelect && runSelect.addEventListener("change", () => {
-    selectedRunId = runSelect.value || "";
-    const run = RUNS.find((r) => r.id === selectedRunId) || null;
-    setRunUI(run);
+  // run change
+  runSelect &&
+    runSelect.addEventListener("change", () => {
+      selectedRunId = runSelect.value || "";
+      const run = RUNS.find((r) => r.id === selectedRunId) || null;
+      setRunUI(run);
 
-    // reset selection
-    if (checkAll) checkAll.checked = false;
-    page = 1;
-    render();
-  });
+      $$("input.rowCheck").forEach((cb) => (cb.checked = false));
+      if (checkAll) {
+        checkAll.checked = false;
+        checkAll.indeterminate = false;
+      }
 
-  // =========================================================
-  // CHECKBOX + BULK
-  // =========================================================
-  checkAll && checkAll.addEventListener("change", () => {
-    $$("input.rowCheck").forEach((cb) => (cb.checked = checkAll.checked));
-    updateBulkBar();
-    syncCheckAll();
-  });
+      page = 1;
+      render();
 
-  bulkClearBtn && bulkClearBtn.addEventListener("click", () => {
-    $$("input.rowCheck").forEach((cb) => (cb.checked = false));
-    if (checkAll) {
-      checkAll.checked = false;
-      checkAll.indeterminate = false;
-    }
-    updateBulkBar();
-  });
+      if (run) {
+  if (monthInput) monthInput.value = run.month;
 
-  bulkMarkReleasedBtn && bulkMarkReleasedBtn.addEventListener("click", () => {
-    const ids = selectedIds();
-    if (!ids.length) return;
-    ids.forEach((id) => {
-      const p = findPayslip(id);
-      if (p) p.releaseStatus = "Released";
+  // Your RUNS uses cutoff like "16–End" or "1–15"
+  // Your cutoff dropdown values are "16-End" and "1-15"
+  if (cutoffInput) {
+    const normalizedCutoff = String(run.cutoff || "")
+      .replace("–", "-")     // replace en-dash
+      .replace("End", "End"); // keep same label
+    cutoffInput.value = normalizedCutoff;
+  }
+}
     });
-    render();
-  });
 
-  bulkPrintBtn && bulkPrintBtn.addEventListener("click", () => {
-    const ids = selectedIds();
-    if (!ids.length) return;
-    const p = findPayslip(ids[0]);
-    if (!p) return;
-    openPayslipDrawer(p);
-    setTimeout(() => {
-      $$(".psBreakdown").forEach((b) => b.removeAttribute("hidden"));
-      window.print();
-    }, 50);
-  });
+  // check all + bulk
+  checkAll &&
+    checkAll.addEventListener("change", () => {
+      $$("input.rowCheck").forEach((cb) => (cb.checked = checkAll.checked));
+      updateBulkBar();
+      syncCheckAll();
+    });
 
-  bulkDownloadBtn && bulkDownloadBtn.addEventListener("click", () => {
-    const ids = selectedIds();
-    if (!ids.length) return;
-    alert("Bulk PDF download: connect to backend later.");
-  });
+  bulkCancelBtn &&
+    bulkCancelBtn.addEventListener("click", () => {
+      $$("input.rowCheck").forEach((cb) => (cb.checked = false));
+      if (checkAll) {
+        checkAll.checked = false;
+        checkAll.indeterminate = false;
+      }
+      updateBulkBar();
+      syncCheckAll();
+    });
 
-  // =========================================================
-  // PAGINATION
-  // =========================================================
-  rowsPerPage && rowsPerPage.addEventListener("change", () => {
-    perPage = Number(rowsPerPage.value || 20);
-    page = 1;
-    render();
-  });
+  bulkReleaseBtn &&
+    bulkReleaseBtn.addEventListener("click", () => {
+      const ids = selectedIds();
+      if (!ids.length) return;
+      ids.forEach((id) => {
+        const p = findPayslip(id);
+        if (p) p.releaseStatus = "Released";
+      });
+      render();
+    });
 
-  pagePrev && pagePrev.addEventListener("click", () => {
-    page = Math.max(1, page - 1);
-    render();
-  });
+  bulkPdfBtn &&
+    bulkPdfBtn.addEventListener("click", () => {
+      const ids = selectedIds();
+      if (!ids.length) return alert("Select at least 1 payslip.");
+      alert("Download Selected PDFs: connect to backend later.");
+    });
 
-  pageNext && pageNext.addEventListener("click", () => {
-    page = page + 1;
-    render();
-  });
+  bulkPrintBtn &&
+    bulkPrintBtn.addEventListener("click", () => {
+      const ids = selectedIds();
+      if (!ids.length) return alert("Select at least 1 payslip.");
+      const p = findPayslip(ids[0]);
+      if (!p) return;
+      openPayslipDrawer(p);
+      setTimeout(() => window.print(), 50);
+    });
 
-  // =========================================================
-  // TOP ACTIONS
-  // =========================================================
+  // pagination
+  rowsPerPage &&
+    rowsPerPage.addEventListener("change", () => {
+      perPage = Number(rowsPerPage.value || 20);
+      page = 1;
+      render();
+    });
+
+  firstPage && firstPage.addEventListener("click", () => { page = 1; render(); });
+  lastPage &&
+    lastPage.addEventListener("click", () => {
+      const list = applySorting(applyFilters(PAYSLIPS));
+      const pages = Math.max(1, Math.ceil(list.length / perPage));
+      page = pages;
+      render();
+    });
+  pagePrev && pagePrev.addEventListener("click", () => { page = Math.max(1, page - 1); render(); });
+  pageNext && pageNext.addEventListener("click", () => { page = page + 1; render(); });
+  pageInput &&
+    pageInput.addEventListener("change", () => {
+      const v = Number(pageInput.value || 1);
+      page = isFinite(v) ? v : 1;
+      render();
+    });
+
+  // top actions
   function exportCsv(list, filename) {
     const headers = ["Emp ID", "Employee", "Assignment", "Pay Period", "Net Pay", "Status"];
     const rows = list.map((p) => [
@@ -953,78 +920,41 @@ document.addEventListener("DOMContentLoaded", () => {
     URL.revokeObjectURL(url);
   }
 
-  exportCsvBtn && exportCsvBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const list = applySorting(applyFilters(PAYSLIPS)); // current filtered list
-    exportCsv(list, `payslips_${selectedRunId}.csv`);
-  });
+  exportCsvBtn &&
+    exportCsvBtn.addEventListener("click", () => {
+      if (!selectedRunId) return;
+      const list = applySorting(applyFilters(PAYSLIPS));
+      exportCsv(list, `payslips_${selectedRunId}.csv`);
+    });
 
-  exportPdfAllBtn && exportPdfAllBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    alert("Export ALL PDFs: connect backend later.");
-  });
+  exportPdfBtn &&
+    exportPdfBtn.addEventListener("click", () => {
+      if (!selectedRunId) return;
+      const ids = selectedIds();
+      alert(ids.length ? "Export PDF (Selected): connect backend later." : "Export PDF (All): connect backend later.");
+    });
 
-  exportPdfSelectedBtn && exportPdfSelectedBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const ids = selectedIds();
-    if (!ids.length) return alert("Select at least 1 payslip.");
-    alert("Export SELECTED PDFs: connect backend later.");
-  });
+  printBtn &&
+    printBtn.addEventListener("click", () => {
+      if (!selectedRunId) return;
+      const ids = selectedIds();
+      const list = applySorting(applyFilters(PAYSLIPS));
+      const p = ids.length ? findPayslip(ids[0]) : list[0];
+      if (!p) return;
+      openPayslipDrawer(p);
+      setTimeout(() => window.print(), 50);
+    });
 
-  printAllBtn && printAllBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const list = applySorting(applyFilters(PAYSLIPS));
-    if (!list.length) return;
+  releaseAllBtn &&
+    releaseAllBtn.addEventListener("click", () => {
+      if (!selectedRunId) return;
+      const list = PAYSLIPS.filter((p) => p.runId === selectedRunId);
+      list.forEach((p) => (p.releaseStatus = "Released"));
+      render();
+      alert("All payslips in this run marked as Released (demo).");
+    });
 
-    // Print first payslip (true batch print needs server-side PDF merge or print loop)
-    openPayslipDrawer(list[0]);
-    setTimeout(() => {
-      $$(".psBreakdown").forEach((b) => b.removeAttribute("hidden"));
-      window.print();
-    }, 50);
-  });
-
-  printSelectedBtn && printSelectedBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const ids = selectedIds();
-    if (!ids.length) return alert("Select at least 1 payslip.");
-    const p = findPayslip(ids[0]);
-    if (!p) return;
-    openPayslipDrawer(p);
-    setTimeout(() => {
-      $$(".psBreakdown").forEach((b) => b.removeAttribute("hidden"));
-      window.print();
-    }, 50);
-  });
-
-  releaseAllBtn && releaseAllBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const list = PAYSLIPS.filter((p) => p.runId === selectedRunId);
-    list.forEach((p) => (p.releaseStatus = "Released"));
-    render();
-    alert("All payslips in this run marked as Released (demo).");
-  });
-
-  openRunSummaryBtn && openRunSummaryBtn.addEventListener("click", () => {
-    if (!selectedRunId) return;
-    const run = RUNS.find((r) => r.id === selectedRunId);
-    if (!run) return;
-    alert(
-      `Run Summary
-
-${run.month} (${run.cutoff})
-Assignment: ${run.assignment}
-Status: ${run.status}
-Employees: ${run.employees}
-Total Net: ${peso(run.totalNet)}
-Processed: ${run.processedAt}
-By: ${run.processedBy}`
-    );
-  });
-
-  // =========================================================
-  // INIT SORT ICONS + FIRST RENDER
-  // =========================================================
+  // init
   bindHeaderSorting();
   render();
 });

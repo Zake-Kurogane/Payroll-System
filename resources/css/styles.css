@@ -48,10 +48,7 @@ body{
 
 /* LEFT */
 .panel--left{
-  background:
-    radial-gradient(1200px 500px at -10% 10%, rgba(255,255,255,0.18), transparent 60%),
-    radial-gradient(800px 400px at 100% 100%, rgba(255,255,255,0.12), transparent 55%),
-    linear-gradient(135deg, rgba(151,55,79,0.95), rgba(145,145,145,0.35));
+  background: var(--primary);
   color: #fff;
   position: relative;
 }
@@ -59,6 +56,10 @@ body{
 .left-content{
   width: 100%;
   max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .brand-logo{
@@ -141,10 +142,15 @@ body{
   display: grid;
   place-items: center;
   height: 44px;
-  color: var(--neutral);
-  background: rgba(145,145,145,0.10);
-  border-right: 1px solid rgba(145,145,145,0.20);
+  color: var(--primary);
+  background: #fff;
+  border-right: 1px solid rgba(151,55,79,0.25);
   font-size: 16px;
+}
+.icon__svg{
+  width: 18px;
+  height: 18px;
+  fill: var(--primary);
 }
 
 input{
@@ -182,8 +188,8 @@ input::placeholder{
   font-weight: 700;
   letter-spacing: 1px;
   color: #fff;
-  background: linear-gradient(135deg, var(--primary), rgba(151,55,79,0.78));
-  box-shadow: 0 12px 25px rgba(151,55,79,0.30);
+  background: var(--primary);
+  box-shadow: 0 12px 25px rgba(151,55,79,0.25);
   transition: transform 120ms ease, filter 120ms ease;
 }
 
