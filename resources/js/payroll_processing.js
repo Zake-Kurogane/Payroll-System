@@ -96,8 +96,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const monthInput = document.getElementById("monthInput");
   const cutoffSelect = document.getElementById("cutoffSelect");
-  const segBtns = Array.from(document.querySelectorAll(".seg__btn"));
+  const segBtns = Array.from(
+    document.querySelectorAll(".filters__right .seg__btn[data-assign]")
+  );
   let assignmentFilter = "All";
+  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
+  const areaPlaceFilter = document.getElementById("areaPlaceFilter");
   const searchInput = document.getElementById("searchInput");
 
   const resultsMeta = document.getElementById("resultsMeta");
@@ -260,6 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cutoffSelect) cutoffSelect.disabled = !enabled;
     if (searchInput) searchInput.disabled = !enabled;
     segBtns.forEach(b => b.disabled = !enabled);
+    if (areaPlaceFilter) areaPlaceFilter.disabled = !enabled;
 
     // actions
     if (computeBtn) computeBtn.disabled = !enabled;
@@ -359,12 +364,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function filteredEmployees() {
     const q = (searchInput?.value || "").trim().toLowerCase();
     const assign = assignmentFilter || "All";
+    const areaVal = areaPlaceFilter?.value || "All";
 
     return employees.filter(e => {
       const okAssign = assign === "All" ? true : e.assignType === assign;
+      const okArea = assign !== "Area" || areaVal === "All" || (e.areaPlace || "") === areaVal;
       const text = `${e.empId} ${e.name} ${e.dept} ${e.assignType} ${e.areaPlace || ""}`.toLowerCase();
       const okQ = !q || text.includes(q);
-      return okAssign && okQ;
+      return okAssign && okArea && okQ;
     });
   }
 
@@ -1136,14 +1143,45 @@ document.addEventListener("DOMContentLoaded", () => {
     // draft: recompute
     currentRun.periodKey = computePeriodKey();
     currentRun.periodLabel = computePeriodLabel();
-    currentRun.assignment = assignmentFilter || "All";
-
+  currentRun.assignment = assignmentFilter || "All";
+  
     applyRunUi();
     computePreview();
     renderTable();
     renderRuns();
     renderRunSummary();
   }
+
+  function setAreaFilterVisibility(isArea) {
+    if (!areaPlaceFilterWrap) return;
+    areaPlaceFilterWrap.hidden = !isArea;
+    areaPlaceFilterWrap.style.display = isArea ? "" : "none";
+  }
+
+  function populateAreaFilter(selectEl) {
+    if (!selectEl) return;
+    const current = selectEl.value;
+    const places = Array.from(
+      new Set(
+        employees
+          .filter(e => e.assignType === "Area" && e.areaPlace)
+          .map(e => e.areaPlace)
+      )
+    ).sort();
+    const options = places.length ? places : ["Laak", "Pantukan", "Maragusan"];
+    selectEl.innerHTML =
+      `<option value="All" selected>All</option>` +
+      options.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (current && (current === "All" || options.includes(current))) {
+      selectEl.value = current;
+    }
+  }
+
+  if (areaPlaceFilter) {
+    populateAreaFilter(areaPlaceFilter);
+    areaPlaceFilter.addEventListener("change", () => refreshAll());
+  }
+  setAreaFilterVisibility(assignmentFilter === "Area");
 
   // filters changes (blocked when locked via disabled attribute, but we guard anyway)
   [monthInput, cutoffSelect].forEach(el => {
@@ -1159,6 +1197,13 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("is-active");
       segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
       assignmentFilter = btn.dataset.assign || "All";
+      if (assignmentFilter === "Area") {
+        setAreaFilterVisibility(true);
+        if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
+      } else {
+        setAreaFilterVisibility(false);
+        if (areaPlaceFilter) areaPlaceFilter.value = "All";
+      }
       refreshAll();
     });
   });

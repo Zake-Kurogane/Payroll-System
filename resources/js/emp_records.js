@@ -51,7 +51,7 @@
 
   // ===== Payroll Required Field Rules =====
   const PAYROLL_REQUIRED = {
-    requirePayGroup: true,
+    requirePayGroup: false,
     requireAssignment: true,
     requireBasicPay: true,
     requireGovIds: true, // requires ALL gov ids below
@@ -145,6 +145,9 @@
   const searchInput = document.getElementById("searchInput");
   const deptFilter = document.getElementById("deptFilter");
   const statusFilter = document.getElementById("statusFilter");
+  const assignBtns = Array.from(document.querySelectorAll(".seg__btn--emp"));
+  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
+  const areaPlaceFilter = document.getElementById("areaPlaceFilter");
 
   // import/export
   const exportBtn = document.getElementById("exportBtn");
@@ -204,7 +207,6 @@
   const f_hired = F("f_hired");
   const f_payType = F("f_payType");
   const f_rate = F("f_rate");
-  const f_payGroup = F("f_payGroup");
 
   const f_assignmentType = F("f_assignmentType");
   const f_areaPlace = F("f_areaPlace");
@@ -221,6 +223,7 @@
   // state
   let selectedEmpId = null;
   let selectedIds = new Set();
+  let assignmentFilter = "All";
 
   // ===== Drawer helpers =====
   function openDrawer(title, subtitle) {
@@ -246,7 +249,6 @@
     if (f_assignmentType) f_assignmentType.value = "Davao";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_status) f_status.value = "Active";
-    if (f_payGroup) f_payGroup.value = "";
     syncAssignmentUI();
     syncCashAdvanceFields();
   }
@@ -268,7 +270,6 @@
     f_hired && (f_hired.value = emp.hired || "");
     f_payType && (f_payType.value = emp.payType || "");
     f_rate && (f_rate.value = emp.rate ?? "");
-    f_payGroup && (f_payGroup.value = emp.payGroup || "");
 
     f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
@@ -299,7 +300,6 @@
       hired: f_hired?.value || "",
       payType: f_payType?.value?.trim(),
       rate: Number(f_rate?.value || 0),
-      payGroup: f_payGroup?.value?.trim(),
 
       assignmentType: f_assignmentType?.value?.trim(),
       areaPlace: f_areaPlace?.value?.trim(),
@@ -352,6 +352,17 @@
       `<option value="">-- Select area place --</option>` +
       AREA_PLACES.map(p => `<option value="${p}">${p}</option>`).join("");
     if (AREA_PLACES.includes(current)) selectEl.value = current;
+  }
+
+  function populateAreaFilterPlaces(selectEl) {
+    if (!selectEl) return;
+    const current = selectEl.value;
+    selectEl.innerHTML =
+      `<option value="All" selected>All</option>` +
+      AREA_PLACES.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (current && (current === "All" || AREA_PLACES.includes(current))) {
+      selectEl.value = current;
+    }
   }
 
   function syncAssignmentUI() {
@@ -412,11 +423,6 @@
       }
     }
 
-    if (PAYROLL_REQUIRED.requirePayGroup) {
-      const pg = (emp.payGroup || "").trim();
-      if (!pg) missing.push("Pay Group");
-    }
-
     if (PAYROLL_REQUIRED.requireGovIds) {
       const req = PAYROLL_REQUIRED.govRequiredFields || [];
       const missingGov = req.filter(k => !(emp[k] || "").trim());
@@ -438,7 +444,7 @@
     }
 
     const badges = missing.map(m => {
-      const bad = (m === "Gov IDs" || m === "Pay Group" || m === "Basic Pay");
+      const bad = (m === "Gov IDs" || m === "Basic Pay");
       return `<span class="badge ${bad ? "badge--bad" : "badge--warn"}">⚠️ Missing ${m}</span>`;
     }).join("");
 
@@ -499,6 +505,8 @@
     const q = (searchInput?.value || "").trim().toLowerCase();
     const dept = deptFilter?.value || "All";
     const status = statusFilter?.value || "All";
+    const assign = assignmentFilter || "All";
+    const areaPlace = areaPlaceFilter?.value || "All";
 
     return list.filter(emp => {
       const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${emp.payGroup || ""} ${govShort(emp)}`
@@ -507,8 +515,11 @@
       const okQ = !q || text.includes(q);
       const okDept = dept === "All" || emp.dept === dept;
       const okStatus = status === "All" || emp.status === status;
+      const t = (emp.assignmentType || "").trim();
+      const okAssign = assign === "All" || t === assign;
+      const okArea = assign !== "Area" || areaPlace === "All" || (emp.areaPlace || "").trim() === areaPlace;
 
-      return okQ && okDept && okStatus;
+      return okQ && okDept && okStatus && okAssign && okArea;
     });
   }
 
@@ -606,6 +617,37 @@
       render();
     });
   });
+
+  if (areaPlaceFilter) {
+    populateAreaFilterPlaces(areaPlaceFilter);
+    areaPlaceFilter.addEventListener("change", () => {
+      currentPage = 1;
+      render();
+    });
+  }
+
+  if (assignBtns.length) {
+    assignBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        assignBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        assignmentFilter = btn.getAttribute("data-assign") || "All";
+
+        if (assignmentFilter === "Area") {
+          if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
+          if (areaPlaceFilter) {
+            populateAreaFilterPlaces(areaPlaceFilter);
+          }
+        } else {
+          if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "none";
+          if (areaPlaceFilter) areaPlaceFilter.value = "All";
+        }
+
+        currentPage = 1;
+        render();
+      });
+    });
+  }
 
   // pagination
   pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
@@ -727,10 +769,6 @@
       alert("Basic Pay must be a valid number.");
       return;
     }
-    if (PAYROLL_REQUIRED.requirePayGroup && !data.payGroup) {
-      alert("Pay Group is required.");
-      return;
-    }
 
     if (selectedEmpId) {
       employees = employees.map(emp => emp.empId === selectedEmpId ? { ...emp, ...data } : emp);
@@ -748,6 +786,9 @@
   // Init
   syncAssignmentUI();
   syncCashAdvanceFields();
+  if (areaPlaceFilterWrap && assignmentFilter !== "Area") {
+    areaPlaceFilterWrap.style.display = "none";
+  }
   wireHeaderSorting();
   updateSortIcons();
   render();

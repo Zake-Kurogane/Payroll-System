@@ -223,18 +223,24 @@ document.addEventListener("DOMContentLoaded", () => {
     { code:"OFF", desc:"Rest Day",     present:false, paid:false, deduct:false, notes:"Default Sunday" },
   ];
 
+  // --- PORTAL drawers to <body> so overlay covers top nav (match Attendance) ---
+  [codeDrawer].forEach(d => {
+    if (d && d.parentElement !== document.body) document.body.appendChild(d);
+  });
+
   function openDrawer(el){
-    if (!el) return;
-    el.classList.add("is-open");
-    el.setAttribute("aria-hidden","false");
-    document.body.style.overflow = "hidden";
-  }
-  function closeDrawer(el){
-    if (!el) return;
-    el.classList.remove("is-open");
-    el.setAttribute("aria-hidden","true");
-    document.body.style.overflow = "";
-  }
+  if (!el) return;
+  el.classList.add("is-open");
+  el.setAttribute("aria-hidden","false");
+  document.body.classList.add("drawer-open");
+}
+
+function closeDrawer(el){
+  if (!el) return;
+  el.classList.remove("is-open");
+  el.setAttribute("aria-hidden","true");
+  document.body.classList.remove("drawer-open");
+}
 
   function renderCodes(){
     if (!codesTbody) return;
@@ -473,6 +479,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeCaDrawer = document.getElementById("closeCaDrawer");
   const cancelCaBtn = document.getElementById("cancelCaBtn");
   const caForm = document.getElementById("caForm");
+
+  // ensure cash advance drawer is also portaled to body for full-screen blur
+  [caDrawer].forEach(d => {
+    if (d && d.parentElement !== document.body) document.body.appendChild(d);
+  });
 
   let cashAdvances = [
     { id:1, employee:"Maria Santos", amount:5000, term:3, start:"2026-02", method:"salary_deduction", status:"Active" },

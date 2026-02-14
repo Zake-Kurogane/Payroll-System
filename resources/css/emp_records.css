@@ -344,7 +344,7 @@ h1 {
 .filtersRow {
     display: flex;
     gap: 14px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: flex-end;
 }
 
@@ -360,6 +360,9 @@ h1 {
     min-width: 360px;
 }
 .field--status {
+    min-width: 220px;
+}
+.field--area {
     min-width: 220px;
 }
 
@@ -394,6 +397,7 @@ h1 {
     overflow: hidden;
     background: #fff;
     box-shadow: 0 4px 10px rgba(17, 24, 39, 0.08);
+    flex: 0 0 auto;
 }
 
 .seg--pill .seg__btn:first-child {

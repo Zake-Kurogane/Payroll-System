@@ -122,7 +122,10 @@
 
                         <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
                             <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
-                            <a href="{{ route('logout') }}" class="user-dropdown__item" role="menuitem">Logout</a>
+                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
+
+                            <div class="user-dropdown__divider" aria-hidden="true"></div>
+                            <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
                         </div>
                     </div>
                 </div>
@@ -137,15 +140,37 @@
                     </div>
                 </div>
 
-                <!-- UPLOAD / IMPORT SECTION -->
-                <!-- UPLOAD / IMPORT SECTION (Dropzone style) -->
-                <section class="card importCard">
-                    <div class="importHead">
-                        <div>
+                <!-- ✅ CUTOFF BAR (NEW) -->
+                <section class="card cutoffbar">
+                    <div class="cutoffbar__left">
+                        <div class="f">
+                            <label>Payroll Month</label>
+                            <input id="cutoffMonth" type="month" />
+                        </div>
+
+                        <div class="f">
+                            <label>Cutoff</label>
+                            <select id="cutoffSelect">
+                                <option value="11-25">11–25</option>
+                                <option value="26-10">26–10</option>
+                            </select>
+                        </div>
+
+                        <div class="cutoffInfo">
+                            <div class="muted small">Cutoff Range</div>
+                            <div class="cutoffRange" id="cutoffRangeLabel">—</div>
+                            <div class="muted tiny" id="cutoffHint">Attendance dates must fall inside this range.
+                            </div>
                         </div>
                     </div>
+                </section>
 
-                    <!-- Dropzone -->
+                <!-- UPLOAD / IMPORT SECTION -->
+                <section class="card importCard">
+                    <div class="importHead">
+                        <div></div>
+                    </div>
+
                     <div class="dropzone" id="dropzone" role="button" tabindex="0"
                         aria-label="Upload attendance file">
                         <div class="dropzone__inner">
@@ -183,8 +208,13 @@
                                 style="display:none;">Preview Import</button>
                         </div>
                     </div>
-                </section>
 
+                    <div class="muted small importNote">
+                        Tip: You can use <strong>Code</strong> like <strong>PL</strong>, <strong>SL</strong>,
+                        <strong>A</strong>, <strong>P</strong>.
+                        Codes will be mapped automatically.
+                    </div>
+                </section>
 
                 <!-- FILTER BAR -->
                 <section class="card filterbar">
@@ -222,6 +252,12 @@
                             <button class="seg__btn" type="button" data-assign="Area" role="tab"
                                 aria-selected="false">Area</button>
                         </div>
+                        <div class="f f--area" id="areaPlaceFilterWrap" hidden style="display:none;">
+                            <label>Area Place</label>
+                            <select id="areaPlaceFilter">
+                                <option value="All" selected>All</option>
+                            </select>
+                        </div>
                     </div>
                 </section>
 
@@ -258,7 +294,6 @@
                         </div>
 
                         <div class="actionsTop">
-                            <!-- BULK BAR (INLINE) -->
                             <div class="bulk" id="bulkBar" aria-hidden="true" style="display:none">
                                 <span class="bulk__text"><span id="selectedCount">0</span> selected</span>
                                 <button class="btn btn--soft" type="button" id="bulkDeleteBtn">Delete
@@ -304,9 +339,7 @@
                                 </tr>
                             </thead>
 
-                            <tbody id="attTbody">
-                                <!-- rows injected by JS -->
-                            </tbody>
+                            <tbody id="attTbody"></tbody>
                         </table>
                     </div>
                     <div class="tableFooter">
@@ -430,7 +463,6 @@
         </div>
 
         <div class="drawer__body">
-            <!-- Summary -->
             <div class="previewSummary">
                 <div class="sumCard">
                     <div class="sumVal" id="sumRows">0</div>
@@ -450,7 +482,6 @@
                 </div>
             </div>
 
-            <!-- Conflicts actions -->
             <div class="conflictBar" id="conflictBar" hidden>
                 <div class="muted small">
                     Conflicts detected (same Employee ID + Date exists).
@@ -462,18 +493,14 @@
                 </div>
             </div>
 
-            <!-- Errors list -->
             <details class="details" id="errorsDetails">
                 <summary>
                     <span>Errors</span>
                     <span class="badge" id="errorsBadge">0</span>
                 </summary>
-                <div class="detailsBody" id="errorsList">
-                    <!-- injected -->
-                </div>
+                <div class="detailsBody" id="errorsList"></div>
             </details>
 
-            <!-- Table header controls -->
             <div class="previewControls">
                 <div class="toggleGroup" role="tablist" aria-label="Preview rows filter">
                     <button class="toggleBtn is-active" type="button" id="showErrorsOnlyBtn">Errors only</button>
@@ -485,7 +512,6 @@
                 </div>
             </div>
 
-            <!-- Preview table -->
             <div class="tablewrap tablewrap--preview">
                 <table class="table table--preview" aria-label="Preview import table">
                     <thead>
@@ -500,9 +526,7 @@
                             <th>Status</th>
                         </tr>
                     </thead>
-                    <tbody id="previewTbody">
-                        <!-- injected -->
-                    </tbody>
+                    <tbody id="previewTbody"></tbody>
                 </table>
             </div>
 
@@ -563,9 +587,7 @@
                             <th>Status</th>
                         </tr>
                     </thead>
-                    <tbody id="empTbody">
-                        <!-- injected -->
-                    </tbody>
+                    <tbody id="empTbody"></tbody>
                 </table>
             </div>
         </div>

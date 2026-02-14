@@ -491,48 +491,160 @@ tbody tr:hover {
 }
 
 /* drawer */
+/* =========================
+   DRAWER (match Attendance)
+   ========================= */
+
+/* mounted always so animation works */
 .drawer {
     position: fixed;
     inset: 0;
-    display: none;
-    z-index: 9999;
+
+    /* must be above .top (z-index: 1000) */
+    z-index: 99999;
+
+    /* hidden state */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    transition:
+        opacity 0.18s ease,
+        visibility 0.18s ease;
 }
+
 .drawer.is-open {
-    display: block;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
 }
+
+/* overlay: blur ONLY when open (prevents design wash even if hidden) */
 .drawer__overlay {
     position: absolute;
     inset: 0;
-    background: rgba(17, 24, 39, 0.45);
+    background: rgba(17, 24, 39, 0.35);
+
+    opacity: 0;
+    transition: opacity 0.18s ease;
+
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
-.drawer__panel {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: min(520px, 92vw);
-    background: #fff;
-    border-left: 1px solid var(--line);
-    box-shadow: -12px 0 26px rgba(17, 24, 39, 0.18);
-    display: flex;
-    flex-direction: column;
+
+.drawer.is-open .drawer__overlay {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
 }
 .drawer__head {
-    padding: 14px 16px;
+    padding: 16px 16px 12px;
     border-bottom: 1px solid var(--line);
     display: flex;
-    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    align-items: flex-start;
+    gap: 10px;
 }
 .drawer__title {
     font-weight: 1000;
     color: var(--maroon);
-    font-size: 16px;
+    font-size: 18px;
 }
+/* right panel slides in */
+.drawer__panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+
+    width: min(460px, 92vw);
+    background: #fff;
+    border-left: 1px solid var(--line);
+    box-shadow: -12px 0 26px rgba(17, 24, 39, 0.18);
+
+    transform: translateX(105%);
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
+
+    display: flex;
+    flex-direction: column;
+}
+.drawer__head {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 2;
+}
+.drawer.is-open .drawer__panel {
+    transform: translateX(0);
+}
+
+/* lock scroll when drawer open */
+body.drawer-open {
+    overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .drawer,
+    .drawer__overlay,
+    .drawer__panel {
+        transition: none !important;
+    }
+}
+
 .form {
-    padding: 14px 16px 18px;
+    padding: 14px 16px 16px;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+}
+
+.drawer__panel .field label {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--muted);
+}
+.drawer__panel .field input,
+.drawer__panel .field select,
+.drawer__panel .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    outline: none;
+    font-weight: 900;
+    font-family: inherit;
+    background: #fff;
+    height: auto;
+}
+.drawer__panel .field textarea {
+    min-height: 96px;
+    resize: vertical;
+    font-weight: 700;
+}
+.drawer__panel .field input:focus,
+.drawer__panel .field select:focus,
+.drawer__panel .field textarea:focus {
+    border-color: rgba(156, 29, 60, 0.45);
+    box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
+}
+
+.drawer__panel .rowLabel {
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.drawer__panel .actionsRow {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+.drawer__panel .actionsRow .spacer {
+    display: none;
 }
 
 /* admin pill + dropdown */

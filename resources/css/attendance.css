@@ -552,6 +552,7 @@ h1 {
     justify-content: space-between;
     align-items: flex-end;
     gap: 14px;
+    flex-wrap: wrap;
 }
 .filterbar__left {
     display: flex;
@@ -559,6 +560,13 @@ h1 {
     flex-wrap: wrap;
     align-items: flex-end;
     flex: 1;
+}
+.filterbar__right {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: flex-end;
 }
 .f {
     display: grid;
@@ -568,6 +576,9 @@ h1 {
 .f--grow {
     flex: 1;
     min-width: 260px;
+}
+.f--area {
+    min-width: 220px;
 }
 .f label {
     font-weight: 600;
@@ -598,6 +609,7 @@ h1 {
     overflow: hidden;
     display: flex;
     height: 44px;
+    flex: 0 0 auto;
 }
 .seg__btn {
     border: none;
@@ -1237,4 +1249,45 @@ th.sortable.is-desc .sortIcon {
   <path d='M8 10l4 4 4-4'/>\
   </svg>");
     opacity: 1;
+}
+
+/* ===== Cutoff Bar (NEW) ===== */
+.cutoffbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.cutoffbar__left {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.cutoffInfo {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(17, 24, 39, 0.08);
+    border-radius: 16px;
+    background: rgba(156, 29, 60, 0.04);
+    min-width: 260px;
+}
+
+.cutoffRange {
+    font-weight: 1000;
+    color: var(--maroon);
+    letter-spacing: 0.2px;
+}
+
+.tiny {
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.importNote {
+    margin-top: 10px;
 }

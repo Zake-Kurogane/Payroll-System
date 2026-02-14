@@ -120,7 +120,10 @@
 
                         <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
                             <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
-                            <a href="{{ url('/logout') }}" class="user-dropdown__item" role="menuitem">Logout</a>
+                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
+
+                            <div class="user-dropdown__divider" aria-hidden="true"></div>
+                            <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
                         </div>
                     </div>
                 </div>
@@ -171,6 +174,13 @@
                                     data-assign="Davao">Davao</button>
                                 <button type="button" class="seg__btn seg__btn--emp"
                                     data-assign="Area">Area</button>
+                            </div>
+
+                            <div class="field field--area" id="areaPlaceFilterWrap" style="display:none;">
+                                <label class="field__label">Area Place</label>
+                                <select id="areaPlaceFilter" class="field__control">
+                                    <option value="All" selected>All</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -405,19 +415,6 @@
                                         min="0" />
                                 </div>
 
-                                <!-- ✅ NEW: Pay Group -->
-                                <div class="field field--full">
-                                    <label>Pay Group *</label>
-                                    <select id="f_payGroup" required>
-                                        <option value="">Select pay group</option>
-                                        <option value="Tagum • Semi-monthly (1–15 / 16–End)">Tagum • Semi-monthly (1–15
-                                            / 16–End)</option>
-                                        <option value="Davao • Semi-monthly (1–15 / 16–End)">Davao • Semi-monthly (1–15
-                                            / 16–End)</option>
-                                        <option value="Area • Semi-monthly (1–15 / 16–End)">Area • Semi-monthly (1–15 /
-                                            16–End)</option>
-                                    </select>
-                                </div>
                             </div>
 
                             <div class="sectionTitle">Assignment</div>

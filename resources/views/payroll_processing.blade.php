@@ -121,7 +121,10 @@
 
                         <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
                             <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
-                            <a href="{{ route('logout') }}" class="user-dropdown__item" role="menuitem">Logout</a>
+                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
+
+                            <div class="user-dropdown__divider" aria-hidden="true"></div>
+                            <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
                         </div>
                     </div>
                 </div>
@@ -171,6 +174,12 @@
                                     aria-selected="false">Davao</button>
                                 <button class="seg__btn" type="button" data-assign="Area"
                                     aria-selected="false">Area</button>
+                            </div>
+                            <div class="field field--area" id="areaPlaceFilterWrap" hidden style="display:none;">
+                                <label>Area Place</label>
+                                <select id="areaPlaceFilter">
+                                    <option value="All" selected>All</option>
+                                </select>
                             </div>
                         </div>
                     </div>

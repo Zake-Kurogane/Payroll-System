@@ -309,6 +309,8 @@ h1 {
     display: flex;
     justify-content: flex-end;
     align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 .f {
     display: grid;
@@ -346,6 +348,7 @@ h1 {
     border-radius: 999px;
     overflow: hidden;
     background: #fff;
+    flex: 0 0 auto;
 }
 .seg__btn {
     border: 0;
@@ -442,6 +445,9 @@ h1 {
 .field {
     display: grid;
     gap: 8px;
+}
+.field--area {
+    min-width: 220px;
 }
 .field label {
     font-weight: 700;

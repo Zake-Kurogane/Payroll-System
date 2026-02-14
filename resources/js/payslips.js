@@ -111,7 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const monthInput = $("monthInput");
   const cutoffInput = $("cutoffInput");
   const searchInput = $("searchInput");
-  const segBtns = $$(".seg__btn");
+  const segBtns = $$(".filterbar__right .seg__btn[data-assign]");
   const areaFilterWrap = $("areaFilterWrap");
   const areaPlaceFilter = $("areaPlaceFilter");
 
@@ -309,8 +309,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const d = new Date();
     monthInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
-  if (cutoffInput && !cutoffInput.value) cutoffInput.value = "All";
-  if (areaFilterWrap) areaFilterWrap.hidden = true;
+  function setAreaFilterVisibility(isArea) {
+    if (!areaFilterWrap) return;
+    areaFilterWrap.hidden = !isArea;
+    areaFilterWrap.style.display = isArea ? "" : "none";
+  }
+  setAreaFilterVisibility(false);
 
   // =========================================================
   // ENABLE/DISABLE TOP ACTIONS
@@ -355,6 +359,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initRunSelect();
   setRunUI(null);
+  if (RUNS.length && runSelect) {
+    selectedRunId = RUNS[0].id;
+    runSelect.value = selectedRunId;
+    const firstRun = RUNS.find((r) => r.id === selectedRunId) || null;
+    if (firstRun) {
+      setRunUI(firstRun);
+      if (monthInput) monthInput.value = firstRun.month;
+    }
+  }
 
   // =========================================================
   // SORTING + FILTERING
@@ -415,13 +428,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyFilters(list) {
     const q = normalize(searchInput?.value || "");
     const monthVal = monthInput?.value || "";
-    const cutoffVal = cutoffInput?.value || "All";
     const areaPlaceVal = areaPlaceFilter?.value || "All";
 
     return list
       .filter((p) => !selectedRunId || p.runId === selectedRunId)
       .filter((p) => !monthVal || p.periodMonth === monthVal)
-      .filter((p) => cutoffVal === "All" || p.cutoff === cutoffVal)
       .filter((p) => assignmentFilter === "All" || p.assignmentType === assignmentFilter)
       .filter((p) => {
         if (assignmentFilter !== "Area") return true;
@@ -780,7 +791,7 @@ document.addEventListener("DOMContentLoaded", () => {
       segBtns.forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       assignmentFilter = btn.dataset.assign || "All";
-      if (areaFilterWrap) areaFilterWrap.hidden = assignmentFilter !== "Area";
+      setAreaFilterVisibility(assignmentFilter === "Area");
       page = 1;
       render();
     });
@@ -788,7 +799,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // filters
   monthInput && monthInput.addEventListener("change", () => { page = 1; render(); });
-  cutoffInput && cutoffInput.addEventListener("change", () => { page = 1; render(); });
   searchInput && searchInput.addEventListener("input", () => { page = 1; render(); });
   areaPlaceFilter && areaPlaceFilter.addEventListener("change", () => { page = 1; render(); });
 
@@ -809,16 +819,9 @@ document.addEventListener("DOMContentLoaded", () => {
       render();
 
       if (run) {
+        if (monthInput) monthInput.value = run.month;
   if (monthInput) monthInput.value = run.month;
 
-  // Your RUNS uses cutoff like "16–End" or "1–15"
-  // Your cutoff dropdown values are "16-End" and "1-15"
-  if (cutoffInput) {
-    const normalizedCutoff = String(run.cutoff || "")
-      .replace("–", "-")     // replace en-dash
-      .replace("End", "End"); // keep same label
-    cutoffInput.value = normalizedCutoff;
-  }
 }
     });
 

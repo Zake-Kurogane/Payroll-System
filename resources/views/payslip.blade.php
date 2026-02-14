@@ -120,7 +120,10 @@
 
                         <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
                             <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
-                            <a href="{{ route('logout') }}" class="user-dropdown__item" role="menuitem">Logout</a>
+                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
+
+                            <div class="user-dropdown__divider" aria-hidden="true"></div>
+                            <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
                         </div>
                     </div>
                 </div>
@@ -151,15 +154,6 @@
                             <input id="monthInput" type="month" />
                         </div>
 
-                        <div class="f">
-                            <label>Cutoff</label>
-                            <select id="cutoffInput">
-                                <option value="All" selected>All</option>
-                                <option value="1-15">1–15</option>
-                                <option value="16–End">16–End</option>
-                            </select>
-                        </div>
-
                         <div class="f f--grow">
                             <label>Search</label>
                             <input id="searchInput" type="search" placeholder="Search Emp ID / Name" />
@@ -178,7 +172,7 @@
                                 aria-selected="false">Area</button>
                         </div>
 
-                        <div class="f f--area" id="areaFilterWrap" hidden>
+                        <div class="f f--area" id="areaFilterWrap" hidden style="display:none;">
                             <label>Area Place</label>
                             <select id="areaPlaceFilter">
                                 <option value="All" selected>All</option>

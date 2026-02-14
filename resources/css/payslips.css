@@ -1209,8 +1209,8 @@ th.sortable.is-desc .sortIcon {
 /* PRINT: match preview look, single A4 page */
 @media print {
     @page {
-        size: A4;
-        margin: 4mm;
+        size: A6;
+        margin: 2mm;
     }
 
     html,
@@ -1261,15 +1261,15 @@ th.sortable.is-desc .sortIcon {
         display: none !important;
     }
 
-    /* keep same styling as preview, tighten spacing to fit A4 */
+    /* keep same styling as preview, tighten spacing to fit A6 */
     .paystub {
         font-family: Arial, Helvetica, sans-serif !important;
-        font-size: 10px !important;
-        line-height: 1.05 !important;
-        padding: 5mm 7mm !important;
+        font-size: 7px !important;
+        line-height: 1.02 !important;
+        padding: 2mm 2.5mm !important;
         margin: 0 auto !important;
         width: 100% !important;
-        max-width: 780px !important;
+        max-width: 100% !important;
         background: #fff !important;
         border: 1px solid #d6b5c2 !important;
         box-shadow: none !important;
@@ -1282,9 +1282,9 @@ th.sortable.is-desc .sortIcon {
     }
 
     .paystub .psHead {
-        gap: 8px !important;
+        gap: 4px !important;
         border-bottom: 1px solid #9c1d3c !important;
-        padding-bottom: 4px !important;
+        padding-bottom: 3px !important;
     }
     .paystub .psHeadCenter {
         color: #9c1d3c !important;
@@ -1298,6 +1298,40 @@ th.sortable.is-desc .sortIcon {
         background: #9c1d3c !important;
         color: #fff !important;
         border-color: #9c1d3c !important;
+    }
+
+    .paystub .psHeadCenter {
+        font-size: 12px !important;
+        letter-spacing: 1px !important;
+    }
+    .paystub .psCompany {
+        font-size: 10px !important;
+    }
+    .paystub .psHeadRight,
+    .paystub .psHeadLeft {
+        font-size: 8px !important;
+    }
+    .paystub .psSectionTitle {
+        font-size: 8px !important;
+        padding: 3px 6px !important;
+    }
+    .paystub .psGrid {
+        gap: 6px !important;
+    }
+    .paystub .psInfo {
+        font-size: 8px !important;
+    }
+    .paystub .psTable th,
+    .paystub .psTable td {
+        padding: 3px 4px !important;
+        font-size: 7px !important;
+    }
+    .paystub .psSummary {
+        gap: 6px !important;
+    }
+    .paystub .psSummaryRow {
+        padding: 3px 4px !important;
+        font-size: 7px !important;
     }
     .paystub .psTable td {
         border-color: #9c1d3c !important;
