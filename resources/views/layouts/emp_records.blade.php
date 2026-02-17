@@ -1,135 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
+@extends('layouts.app')
 
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Payroll System | Employee Records</title>
+@section('title', 'Employee Records')
 
+@section('vite')
     @vite(['resources/css/emp_records.css', 'resources/js/emp_records.js'])
-</head>
+@endsection
 
-<body>
-    <div class="shell">
-
-        <!-- SIDEBAR -->
-        <aside class="side">
-            <div class="brand">
-                <div class="brand__mark">
-                    <img class="brand__logo" src="/image/logo.png" alt="Aura Fortune G5 Traders Corporation logo" />
-                </div>
-
-                <div class="brand__text">
-                    <div class="brand__title">AURA FORTUNE G5</div>
-                    <div class="brand__sub">TRADERS CORPORATION</div>
-                </div>
-            </div>
-
-            <nav class="menu">
-                <a class="menu__item" href="{{ route('index') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <path d="M3 3h8v8H3V3zm10 0h8v5h-8V3zM3 13h8v8H3v-8zm10 7v-10h8v10h-8z" />
-                        </svg>
-                    </span>
-                    <span>DASHBOARD</span>
-                </a>
-
-                <a class="menu__item {{ request()->routeIs('employee.records') ? 'is-active' : '' }}"
-                    href="{{ route('employee.records') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <path
-                                d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5S14.34 11 16 11zM8 11c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11zm0 2c-2.33 0-7 1.17-7 3.5V20h14v-3.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.94 1.97 3.45V20h7v-3.5c0-2.33-4.67-3.5-7-3.5z" />
-                        </svg>
-                    </span>
-                    <span>EMPLOYEE<br />RECORDS</span>
-                </a>
-
-                <a class="menu__item {{ request()->routeIs('attendance') ? 'is-active' : '' }}"
-                    href="{{ route('attendance') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <path
-                                d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3.33 0-8 1.67-8 5v1h16v-1c0-3.33-4.67-5-8-5zm10.3-4.3-1.4-1.4-5.3 5.3-2.1-2.1-1.4 1.4 3.5 3.5 6.7-6.7z" />
-                        </svg>
-                    </span>
-                    <span>ATTENDANCE</span>
-                </a>
-
-                <a class="menu__item {{ request()->routeIs('payroll.processing') ? 'is-active' : '' }}"
-                    href="{{ route('payroll.processing') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico">
-                            <path d="M4 4h10a2 2 0 0 1 2 2v2h4v12H6a2 2 0 0 1-2-2V4zm2 2v14h12V10h-4V6H6z" />
-                            <path d="M9 12h6v2H9v-2zm0 4h6v2H9v-2z" />
-                        </svg>
-                    </span>
-                    <span>PAYROLL<br />PROCESSING</span>
-                </a>
-
-                <a class="menu__item {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
-                    href="{{ route('payslip') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
-                            <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
-                        </svg>
-                    </span>
-                    <span>PAYSLIP</span>
-                </a>
-
-                <a class="menu__item {{ request()->routeIs('report') ? 'is-active' : '' }}"
-                    href="{{ route('report') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <path d="M4 19h16v2H2V3h2v16z" />
-                            <path d="M7 17V9h3v8H7zm5 0V5h3v12h-3zm5 0v-6h3v6h-3z" />
-                        </svg>
-                    </span>
-                    <span>REPORT</span>
-                </a>
-            </nav>
-
-            <div class="side__footer">
-                <div class="time" id="clock">--:-- --</div>
-                <div class="date" id="date">--/--/----</div>
-            </div>
-        </aside>
-
-        <!-- MAIN -->
-        <main class="main">
-            <header class="top">
-                <div>
-                    <div class="top__title">WELCOME</div>
-                    <div class="top__sub">ADMIN</div>
-                </div>
-
-                <div class="top__right">
-                    <div class="user-menu">
-                        <button class="pill-user" type="button" id="userMenuBtn" aria-haspopup="true"
-                            aria-expanded="false">
-                            <span class="pill-user__name">ADMIN</span>
-                            <span class="pill-user__avatar" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                                    <path
-                                        d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-3.33 0-8 1.67-8 5v1h16v-1c0-3.33-4.67-5-8-5z" />
-                                </svg>
-                            </span>
-                        </button>
-
-                        <div class="user-dropdown" id="userMenu" role="menu" aria-labelledby="userMenuBtn">
-                            <a href="#" class="user-dropdown__item" role="menuitem">Edit Profile</a>
-                            <a href="{{ route('settings') }}" class="user-dropdown__item" role="menuitem">Settings</a>
-
-                            <div class="user-dropdown__divider" aria-hidden="true"></div>
-                            <a href="{{ url('/login') }}" class="user-dropdown__item" role="menuitem">Logout</a>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <section class="content">
+@section('content')
+<section class="content">
                 <div class="headline">
                     <div>
                         <h1>EMPLOYEE RECORDS</h1>
@@ -238,6 +116,7 @@
                                     <th class="col-check">
                                         <input type="checkbox" id="selectAll" aria-label="Select all" />
                                     </th>
+                                    </th>
 
                                     <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
                                             aria-hidden="true"></span></th>
@@ -251,7 +130,7 @@
                                             aria-hidden="true"></span></th>
                                     <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                             aria-hidden="true"></span></th>
-                                    <th class="sortable" data-sort="rate">Rate/Salary <span class="sortIcon"
+                                    <th class="sortable" data-sort="salary">Salary <span class="sortIcon"
                                             aria-hidden="true"></span></th>
 
                                     <!-- ✅ NEW -->
@@ -409,12 +288,24 @@
                                     </select>
                                 </div>
 
+                            </div>
+
+                            <div class="sectionTitle">Compensation</div>
+                            <div class="grid2">
                                 <div class="field">
-                                    <label>Basic Pay / Salary *</label>
-                                    <input type="number" id="f_rate" required placeholder="e.g. 12000"
-                                        min="0" />
+                                    <label>Basic Pay (monthly) *</label>
+                                    <input type="number" id="f_rate" required placeholder="e.g. 20000" min="0" />
                                 </div>
 
+                                <div class="field">
+                                    <label>Allowance (monthly)</label>
+                                    <input type="number" id="f_allowance" placeholder="e.g. 1500" min="0" />
+                                </div>
+
+                                <div class="field">
+                                    <label>Total Salary (auto)</label>
+                                    <input type="text" id="f_totalSalary" readonly />
+                                </div>
                             </div>
 
                             <div class="sectionTitle">Assignment</div>
@@ -466,6 +357,27 @@
                                 </div>
                             </div>
 
+                            <div class="sectionTitle">Bank Details</div>
+                            <div class="grid2">
+                                <div class="field">
+                                    <label>Bank Name</label>
+                                    <input type="text" id="f_bankName" placeholder="e.g. BDO" />
+                                </div>
+                                <div class="field">
+                                    <label>Account Name</label>
+                                    <input type="text" id="f_accountName" placeholder="e.g. Juan Dela Cruz" />
+                                </div>
+                                <div class="field field--full">
+                                    <label>Account Number</label>
+                                    <input type="text" id="f_accountNumber" placeholder="e.g. 0123456789" />
+                                    <div class="hint">Leave blank to pay by cash.</div>
+                                </div>
+                                <div class="field field--full">
+                                    <label>Payout Method (auto)</label>
+                                    <input type="text" id="f_payoutMethod" readonly />
+                                </div>
+                            </div>
+
                             <div class="form__actions">
                                 <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
                                 <div class="spacer"></div>
@@ -477,8 +389,7 @@
                 </aside>
 
             </section>
-        </main>
-    </div>
-</body>
+        
+@endsection
 
-</html>
+

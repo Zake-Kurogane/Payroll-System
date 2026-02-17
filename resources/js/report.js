@@ -1,49 +1,12 @@
+﻿import { initClock } from "./shared/clock";
+import { initUserMenuDropdown } from "./shared/userMenu";
+import { initProfileDrawer } from "./shared/profileDrawer";
+import { formatMoney } from "./shared/format";
+
 document.addEventListener("DOMContentLoaded", () => {
-  // =========================================================
-  // CLOCK + USER MENU (same pattern as your pages)
-  // =========================================================
-  const clockEl = document.getElementById("clock");
-  const dateEl = document.getElementById("date");
-  const pad2 = (n) => String(n).padStart(2, "0");
-
-  function tick() {
-    const d = new Date();
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12;
-    h = h ? h : 12;
-    if (clockEl) clockEl.textContent = `${pad2(h)}:${pad2(m)} ${ampm}`;
-    if (dateEl) dateEl.textContent = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-  }
-  tick();
-  setInterval(tick, 1000);
-
-  const userMenuBtn = document.getElementById("userMenuBtn");
-  const userMenu = document.getElementById("userMenu");
-  function closeUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    userMenu.classList.remove("is-open");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  }
-  function toggleUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    const isOpen = userMenu.classList.contains("is-open");
-    userMenu.classList.toggle("is-open", !isOpen);
-    userMenuBtn.setAttribute("aria-expanded", String(!isOpen));
-  }
-  if (userMenuBtn && userMenu) {
-    userMenuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleUserMenu();
-    });
-    document.addEventListener("click", (e) => {
-      if (!userMenu.contains(e.target)) closeUserMenu();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeUserMenu();
-    });
-  }
+  initClock();
+  initUserMenuDropdown();
+  initProfileDrawer();
 
   // =========================================================
   // HELPERS
@@ -51,11 +14,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const $ = (id) => document.getElementById(id);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const normalize = (s) => String(s || "").toLowerCase().trim();
-  const peso = (n) => {
-    const num = Number(n || 0);
-    if (!isFinite(num)) return "₱ 0.00";
-    return "₱ " + num.toFixed(2);
-  };
+  const peso = (n) => formatMoney(n);
+  const pad2 = (n) => String(n).padStart(2, "0");
   const escapeHtml = (s) =>
     String(s ?? "")
       .replaceAll("&", "&amp;")
@@ -237,6 +197,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const segBtns = $$(".seg__btn");
   const areaPlaceWrap = $("areaPlaceWrap");
   const areaPlaceSelect = $("areaPlaceSelect");
+
+  function populateAreaPlaces() {
+    if (!areaPlaceSelect) return;
+    const current = areaPlaceSelect.value || "All";
+    const places = Array.from(
+      new Set(
+        REGISTER.filter((r) => r.assignmentType === "Area" && r.areaPlace)
+          .map((r) => r.areaPlace)
+      )
+    ).sort();
+    const options = places.length ? places : ["Laak", "Pantukan", "Maragusan"];
+    areaPlaceSelect.innerHTML =
+      `<option value="All" selected>All</option>` +
+      options.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+    if (current && (current === "All" || options.includes(current))) {
+      areaPlaceSelect.value = current;
+    }
+  }
 
   const viewRunBtn = $("viewRunBtn");
   const exportCsvBtn = $("exportCsvBtn");
@@ -582,9 +560,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function renderIssues(rows) {
-    if (!issuesTbody) return;
-
+  
+  
+  
+  function computeIssues(rows) {
     const issues = [];
     rows.forEach((r) => {
       if (Number(r.netPay || 0) < 0) {
@@ -593,13 +572,20 @@ document.addEventListener("DOMContentLoaded", () => {
       if ((r.presentDays || 0) === 0 && (r.absentDays || 0) === 0 && (r.leaveDays || 0) === 0) {
         issues.push({ empId: r.empId, empName: r.empName, issue: "Missing attendance", severity: "High" });
       }
-      if (getRun(r.runId)?.cutoff === "16–End" && (Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0)) === 0) {
+      if (getRun(r.runId)?.cutoff === "16�End" && (Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0)) === 0) {
         issues.push({ empId: r.empId, empName: r.empName, issue: "Missing gov contributions (2nd cutoff)", severity: "Medium" });
       }
       if (r.payslipStatus === "Not generated") {
         issues.push({ empId: r.empId, empName: r.empName, issue: "Payslip not generated", severity: "Low" });
       }
     });
+    return issues;
+  }
+
+  function renderIssues(rows) {
+    if (!issuesTbody) return;
+
+    const issues = computeIssues(rows);
 
     issuesTbody.innerHTML = "";
     issues.forEach((x) => {
@@ -619,7 +605,6 @@ document.addEventListener("DOMContentLoaded", () => {
       issuesTbody.appendChild(tr);
     }
   }
-
   // =========================================================
   // MAIN RENDER
   // =========================================================
@@ -673,6 +658,8 @@ document.addEventListener("DOMContentLoaded", () => {
   searchInput && searchInput.addEventListener("input", renderAll);
 
   // Assignment segmented
+  populateAreaPlaces();
+
   segBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       segBtns.forEach((b) => b.classList.remove("is-active"));
@@ -682,6 +669,7 @@ document.addEventListener("DOMContentLoaded", () => {
       segBtns.forEach((b) => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
 
       if (areaPlaceWrap) areaPlaceWrap.style.display = assignmentFilter === "Area" ? "" : "none";
+      if (assignmentFilter === "Area") populateAreaPlaces();
       renderAll();
     });
   });
@@ -700,7 +688,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // TOP ACTIONS
   // =========================================================
   function exportCsv(rows, filename) {
-    // Export current tab context (basic)
+    const quote = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+
     if (activeTab === "audit") {
       const list = RUNS.filter(runMatchesFilters);
       const headers = ["Run ID", "Period", "Status", "Employees", "Total Net", "Processed At", "Processed By", "Payslips Generated", "Released At"];
@@ -717,12 +706,62 @@ document.addEventListener("DOMContentLoaded", () => {
             r.processedBy,
             r.payslipsGeneratedAt || "",
             r.releasedAt || "",
-          ]
-            .map((v) => `"${String(v).replaceAll('"', '""')}"`)
-            .join(",")
+          ].map(quote).join(",")
         ),
       ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
 
+    if (activeTab === "breakdown") {
+      const totals = [
+        ["Attendance Deductions", rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+        ["Other Deductions", rows.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
+        ["SSS (EE)", rows.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
+        ["PhilHealth (EE)", rows.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
+        ["Pag-IBIG (EE)", rows.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
+        ["Withholding Tax", rows.reduce((a, r) => a + Number(r.tax || 0), 0)],
+        ["SSS (ER)", rows.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
+        ["PhilHealth (ER)", rows.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
+        ["Pag-IBIG (ER)", rows.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
+      ];
+      const csv = [
+        ["Item", "Amount"].join(","),
+        ...totals.map(([k, v]) => [k, Number(v || 0).toFixed(2)].map(quote).join(",")),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "remit") {
+      const headers = ["Emp ID", "Employee", "SSS (EE)", "SSS (ER)", "PhilHealth (EE)", "PhilHealth (ER)", "Pag-IBIG (EE)", "Pag-IBIG (ER)", "Tax"];
+      const csv = [
+        headers.join(","),
+        ...rows.map((r) =>
+          [
+            r.empId,
+            r.empName,
+            Number(r.sssEe || 0).toFixed(2),
+            Number(r.sssEr || 0).toFixed(2),
+            Number(r.philhealthEe || 0).toFixed(2),
+            Number(r.philhealthEr || 0).toFixed(2),
+            Number(r.pagibigEe || 0).toFixed(2),
+            Number(r.pagibigEr || 0).toFixed(2),
+            Number(r.tax || 0).toFixed(2),
+          ].map(quote).join(",")
+        ),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "issues") {
+      const list = computeIssues(rows);
+      const headers = ["Emp ID", "Employee", "Issue", "Severity"];
+      const csv = [
+        headers.join(","),
+        ...list.map((r) => [r.empId, r.empName, r.issue, r.severity].map(quote).join(",")),
+      ].join("\n");
       downloadCsv(csv, filename);
       return;
     }
@@ -767,9 +806,7 @@ document.addEventListener("DOMContentLoaded", () => {
           Number(r.gross || 0).toFixed(2),
           Number(r.netPay || 0).toFixed(2),
           r.payslipStatus || "",
-        ]
-          .map((v) => `"${String(v).replaceAll('"', '""')}"`)
-          .join(",")
+        ].map(quote).join(",")
       ),
     ].join("\n");
 
@@ -834,3 +871,9 @@ document.addEventListener("DOMContentLoaded", () => {
   setActiveTab("register");
   renderAll();
 });
+
+
+
+
+
+

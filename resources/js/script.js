@@ -1,6 +1,12 @@
 const form = document.getElementById("loginForm");
+if (!form) {
+  // Script loaded on a page without the login form.
+  return;
+}
+
 const username = document.getElementById("username");
 const password = document.getElementById("password");
+const submitBtn = form.querySelector('button[type="submit"]');
 
 const userError = document.getElementById("userError");
 const passError = document.getElementById("passError");
@@ -37,10 +43,12 @@ form.addEventListener("submit", (e) => {
   // ✅ Only prevent submit when invalid
   if (!ok) {
     e.preventDefault();
+    if (submitBtn) submitBtn.disabled = false;
     return;
   }
 
   // ✅ Allow normal Laravel POST + redirect
   // Optional: show a message while submitting
   if (statusEl) statusEl.textContent = "Logging in...";
+  if (submitBtn) submitBtn.disabled = true;
 });

@@ -1,45 +1,12 @@
+﻿import { initClock } from "./shared/clock";
+import { initUserMenuDropdown } from "./shared/userMenu";
+import { initProfileDrawer } from "./shared/profileDrawer";
+import { formatMoney } from "./shared/format";
+
 document.addEventListener("DOMContentLoaded", () => {
-  // =========================================================
-  // CLOCK
-  // =========================================================
-  const clockEl = document.getElementById("clock");
-  const dateEl = document.getElementById("date");
-  const pad = (n) => String(n).padStart(2, "0");
-
-  function tick() {
-    const d = new Date();
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12; h = h ? h : 12;
-    if (clockEl) clockEl.textContent = `${pad(h)}:${pad(m)} ${ampm}`;
-    if (dateEl) dateEl.textContent = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-  }
-  tick();
-  setInterval(tick, 1000);
-
-  // =========================================================
-  // USER DROPDOWN
-  // =========================================================
-  const userMenuBtn = document.getElementById("userMenuBtn");
-  const userMenu = document.getElementById("userMenu");
-
-  function closeUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    userMenu.classList.remove("is-open");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  }
-  function toggleUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    const isOpen = userMenu.classList.contains("is-open");
-    userMenu.classList.toggle("is-open", !isOpen);
-    userMenuBtn.setAttribute("aria-expanded", String(!isOpen));
-  }
-  if (userMenuBtn && userMenu) {
-    userMenuBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleUserMenu(); });
-    document.addEventListener("click", (e) => { if (!userMenu.contains(e.target)) closeUserMenu(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUserMenu(); });
-  }
+  initClock();
+  initUserMenuDropdown();
+  initProfileDrawer();
 
   // =========================================================
   // DEMO DATA (replace later with backend)
@@ -49,6 +16,8 @@ document.addEventListener("DOMContentLoaded", () => {
       empId: "1023", name: "Dela Cruz, Juan", dept: "Admin", type: "Regular",
       assignType: "Tagum", areaPlace: "",
       monthlyRate: 20000, allowances: 0,
+      bankName: "",
+      accountNumber: "",
       gov: { sss: 500, ph: 300, pagibig: 200 },
       hasGovIds: true,
       cashAdvanceEligible: true,
@@ -57,6 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
       empId: "1044", name: "Santos, Maria", dept: "HR", type: "Regular",
       assignType: "Area", areaPlace: "Laak",
       monthlyRate: 24000, allowances: 1500,
+      bankName: "BDO",
+      accountNumber: "1234567890",
       gov: { sss: 600, ph: 350, pagibig: 200 },
       hasGovIds: true,
       cashAdvanceEligible: true,
@@ -65,6 +36,8 @@ document.addEventListener("DOMContentLoaded", () => {
       empId: "1102", name: "Garcia, Leo", dept: "IT", type: "Contractual",
       assignType: "Davao", areaPlace: "",
       monthlyRate: 19000, allowances: 0,
+      bankName: "",
+      accountNumber: "",
       gov: { sss: 0, ph: 0, pagibig: 0 },
       hasGovIds: false,
       cashAdvanceEligible: false,
@@ -73,6 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
       empId: "1201", name: "Reyes, Ana", dept: "Operations", type: "Regular",
       assignType: "Area", areaPlace: "Pantukan",
       monthlyRate: 22000, allowances: 800,
+      bankName: "BPI",
+      accountNumber: "78901234",
       gov: { sss: 550, ph: 320, pagibig: 200 },
       hasGovIds: true,
       cashAdvanceEligible: true,
@@ -99,7 +74,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const segBtns = Array.from(
     document.querySelectorAll(".filters__right .seg__btn[data-assign]")
   );
+  const payoutBtns = Array.from(
+    document.querySelectorAll(".filters__right .seg__btn[data-pay]")
+  );
   let assignmentFilter = "All";
+  let payoutFilter = "All";
   const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
   const areaPlaceFilter = document.getElementById("areaPlaceFilter");
   const searchInput = document.getElementById("searchInput");
@@ -176,10 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // HELPERS
   // =========================================================
-  const money = (n) => {
-    const num = Number(n || 0);
-    return `₱ ${num.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  };
+  const money = (n) => formatMoney(n);
 
   const fmtDT = (d) => {
     if (!d) return "—";
@@ -189,11 +165,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const makeRunId = () => `RUN-${Math.random().toString(16).slice(2, 8).toUpperCase()}`;
 
+  const pad2 = (n) => String(n).padStart(2, "0");
+
   const cutoffRange = (monthVal, cutoffVal) => {
     if (!monthVal) return { start: "", end: "" };
     const [y, m] = monthVal.split("-");
+    const lastDay = new Date(Number(y), Number(m), 0).getDate();
     const start = cutoffVal === "1-15" ? `${y}-${m}-01` : `${y}-${m}-16`;
-    const end = cutoffVal === "1-15" ? `${y}-${m}-15` : `${y}-${m}-31`;
+    const end = cutoffVal === "1-15" ? `${y}-${m}-15` : `${y}-${m}-${pad2(lastDay)}`;
     return { start, end };
   };
 
@@ -202,10 +181,22 @@ document.addEventListener("DOMContentLoaded", () => {
     return date >= start && date <= end;
   };
 
-  const withinMonth = (yyyy_mm_dd, monthVal) => {
-    if (!monthVal) return true;
-    return String(yyyy_mm_dd || "").startsWith(monthVal);
-  };
+  const settingsVersion = "demo-v1";
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem("payroll.settings");
+      const s = raw ? JSON.parse(raw) : {};
+      return {
+        otRate: Number(s.otRate) || 120,
+        workDays: Number(s.workDays) || 26,
+        phSplitRule: s.phSplitRule || "monthly",
+        piSplitRule: s.piSplitRule || "monthly",
+      };
+    } catch {
+      return { otRate: 120, workDays: 26, phSplitRule: "monthly", piSplitRule: "monthly" };
+    }
+  }
 
   const assignmentLabel = (e) => {
     if (e.assignType === "Area") return `Area (${e.areaPlace || "—"})`;
@@ -264,6 +255,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cutoffSelect) cutoffSelect.disabled = !enabled;
     if (searchInput) searchInput.disabled = !enabled;
     segBtns.forEach(b => b.disabled = !enabled);
+    payoutBtns.forEach(b => b.disabled = !enabled);
     if (areaPlaceFilter) areaPlaceFilter.disabled = !enabled;
 
     // actions
@@ -348,7 +340,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const rows = attendance.filter(a =>
       a.empId === empId &&
-      withinMonth(a.date, monthVal) &&
       inRange(a.date, start, end)
     );
 
@@ -369,9 +360,11 @@ document.addEventListener("DOMContentLoaded", () => {
     return employees.filter(e => {
       const okAssign = assign === "All" ? true : e.assignType === assign;
       const okArea = assign !== "Area" || areaVal === "All" || (e.areaPlace || "") === areaVal;
+      const payout = (e.accountNumber || "").trim() ? "Bank" : "Cash";
+      const okPayout = payoutFilter === "All" || payout === payoutFilter;
       const text = `${e.empId} ${e.name} ${e.dept} ${e.assignType} ${e.areaPlace || ""}`.toLowerCase();
       const okQ = !q || text.includes(q);
-      return okAssign && okArea && okQ;
+      return okAssign && okArea && okPayout && okQ;
     });
   }
 
@@ -379,11 +372,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // COMPUTE (base + apply overrides)
   // =========================================================
   function computeForEmployee(e) {
+    const settings = loadSettings();
     // settings (demo)
-    const otRate = 120; // replace later from settings page
-    const workDays = 26;
+    const otRate = settings.otRate; // replace later from settings page
+    const workDays = settings.workDays;
 
     const halfBasic = Number(e.monthlyRate || 0) / 2;
+    const halfAllowance = Number(e.allowances || 0) / 2;
     const dailyRate = workDays > 0 ? (Number(e.monthlyRate || 0) / workDays) : 0;
 
     const att = attendanceSummary(e.empId);
@@ -393,13 +388,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // base computed OT hours (demo: 0 unless set in table override)
     const ov = overrides[e.empId] || {};
-    const otHours = Number(ov.otHours ?? 0);
+    const computedOtHours = Number(ov.computedOtHours ?? 0);
+    const manualOtHours = Number(ov.otHours ?? 0);
     const otherDed = Number(ov.otherDed ?? 0);
 
     const otOverrideOn = !!ov.otOverrideOn;
-    const otOverrideHours = Number(ov.otOverrideHours ?? otHours);
+    const otOverrideHours = Number(ov.otOverrideHours ?? manualOtHours);
 
-    const finalOtHours = otOverrideOn ? otOverrideHours : otHours;
+    const finalOtHours = otOverrideOn ? otOverrideHours : (manualOtHours || computedOtHours);
     const otPay = finalOtHours * otRate;
 
     const adjustments = Array.isArray(ov.adjustments) ? ov.adjustments : [];
@@ -409,18 +405,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const cashAdvance = Number(ov.cashAdvance ?? 0);
 
     // placeholder attendance deductions
-    const lateDeduction = 20;
-    const undertimeDeduction = 400;
-    const absentDeduction = lateDeduction + undertimeDeduction;
+    const demoLateDeduction = 20;
+    const demoUndertimeDeduction = 400;
+    const absentDeduction = demoLateDeduction + demoUndertimeDeduction;
 
     // gov only on 2nd cutoff (demo)
     const secondCutoff = (cutoffSelect?.value === "16-end");
-    const sss = secondCutoff ? Number(e.gov?.sss || 0) : 0;
-    const ph = secondCutoff ? Number(e.gov?.ph || 0) : 0;
-    const pagibig = secondCutoff ? Number(e.gov?.pagibig || 0) : 0;
+    const applyContribSecondCutoffOnly = settings.phSplitRule === "cutoff2_only" && settings.piSplitRule === "cutoff2_only";
+    const applyContrib = applyContribSecondCutoffOnly ? secondCutoff : true;
+    const sss = applyContrib ? Number(e.gov?.sss || 0) : 0;
+    const ph = applyContrib ? Number(e.gov?.ph || 0) : 0;
+    const pagibig = applyContrib ? Number(e.gov?.pagibig || 0) : 0;
     const erShare = 0;
 
-    const gross = halfBasic + otPay + earnAdj;
+    const gross = halfBasic + halfAllowance + otPay + earnAdj;
     const deductions = absentDeduction + otherDed + dedAdj + cashAdvance + sss + ph + pagibig;
     const net = gross - deductions;
 
@@ -435,12 +433,14 @@ document.addEventListener("DOMContentLoaded", () => {
       assign: assignmentLabel(e),
 
       halfBasic,
+      halfAllowance,
       dailyRate,
 
       present, absent, leave,
 
       otRate,
-      otHours, // base editable
+      computedOtHours,
+      manualOtHours, // base editable
       otOverrideOn,
       otOverrideHours,
       finalOtHours,
@@ -463,6 +463,8 @@ document.addEventListener("DOMContentLoaded", () => {
       status,
       cashAdvanceEligible: !!e.cashAdvanceEligible,
       maxCashAdvance: Number(e.monthlyRate || 0) * 2,
+      payoutMethod: (e.accountNumber || "").trim() ? "BANK" : "CASH",
+      accountMasked: (e.accountNumber || "").trim() ? `****${String(e.accountNumber).slice(-4)}` : "",
     };
   }
 
@@ -515,8 +517,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // SELECTION HELPERS
   // =========================================================
+  const selectedEmpIds = new Set();
+
   function selectedIds() {
-    return Array.from(document.querySelectorAll(".rowCheck:checked")).map(cb => cb.dataset.id);
+    return Array.from(selectedEmpIds);
   }
 
   function syncCheckAll() {
@@ -567,6 +571,52 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   updateSortIcons();
 
+  let refreshQueued = false;
+  function schedulePreviewRefresh() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    requestAnimationFrame(() => {
+      refreshQueued = false;
+      computePreview();
+      renderTable();
+      renderRunSummary();
+    });
+  }
+
+  function handleTableChange(e) {
+    const cb = e.target.closest(".rowCheck");
+    if (!cb) return;
+    if (cb.checked) selectedEmpIds.add(cb.dataset.id);
+    else selectedEmpIds.delete(cb.dataset.id);
+    syncCheckAll();
+    renderRunSummary();
+  }
+
+  function handleTableInput(e) {
+    const inp = e.target;
+    if (!inp || isLocked()) return;
+
+    if (inp.classList.contains("otIn")) {
+      const id = inp.dataset.id;
+      const val = Number(inp.value || 0);
+      overrides[id] = { ...(overrides[id] || {}), otHours: val };
+      schedulePreviewRefresh();
+    }
+
+    if (inp.classList.contains("dedIn")) {
+      const id = inp.dataset.id;
+      const val = Number(inp.value || 0);
+      overrides[id] = { ...(overrides[id] || {}), otherDed: val };
+      schedulePreviewRefresh();
+    }
+  }
+
+  function handleTableClick(e) {
+    const btn = e.target.closest(".adjBtn");
+    if (!btn) return;
+    openAdjust(btn.dataset.id);
+  }
+
   function renderTable() {
     if (!payTbody) return;
 
@@ -609,6 +659,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="nameCell">
           <div class="nm">${r.name}</div>
           <div class="muted small">${r.dept} • ${r.assign}</div>
+          <div class="muted tiny">Base: ${money(r.halfBasic)} • Allow: ${money(r.halfAllowance)} • Payout: ${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}</div>
         </td>
         <td>${attText}</td>
         <td class="num">${money(r.dailyRate)}</td>
@@ -662,46 +713,13 @@ document.addEventListener("DOMContentLoaded", () => {
       payTbody.appendChild(tr);
     });
 
-    // wire checkbox changes
-    payTbody.querySelectorAll(".rowCheck").forEach(cb => {
-      cb.addEventListener("change", () => {
-        syncCheckAll();
-        renderRunSummary();
-      });
-    });
-
-    // wire OT inputs
-    payTbody.querySelectorAll(".otIn").forEach(inp => {
-      inp.addEventListener("input", () => {
-        if (isLocked()) return;
-        const id = inp.dataset.id;
-        const val = Number(inp.value || 0);
-        overrides[id] = { ...(overrides[id] || {}), otHours: val };
-        computePreview();
-        renderTable();
-        renderRunSummary();
-      });
-    });
-
-    // wire otherDed inputs
-    payTbody.querySelectorAll(".dedIn").forEach(inp => {
-      inp.addEventListener("input", () => {
-        if (isLocked()) return;
-        const id = inp.dataset.id;
-        const val = Number(inp.value || 0);
-        overrides[id] = { ...(overrides[id] || {}), otherDed: val };
-        computePreview();
-        renderTable();
-        renderRunSummary();
-      });
-    });
-
-    // adjust drawer buttons
-    payTbody.querySelectorAll(".adjBtn").forEach(btn => {
-      btn.addEventListener("click", () => openAdjust(btn.dataset.id));
-    });
-
     syncCheckAll();
+  }
+
+  if (payTbody) {
+    payTbody.addEventListener("change", handleTableChange);
+    payTbody.addEventListener("input", handleTableInput);
+    payTbody.addEventListener("click", handleTableClick);
   }
 
   // pagination controls
@@ -740,24 +758,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
     adjustmentRows.forEach((row, index) => {
       const div = document.createElement("div");
-      div.className = "grid2";
-      div.style.marginBottom = "8px";
+      div.className = "adjRow";
 
       div.innerHTML = `
-        <select data-index="${index}" class="adjType">
-          <option value="earning" ${row.type === "earning" ? "selected" : ""}>Earning</option>
-          <option value="deduction" ${row.type === "deduction" ? "selected" : ""}>Deduction</option>
-        </select>
+        <div class="adjRow__top">
+          <label class="adjLabel">
+            <span>Type</span>
+            <select data-index="${index}" class="adjType">
+              <option value="earning" ${row.type === "earning" ? "selected" : ""}>Earning</option>
+              <option value="deduction" ${row.type === "deduction" ? "selected" : ""}>Deduction</option>
+            </select>
+          </label>
 
-        <input type="text" placeholder="Name"
-          value="${row.name || ""}"
-          data-index="${index}" class="adjName" />
+          <label class="adjLabel">
+            <span>Name</span>
+            <input type="text" placeholder="Name"
+              value="${row.name || ""}"
+              data-index="${index}" class="adjName" />
+          </label>
+        </div>
 
-        <input type="number" min="0" step="0.01"
-          value="${Number(row.amount || 0)}"
-          data-index="${index}" class="adjAmount" />
+        <div class="adjRow__bottom">
+          <label class="adjLabel adjLabel--amount">
+            <span>Amount</span>
+            <span class="moneyInput">
+              <span class="moneyPrefix">₱</span>
+              <input type="number" min="0" step="0.01"
+                value="${Number(row.amount || 0)}"
+                data-index="${index}" class="adjAmount" />
+            </span>
+          </label>
 
-        <button type="button" data-index="${index}" class="iconbtn delAdjBtn">🗑</button>
+          <button type="button" data-index="${index}" class="iconbtn delAdjBtn" aria-label="Remove adjustment">🗑</button>
+        </div>
       `;
 
       container.appendChild(div);
@@ -896,11 +929,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const cash = Number(adjCashAdvance?.value || 0);
 
-    const grossPreview = Number(row.halfBasic || 0) + finalOtAmount + earn;
+    const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + finalOtAmount + earn;
     const dedPreview = Number(row.absentDeduction || 0) + Number(row.otherDed || 0) + ded + cash + Number(row.sss || 0) + Number(row.ph || 0) + Number(row.pagibig || 0);
     const netPreview = grossPreview - dedPreview;
 
-    if (sumBase) sumBase.textContent = money(row.halfBasic);
+    if (sumBase) sumBase.textContent = money(Number(row.halfBasic || 0) + Number(row.halfAllowance || 0));
     if (sumOt) sumOt.textContent = money(finalOtAmount);
     if (sumOtherEarn) sumOtherEarn.textContent = money(earn);
     if (sumOtherDed) sumOtherDed.textContent = money(ded + cash);
@@ -967,6 +1000,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     overrides = {};
     previewRows = [];
+    selectedEmpIds.clear();
 
     const now = new Date();
     currentRun = {
@@ -980,6 +1014,10 @@ document.addEventListener("DOMContentLoaded", () => {
       releasedAt: null,
       status: "Draft",
       snapshotRows: [],
+      snapshotOverrides: {},
+      snapshotMeta: null,
+      unlockedAt: null,
+      unlockedBy: null,
     };
 
     if (stickyHint) stickyHint.textContent = "New run created (Draft). Compute preview then lock.";
@@ -998,9 +1036,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // lock = finalize snapshot
     const rowsSnapshot = previewRows.map(r => ({ ...r })); // immutable snapshot
+    const overridesSnapshot = JSON.parse(JSON.stringify(overrides || {}));
+    const settings = loadSettings();
+    const snapshotMeta = {
+      otRate: settings.otRate,
+      workDays: settings.workDays,
+      phSplitRule: settings.phSplitRule,
+      piSplitRule: settings.piSplitRule,
+      settingsVersion,
+    };
 
     const s = computeSummaryFromRows(rowsSnapshot);
     currentRun.snapshotRows = rowsSnapshot;
+    currentRun.snapshotOverrides = overridesSnapshot;
+    currentRun.snapshotMeta = snapshotMeta;
     currentRun.lockedAt = new Date();
     currentRun.status = "Locked";
 
@@ -1020,7 +1069,11 @@ document.addEventListener("DOMContentLoaded", () => {
       deductions: s.deductions,
       net: s.net,
       snapshotRows: rowsSnapshot,
+      snapshotOverrides: overridesSnapshot,
+      snapshotMeta,
       unlockReason: null,
+      unlockedAt: null,
+      unlockedBy: null,
     });
 
     if (stickyHint) stickyHint.textContent = "Run locked. Inputs disabled. You can generate payslips or release.";
@@ -1045,12 +1098,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (stored) {
       stored.status = "Unlocked (Draft)";
       stored.unlockReason = reason.trim();
+      stored.unlockedAt = new Date();
+      stored.unlockedBy = "ADMIN";
     }
 
     currentRun.status = "Draft";
     currentRun.lockedAt = null;
     currentRun.releasedAt = null;
     currentRun.snapshotRows = [];
+    currentRun.snapshotOverrides = {};
+    currentRun.snapshotMeta = null;
+    currentRun.unlockedAt = new Date();
+    currentRun.unlockedBy = "ADMIN";
 
     if (stickyHint) stickyHint.textContent = "Run unlocked (Draft). You can edit and lock again.";
     applyRunUi();
@@ -1208,11 +1267,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  payoutBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (isLocked()) return;
+      payoutBtns.forEach(b => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      payoutBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+      payoutFilter = btn.dataset.pay || "All";
+      refreshAll();
+    });
+  });
+
   // select all
   checkAll && checkAll.addEventListener("change", () => {
     if (isLocked()) return;
     const checks = Array.from(document.querySelectorAll(".rowCheck"));
-    checks.forEach(cb => { cb.checked = checkAll.checked; });
+    checks.forEach(cb => {
+      cb.checked = checkAll.checked;
+      if (checkAll.checked) selectedEmpIds.add(cb.dataset.id);
+      else selectedEmpIds.delete(cb.dataset.id);
+    });
     syncCheckAll();
     renderRunSummary();
   });
@@ -1258,3 +1332,5 @@ document.addEventListener("DOMContentLoaded", () => {
   // create initial run
   createNewRun();
 });
+
+

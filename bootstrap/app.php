@@ -12,8 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-    'auth.simple' => \App\Http\Middleware\SimpleAuth::class,
-]);
+            'auth.simple' => \App\Http\Middleware\SimpleAuth::class,
+            'guest.simple' => \App\Http\Middleware\SimpleGuest::class,
+        ]);
 
     })
     ->withExceptions(function (Exceptions $exceptions): void {

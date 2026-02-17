@@ -223,6 +223,25 @@ body {
     color: var(--text);
     font-weight: 700;
 }
+.user-dropdown__item,
+.user-dropdown__item--btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.menu-icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--maroon);
+}
+.menu-icon__svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
 .user-dropdown__item:hover {
     background: rgba(156, 29, 60, 0.08);
     color: var(--maroon);
@@ -704,3 +723,12 @@ th.sortable.is-desc .sortIcon {
         display: none;
     }
 }
+.user-dropdown__item--btn {
+    background: none;
+    border: 0;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+

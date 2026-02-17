@@ -1,21 +1,11 @@
+﻿import { initClock } from "./shared/clock";
+import { initUserMenuDropdown } from "./shared/userMenu";
+import { initProfileDrawer } from "./shared/profileDrawer";
+
 document.addEventListener("DOMContentLoaded", () => {
-  // Clock
-  const clockEl = document.getElementById("clock");
-  const dateEl = document.getElementById("date");
-
-  function pad(n){ return String(n).padStart(2, "0"); }
-  function tick(){
-    const d = new Date();
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12; h = h ? h : 12;
-
-    if (clockEl) clockEl.textContent = `${pad(h)}:${pad(m)} ${ampm}`;
-    if (dateEl) dateEl.textContent = `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
-  }
-  tick();
-  setInterval(tick, 1000);
+  initClock();
+  initUserMenuDropdown();
+  initProfileDrawer();
 
   // Chart (Net + Ded)
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
@@ -84,36 +74,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
   globalSearch && globalSearch.addEventListener("input", filterTable);
 
-  // User menu dropdown
-  // ===== User dropdown =====
-const userMenuBtn = document.getElementById("userMenuBtn");
-const userMenu = document.getElementById("userMenu");
-
-function closeUserMenu() {
-  if (!userMenuBtn || !userMenu) return;
-  userMenu.classList.remove("is-open");
-  userMenuBtn.setAttribute("aria-expanded", "false");
-}
-
-function toggleUserMenu() {
-  if (!userMenuBtn || !userMenu) return;
-  const isOpen = userMenu.classList.contains("is-open");
-  userMenu.classList.toggle("is-open", !isOpen);
-  userMenuBtn.setAttribute("aria-expanded", String(!isOpen));
-}
-
-if (userMenuBtn && userMenu) {
-  userMenuBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    toggleUserMenu();
-  });
-
-  document.addEventListener("click", (e) => {
-    if (!userMenu.contains(e.target)) closeUserMenu();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeUserMenu();
-  });
-}
 });

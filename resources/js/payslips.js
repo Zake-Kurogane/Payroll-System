@@ -1,4 +1,12 @@
+﻿import { initClock } from "./shared/clock";
+import { initUserMenuDropdown } from "./shared/userMenu";
+import { initProfileDrawer } from "./shared/profileDrawer";
+import { formatMoney } from "./shared/format";
+
 document.addEventListener("DOMContentLoaded", () => {
+  initClock();
+  initUserMenuDropdown();
+  initProfileDrawer();
   // =========================================================
   // HELPERS
   // =========================================================
@@ -6,11 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const normalize = (s) => String(s || "").toLowerCase().trim();
 
-  const peso = (n) => {
-    const num = Number(n || 0);
-    if (!isFinite(num)) return "₱ 0.00";
-    return "₱ " + num.toFixed(2);
-  };
+  const peso = (n) => formatMoney(n);
 
   const escapeHtml = (s) =>
     String(s ?? "")
@@ -56,56 +60,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // SIDEBAR CLOCK
-  // =========================================================
-  const clockEl = $("clock");
-  const dateEl = $("date");
-  function tick() {
-    const d = new Date();
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12;
-    h = h ? h : 12;
-
-    if (clockEl) clockEl.textContent = `${pad(h)}:${pad(m)} ${ampm}`;
-    if (dateEl) dateEl.textContent = `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
-  }
-  tick();
-  setInterval(tick, 1000);
-
-  // =========================================================
-  // USER DROPDOWN
-  // =========================================================
-  const userMenuBtn = $("userMenuBtn");
-  const userMenu = $("userMenu");
-
-  function closeUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    userMenu.classList.remove("is-open");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  }
-  function toggleUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    const isOpen = userMenu.classList.contains("is-open");
-    userMenu.classList.toggle("is-open", !isOpen);
-    userMenuBtn.setAttribute("aria-expanded", String(!isOpen));
-  }
-
-  if (userMenuBtn && userMenu) {
-    userMenuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleUserMenu();
-    });
-    document.addEventListener("click", (e) => {
-      if (!userMenu.contains(e.target) && e.target !== userMenuBtn) closeUserMenu();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeUserMenu();
-    });
-  }
-
-  // =========================================================
   // ELEMENTS (MATCH YOUR HTML)
   // =========================================================
   const monthInput = $("monthInput");
@@ -125,6 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const exportPdfBtn = $("exportPdfBtn");
   const exportCsvBtn = $("exportCsvBtn");
   const printBtn = $("printBtn");
+  const sendEmailBtn = $("sendEmailBtn");
 
   const tbody = $("payslipTbody");
   const resultsMeta = $("resultsMeta");
@@ -207,14 +162,11 @@ document.addEventListener("DOMContentLoaded", () => {
       payslipNo: "PS-2026-01-00123",
       generatedDate: "2026-02-10",
       payDate: "—",
-      payMethod: "Bank",
-      accountMasked: "****7890",
+      bankName: "BDO",
+      accountNumber: "1234567890",
 
-      dailyRate: 610,
-      presentDays: 12,
-      leaveDays: 0,
-      absentDays: 1,
-      attendancePay: 7320,
+      basicPay: 10000,
+      allowancePay: 750,
 
       otHours: 4.5,
       otRate: 95,
@@ -238,6 +190,8 @@ document.addEventListener("DOMContentLoaded", () => {
       pagibigEr: 200,
 
       notes: "—",
+      deliveryStatus: "Not sent",
+      email: "juan@example.com",
     },
 
     {
@@ -258,14 +212,11 @@ document.addEventListener("DOMContentLoaded", () => {
       payslipNo: "PS-2026-01-00124",
       generatedDate: "2026-02-10",
       payDate: "—",
-      payMethod: "Cash",
-      accountMasked: "—",
+      bankName: "",
+      accountNumber: "",
 
-      dailyRate: 700,
-      presentDays: 12,
-      leaveDays: 0,
-      absentDays: 0,
-      attendancePay: 8400,
+      basicPay: 10500,
+      allowancePay: 500,
 
       otHours: 2,
       otRate: 105,
@@ -288,6 +239,8 @@ document.addEventListener("DOMContentLoaded", () => {
       pagibigEr: 200,
 
       notes: "—",
+      deliveryStatus: "Sent",
+      email: "",
     },
   ];
 
@@ -301,6 +254,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let page = 1;
   let perPage = rowsPerPage ? Number(rowsPerPage.value || 20) : 20;
+
+  const selectedIdsSet = new Set();
 
   // =========================================================
   // INIT DEFAULTS
@@ -320,7 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ENABLE/DISABLE TOP ACTIONS
   // =========================================================
   function setTopActionsEnabled(enabled) {
-    [exportPdfBtn, exportCsvBtn, printBtn, releaseAllBtn].forEach((btn) => {
+    [exportPdfBtn, exportCsvBtn, printBtn, releaseAllBtn, sendEmailBtn].forEach((btn) => {
       if (btn) btn.disabled = !enabled;
     });
     if (checkAll) checkAll.disabled = !enabled;
@@ -355,19 +310,14 @@ document.addEventListener("DOMContentLoaded", () => {
     safeText("runProcessedAt", run.processedAt);
     safeText("runProcessedBy", run.processedBy);
     setTopActionsEnabled(true);
+    if (sendEmailBtn) {
+      const ok = run.status === "Processed" || run.status === "Released";
+      sendEmailBtn.disabled = !ok;
+    }
   }
 
   initRunSelect();
   setRunUI(null);
-  if (RUNS.length && runSelect) {
-    selectedRunId = RUNS[0].id;
-    runSelect.value = selectedRunId;
-    const firstRun = RUNS.find((r) => r.id === selectedRunId) || null;
-    if (firstRun) {
-      setRunUI(firstRun);
-      if (monthInput) monthInput.value = firstRun.month;
-    }
-  }
 
   // =========================================================
   // SORTING + FILTERING
@@ -384,6 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (key === "period") return `${p.periodMonth || ""} ${p.cutoff || ""}`;
     if (key === "netPay") return Number(p.netPay || 0);
     if (key === "releaseStatus") return String(p.releaseStatus || "");
+    if (key === "delivery") return String(p.deliveryStatus || "");
     return String(p[key] || "");
   }
 
@@ -472,9 +423,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const s = String(status || "Draft");
     return `<span class="badge">${escapeHtml(s)}</span>`;
   }
+  function deliveryBadge(status) {
+    const s = String(status || "Not sent");
+    return `<span class="badge">${escapeHtml(s)}</span>`;
+  }
 
   function selectedIds() {
-    return $$("input.rowCheck:checked").map((cb) => cb.dataset.id);
+    return Array.from(selectedIdsSet);
   }
 
   function syncCheckAll() {
@@ -532,7 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const selected = new Set(selectedIds());
+    const selected = new Set(selectedIdsSet);
 
     pageItems.forEach((p) => {
       const tr = document.createElement("tr");
@@ -547,6 +502,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(`${p.periodMonth} (${p.cutoff})`)}</td>
         <td class="num"><strong>${escapeHtml(peso(p.netPay))}</strong></td>
         <td>${badge(p.releaseStatus)}</td>
+        <td>${deliveryBadge(p.deliveryStatus)}</td>
         <td class="col-actions">
           <div class="iconrow">
             <button class="iconbtn" type="button" data-action="view" data-id="${escapeHtml(p.id)}" title="View">👁</button>
@@ -560,6 +516,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     $$("input.rowCheck").forEach((cb) => {
       cb.addEventListener("change", () => {
+        if (cb.checked) selectedIdsSet.add(cb.dataset.id);
+        else selectedIdsSet.delete(cb.dataset.id);
         updateBulkBar();
         syncCheckAll();
       });
@@ -646,18 +604,21 @@ document.addEventListener("DOMContentLoaded", () => {
     set("psCutoffDates", cd.from === "—" ? "—" : `${cd.from} to ${cd.to}`);
 
     set("psPayDate", p.payDate || "—");
-    set("psPayMethod", p.payMethod || "—");
-    set("psAccount", p.accountMasked || "—");
+    const hasBank = !!(p.accountNumber || "").trim();
+    set("psPayMethod", hasBank ? "Bank" : "Cash");
+    const bankRow = $("psBankRow");
+    const acctRow = $("psAccountRow");
+    if (bankRow) bankRow.style.display = hasBank ? "" : "none";
+    if (acctRow) acctRow.style.display = hasBank ? "" : "none";
+    set("psBank", hasBank ? (p.bankName || "—") : "—");
+    set("psAccount", hasBank ? `****${String(p.accountNumber).slice(-4)}` : "—");
 
     const statusBadge = $("psStatusBadge");
     if (statusBadge) statusBadge.textContent = p.releaseStatus || "Draft";
 
     // earnings base
-    setMoney("psDailyRate", p.dailyRate);
-    set("psPresentDays", String(p.presentDays ?? 0));
-    set("psLeaveDays", String(p.leaveDays ?? 0));
-    set("psAbsentDays", String(p.absentDays ?? 0));
-    setMoney("psAttendancePay", p.attendancePay);
+    setMoney("psBasicPay", p.basicPay);
+    setMoney("psAllowancePay", p.allowancePay);
 
     set("psOtHours", Number(p.otHours || 0).toFixed(2));
     setMoney("psOtRate", p.otRate);
@@ -705,7 +666,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const totalEarnAdj = sumAmounts(earnAdj);
     const totalDedAdj = sumAmounts(dedAdj);
 
-    const baseGross = Number(p.attendancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
+    const baseGross = Number(p.basicPay || 0) + Number(p.allowancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
     const baseDed = attendanceDed + statutoryEeTotal + cashAdv + otherDed + totalDedAdj;
     const computedNet = baseGross - baseDed;
 
@@ -809,32 +770,36 @@ document.addEventListener("DOMContentLoaded", () => {
       const run = RUNS.find((r) => r.id === selectedRunId) || null;
       setRunUI(run);
 
+      selectedIdsSet.clear();
       $$("input.rowCheck").forEach((cb) => (cb.checked = false));
       if (checkAll) {
         checkAll.checked = false;
         checkAll.indeterminate = false;
       }
 
-      page = 1;
-      render();
-
       if (run) {
         if (monthInput) monthInput.value = run.month;
-  if (monthInput) monthInput.value = run.month;
+      }
 
-}
+      page = 1;
+      render();
     });
 
   // check all + bulk
   checkAll &&
     checkAll.addEventListener("change", () => {
-      $$("input.rowCheck").forEach((cb) => (cb.checked = checkAll.checked));
+      $$("input.rowCheck").forEach((cb) => {
+        cb.checked = checkAll.checked;
+        if (checkAll.checked) selectedIdsSet.add(cb.dataset.id);
+        else selectedIdsSet.delete(cb.dataset.id);
+      });
       updateBulkBar();
       syncCheckAll();
     });
 
   bulkCancelBtn &&
     bulkCancelBtn.addEventListener("click", () => {
+      selectedIdsSet.clear();
       $$("input.rowCheck").forEach((cb) => (cb.checked = false));
       if (checkAll) {
         checkAll.checked = false;
@@ -899,7 +864,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // top actions
   function exportCsv(list, filename) {
-    const headers = ["Emp ID", "Employee", "Assignment", "Pay Period", "Net Pay", "Status"];
+    const headers = ["Emp ID", "Employee", "Assignment", "Pay Period", "Net Pay", "Status", "Delivery"];
     const rows = list.map((p) => [
       p.empId,
       p.empName,
@@ -907,6 +872,7 @@ document.addEventListener("DOMContentLoaded", () => {
       `${p.periodMonth} (${p.cutoff})`,
       Number(p.netPay || 0).toFixed(2),
       p.releaseStatus,
+      p.deliveryStatus || "",
     ]);
 
     const csv = [
@@ -957,7 +923,41 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("All payslips in this run marked as Released (demo).");
     });
 
+  sendEmailBtn &&
+    sendEmailBtn.addEventListener("click", () => {
+      if (!selectedRunId) return;
+      const run = RUNS.find((r) => r.id === selectedRunId) || null;
+      if (!run || (run.status !== "Processed" && run.status !== "Released")) {
+        alert("Email sending is available after the run is Processed/Released.");
+        return;
+      }
+
+      const list = PAYSLIPS.filter((p) => p.runId === selectedRunId);
+      const skipped = [];
+      list.forEach((p) => {
+        if (!p.email) {
+          skipped.push(p.empId);
+          return;
+        }
+        p.deliveryStatus = "Queued";
+      });
+      render();
+
+      if (skipped.length) {
+        alert(`Skipped: no email (${skipped.length})`);
+      }
+
+      setTimeout(() => {
+        list.forEach((p) => {
+          if (p.email) p.deliveryStatus = "Sent";
+        });
+        render();
+        alert("Payslips queued and sent (demo).");
+      }, 600);
+    });
+
   // init
   bindHeaderSorting();
   render();
 });
+

@@ -1,15 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
+@extends('layouts.auth')
 
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+@section('title', 'Login | Aura Fortune G5 Traders Corporation')
+
+@section('vite')
     @vite(['resources/css/styles.css', 'resources/js/script.js'])
-    <title>Login | Aura Fortune G5 Traders Corporation</title>
-</head>
+@endsection
 
-<body>
-    <main class="page">
+@section('content')
+<main class="page">
         <section class="card" aria-label="Login card">
 
             <!-- LEFT PANEL -->
@@ -30,12 +28,10 @@
                     <h3 class="form-title">LOG IN</h3>
 
 
-                    @if ($errors->any())
+                    @if ($errors->has('login'))
                         <div class="server-errors" role="alert">
                             <ul>
-                                @foreach ($errors->all() as $error)
-                                    <li>{{ $error }}</li>
-                                @endforeach
+                                <li>{{ $errors->first('login') }}</li>
                             </ul>
                         </div>
                     @endif
@@ -44,9 +40,11 @@
                         autocomplete="on" novalidate>
                         @csrf
 
+                        @php($hasLoginError = $errors->has('login'))
+
                         <label class="field">
                             <span class="field-label">Username</span>
-                            <div class="input-wrap @error('username') is-invalid @enderror">
+                            <div class="input-wrap {{ $hasLoginError ? 'is-invalid' : '' }}">
                                 <span class="icon" aria-hidden="true">
                                     <svg class="icon__svg" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                                         <path
@@ -58,16 +56,16 @@
                             </div>
 
                             {{-- field-specific error --}}
-                            @error('username')
-                                <small class="error">{{ $message }}</small>
+                            @if ($hasLoginError)
+                                <small class="error">{{ $errors->first('login') }}</small>
                             @else
                                 <small class="error" id="userError"></small>
-                            @enderror
+                            @endif
                         </label>
 
                         <label class="field">
                             <span class="field-label">Password</span>
-                            <div class="input-wrap @error('password') is-invalid @enderror">
+                            <div class="input-wrap {{ $hasLoginError ? 'is-invalid' : '' }}">
                                 <span class="icon" aria-hidden="true">
                                     <svg class="icon__svg" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                                         <path
@@ -79,11 +77,11 @@
                             </div>
 
                             {{-- field-specific error --}}
-                            @error('password')
-                                <small class="error">{{ $message }}</small>
+                            @if ($hasLoginError)
+                                <small class="error">{{ $errors->first('login') }}</small>
                             @else
                                 <small class="error" id="passError"></small>
-                            @enderror
+                            @endif
                         </label>
 
                         <button class="btn" type="submit">LOGIN</button>
@@ -95,6 +93,5 @@
 
         </section>
     </main>
-</body>
+@endsection
 
-</html>

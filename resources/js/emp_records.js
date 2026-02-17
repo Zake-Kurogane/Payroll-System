@@ -1,50 +1,11 @@
-﻿document.addEventListener("DOMContentLoaded", () => {
-  // ===== Clock =====
-  const clockEl = document.getElementById("clock");
-  const dateEl = document.getElementById("date");
+﻿import { initClock } from "./shared/clock";
+import { initUserMenuDropdown } from "./shared/userMenu";
+import { initProfileDrawer } from "./shared/profileDrawer";
 
-  function pad(n) { return String(n).padStart(2, "0"); }
-  function tick() {
-    const d = new Date();
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12; h = h ? h : 12;
-
-    if (clockEl) clockEl.textContent = `${pad(h)}:${pad(m)} ${ampm}`;
-    if (dateEl) dateEl.textContent = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-  }
-  tick();
-  setInterval(tick, 1000);
-
-  // ===== User dropdown =====
-  const userMenuBtn = document.getElementById("userMenuBtn");
-  const userMenu = document.getElementById("userMenu");
-
-  function closeUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    userMenu.classList.remove("is-open");
-    userMenuBtn.setAttribute("aria-expanded", "false");
-  }
-  function toggleUserMenu() {
-    if (!userMenuBtn || !userMenu) return;
-    const isOpen = userMenu.classList.contains("is-open");
-    userMenu.classList.toggle("is-open", !isOpen);
-    userMenuBtn.setAttribute("aria-expanded", String(!isOpen));
-  }
-
-  if (userMenuBtn && userMenu) {
-    userMenuBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleUserMenu();
-    });
-    document.addEventListener("click", (e) => {
-      if (!userMenu.contains(e.target)) closeUserMenu();
-    });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") closeUserMenu();
-    });
-  }
+document.addEventListener("DOMContentLoaded", () => {
+  initClock();
+  initUserMenuDropdown();
+  initProfileDrawer();
 
   // ===== Constants =====
   const AREA_PLACES = ["Laak", "Pantukan", "Maragusan"];
@@ -71,6 +32,7 @@
       status: "Active",
       payType: "Monthly",
       rate: 20000,
+      allowance: 0,
       payGroup: "", // intentionally missing to show badge
 
       assignmentType: "Area",
@@ -80,6 +42,9 @@
       mobile: "09123456789",
       email: "juan@example.com",
       address: "Tagum City",
+      bankName: "",
+      accountName: "",
+      accountNumber: "",
       sss: "12-3456789-0",
       ph: "", // missing to show badge
       pagibig: "1234-5678-9012",
@@ -96,7 +61,8 @@
       status: "Active",
       payType: "Monthly",
       rate: 24000,
-      payGroup: "Davao • Semi-monthly (1–15 / 16–End)",
+      allowance: 1500,
+      payGroup: "Davao Ã¯Â¿Â½ Semi-monthly (1Ã¯Â¿Â½15 / 16Ã¯Â¿Â½End)",
 
       assignmentType: "Davao",
       areaPlace: "",
@@ -105,6 +71,9 @@
       mobile: "09998887777",
       email: "maria@example.com",
       address: "Tagum City",
+      bankName: "BDO",
+      accountName: "Maria Santos",
+      accountNumber: "1234567890",
       sss: "",
       ph: "",
       pagibig: "",
@@ -121,6 +90,7 @@
       status: "Inactive",
       payType: "Monthly",
       rate: 0, // intentionally missing basic pay to show badge
+      allowance: 0,
       payGroup: "",
 
       assignmentType: "Tagum",
@@ -130,6 +100,9 @@
       mobile: "",
       email: "",
       address: "",
+      bankName: "",
+      accountName: "",
+      accountNumber: "",
       sss: "",
       ph: "",
       pagibig: "",
@@ -207,6 +180,8 @@
   const f_hired = F("f_hired");
   const f_payType = F("f_payType");
   const f_rate = F("f_rate");
+  const f_allowance = F("f_allowance");
+  const f_totalSalary = F("f_totalSalary");
 
   const f_assignmentType = F("f_assignmentType");
   const f_areaPlace = F("f_areaPlace");
@@ -216,6 +191,11 @@
   const f_ph = F("f_ph");
   const f_pagibig = F("f_pagibig");
   const f_tin = F("f_tin");
+
+  const f_bankName = F("f_bankName");
+  const f_accountName = F("f_accountName");
+  const f_accountNumber = F("f_accountNumber");
+  const f_payoutMethod = F("f_payoutMethod");
 
   const f_caEligible = F("f_caEligible");
   const f_caMax = F("f_caMax");
@@ -251,6 +231,8 @@
     if (f_status) f_status.value = "Active";
     syncAssignmentUI();
     syncCashAdvanceFields();
+    syncSalaryFields();
+    syncPayoutFields();
   }
 
   function fillForm(emp) {
@@ -270,6 +252,7 @@
     f_hired && (f_hired.value = emp.hired || "");
     f_payType && (f_payType.value = emp.payType || "");
     f_rate && (f_rate.value = emp.rate ?? "");
+    f_allowance && (f_allowance.value = emp.allowance ?? 0);
 
     f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
@@ -278,9 +261,14 @@
     f_ph && (f_ph.value = emp.ph || "");
     f_pagibig && (f_pagibig.value = emp.pagibig || "");
     f_tin && (f_tin.value = emp.tin || "");
+    f_bankName && (f_bankName.value = emp.bankName || "");
+    f_accountName && (f_accountName.value = emp.accountName || "");
+    f_accountNumber && (f_accountNumber.value = emp.accountNumber || "");
 
     syncAssignmentUI();
     syncCashAdvanceFields();
+    syncSalaryFields();
+    syncPayoutFields();
   }
 
   function collectForm() {
@@ -300,6 +288,7 @@
       hired: f_hired?.value || "",
       payType: f_payType?.value?.trim(),
       rate: Number(f_rate?.value || 0),
+      allowance: Number(f_allowance?.value || 0),
 
       assignmentType: f_assignmentType?.value?.trim(),
       areaPlace: f_areaPlace?.value?.trim(),
@@ -308,6 +297,10 @@
       ph: f_ph?.value?.trim(),
       pagibig: f_pagibig?.value?.trim(),
       tin: f_tin?.value?.trim(),
+
+      bankName: f_bankName?.value?.trim(),
+      accountName: f_accountName?.value?.trim(),
+      accountNumber: f_accountNumber?.value?.trim(),
     };
   }
 
@@ -315,34 +308,46 @@
   function fullName(emp) {
     return `${emp.last}, ${emp.first}${emp.middle ? " " + emp.middle : ""}`;
   }
-
   function money(n) {
     const num = Number(n);
-    if (!Number.isFinite(num)) return "—";
+    if (!Number.isFinite(num)) return "&#8369;";
+    return `&#8369; ${num.toLocaleString()}`;
+  }
+  function moneyText(n) {
+    const num = Number(n);
+    if (!Number.isFinite(num)) return "₱";
     return `₱ ${num.toLocaleString()}`;
   }
-
+  function salaryTotal(emp) {
+    return Number(emp.rate || 0) + Number(emp.allowance || 0);
+  }
+  function maskAccount(acct) {
+    const raw = String(acct || "").replace(/\s+/g, "");
+    if (!raw) return "";
+    return `****${raw.slice(-4)}`;
+  }
+  function payoutMethod(emp) {
+    return (emp.accountNumber || "").trim() ? "BANK" : "CASH";
+  }
   function assignmentText(emp) {
     const t = (emp.assignmentType || "").trim();
-    if (!t) return "—";
-    if (t === "Area") return `Area (${(emp.areaPlace || "").trim() || "—"})`;
+    if (!t) return "-";
+    if (t === "Area") return `Area (${(emp.areaPlace || "").trim() || "-"})`;
     return t;
   }
-
   function govShort(emp) {
     const parts = [];
     if (emp.sss) parts.push("SSS");
     if (emp.ph) parts.push("PH");
     if (emp.pagibig) parts.push("PAG");
     if (emp.tin) parts.push("TIN");
-    return parts.length ? parts.join(" • ") : "—";
+    return parts.length ? parts.join(", ") : "-";
   }
-
   function computeCashAdvance(empType, basicPay) {
     const isRegular = String(empType || "").toLowerCase() === "regular";
-    if (!isRegular) return { eligible: "Not eligible", max: "—" };
+    if (!isRegular) return { eligible: "Not eligible", max: "-" };
     const max = Number(basicPay || 0) * 2;
-    return { eligible: "✅ Eligible", max: money(max) };
+    return { eligible: "Eligible", max: moneyText(max) };
   }
 
   function populateAreaPlaces(selectEl) {
@@ -385,6 +390,18 @@
     const ca = computeCashAdvance(f_type?.value || "", Number(f_rate?.value || 0));
     f_caEligible.value = ca.eligible;
     f_caMax.value = ca.max;
+  }
+
+  function syncSalaryFields() {
+    if (!f_totalSalary) return;
+    const total = Number(f_rate?.value || 0) + Number(f_allowance?.value || 0);
+    f_totalSalary.value = moneyText(total);
+  }
+
+  function syncPayoutFields() {
+    if (!f_payoutMethod) return;
+    const hasAcct = (f_accountNumber?.value || "").trim().length > 0;
+    f_payoutMethod.value = hasAcct ? "BANK" : "CASH";
   }
 
   function updateBulkBar() {
@@ -440,12 +457,12 @@
     const missing = getPayrollMissing(emp);
 
     if (!missing.length) {
-      return `<span class="badge badge--ok">✅ Complete</span>`;
+      return `<span class="badge badge--ok">&#10003; Complete</span>`;
     }
 
     const badges = missing.map(m => {
       const bad = (m === "Gov IDs" || m === "Basic Pay");
-      return `<span class="badge ${bad ? "badge--bad" : "badge--warn"}">⚠️ Missing ${m}</span>`;
+      return `<span class="badge ${bad ? "badge--bad" : "badge--warn"}">&#9888; Missing ${m}</span>`;
     }).join("");
 
     return `<div class="badges">${badges}</div>`;
@@ -476,7 +493,7 @@
       else if (key === "position") res = String(a.position || "").localeCompare(String(b.position || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "type") res = String(a.type || "").localeCompare(String(b.type || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "assignment") res = String(assignmentText(a)).localeCompare(String(assignmentText(b))) || fullName(a).localeCompare(fullName(b));
-      else if (key === "rate") res = (Number(a.rate || 0) - Number(b.rate || 0)) || fullName(a).localeCompare(fullName(b));
+      else if (key === "salary") res = (salaryTotal(a) - salaryTotal(b)) || fullName(a).localeCompare(fullName(b));
       else res = fullName(a).localeCompare(fullName(b));
       return res * sign;
     });
@@ -500,7 +517,7 @@
     });
   }
 
-  // ✅ Filters/Search
+  // ? Filters/Search
   function applyFilters(list) {
     const q = (searchInput?.value || "").trim().toLowerCase();
     const dept = deptFilter?.value || "All";
@@ -509,7 +526,7 @@
     const areaPlace = areaPlaceFilter?.value || "All";
 
     return list.filter(emp => {
-      const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${emp.payGroup || ""} ${govShort(emp)}`
+      const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${emp.payGroup || ""} ${govShort(emp)} ${payoutMethod(emp)}`
         .toLowerCase();
 
       const okQ = !q || text.includes(q);
@@ -562,13 +579,15 @@
         </td>
         <td>${emp.empId}</td>
         <td>${fullName(emp)}</td>
-        <td>${emp.dept || "—"}</td>
-        <td>${emp.position || "—"}</td>
-        <td>${emp.type || "—"}</td>
+        <td>${emp.dept || "-"}</td>
+        <td>${emp.position || "-"}</td>
+        <td>${emp.type || "-"}</td>
         <td>${assignmentText(emp)}</td>
-        <td>${money(emp.rate)} <span class="muted small">(${emp.payType || "—"})</span></td>
+        <td>
+          <div class="salaryVal">${money(salaryTotal(emp))}</div>
+        </td>
 
-        <!-- ✅ NEW -->
+        <!-- ? NEW -->
         <td>${payrollBadgeHTML(emp)}</td>
 
         <td>${govShort(emp)}</td>
@@ -707,7 +726,7 @@
     if (action === "edit") {
       selectedEmpId = id;
       fillForm(emp);
-      openDrawer("Edit Employee", `${fullName(emp)} • ${emp.empId}`);
+      openDrawer("Edit Employee", `${fullName(emp)} - ${emp.empId}`);
     }
     if (action === "delete") {
       if (confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) {
@@ -742,7 +761,12 @@
 
   // live cash advance preview
   f_type && f_type.addEventListener("change", syncCashAdvanceFields);
-  f_rate && f_rate.addEventListener("input", syncCashAdvanceFields);
+  f_rate && f_rate.addEventListener("input", () => {
+    syncCashAdvanceFields();
+    syncSalaryFields();
+  });
+  f_allowance && f_allowance.addEventListener("input", syncSalaryFields);
+  f_accountNumber && f_accountNumber.addEventListener("input", syncPayoutFields);
 
   deleteBtn && deleteBtn.addEventListener("click", () => {
     if (!selectedEmpId) return;
@@ -769,6 +793,16 @@
       alert("Basic Pay must be a valid number.");
       return;
     }
+    if (!Number.isFinite(data.allowance) || data.allowance < 0) {
+      alert("Allowance must be a valid number.");
+      return;
+    }
+    if (data.accountNumber) {
+      if (!data.bankName || !data.accountName) {
+        alert("Bank Name and Account Name are required when Account Number is provided.");
+        return;
+      }
+    }
 
     if (selectedEmpId) {
       employees = employees.map(emp => emp.empId === selectedEmpId ? { ...emp, ...data } : emp);
@@ -786,6 +820,8 @@
   // Init
   syncAssignmentUI();
   syncCashAdvanceFields();
+  syncSalaryFields();
+  syncPayoutFields();
   if (areaPlaceFilterWrap && assignmentFilter !== "Area") {
     areaPlaceFilterWrap.style.display = "none";
   }
