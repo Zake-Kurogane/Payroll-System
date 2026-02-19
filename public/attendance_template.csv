@@ -1,0 +1,2 @@
+emp_no,date,clock_in,clock_out,minutes_late,minutes_undertime,ot_hours,code,status
+1102,2026-02-19,08:00,17:00,0,0,1.5,P,

@@ -2,13 +2,13 @@
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
 
   // ===== Constants =====
-  const AREA_PLACES = ["Laak", "Pantukan", "Maragusan"];
+  let areaPlaces = Array.isArray(window.__areaPlaces) ? window.__areaPlaces : [];
 
   // ===== Payroll Required Field Rules =====
   const PAYROLL_REQUIRED = {
@@ -19,96 +19,114 @@ document.addEventListener("DOMContentLoaded", () => {
     govRequiredFields: ["sss", "ph", "pagibig", "tin"], // adjust if needed
   };
 
-  // ===== Demo data (3 employees) =====
-  let employees = [
-    {
-      empId: "1023",
-      first: "Juan",
-      last: "Dela Cruz",
-      middle: "",
-      dept: "Admin",
-      position: "Clerk",
-      type: "Regular",
-      status: "Active",
-      payType: "Monthly",
-      rate: 20000,
-      allowance: 0,
-      payGroup: "", // intentionally missing to show badge
+  // ===== API helpers =====
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
+  const serverRendered = window.__serverRender === true;
+  if (serverRendered) {
+    const navEntries = performance.getEntriesByType && performance.getEntriesByType("navigation");
+    const navType = navEntries && navEntries.length ? navEntries[0].type : "";
+    if ((navType === "reload" || navType === "reload_navigation") && window.location.search) {
+      window.location.href = window.location.pathname;
+    }
+  }
 
-      assignmentType: "Area",
-      areaPlace: "Pantukan",
-      birthday: "1998-06-15",
-      hired: "2023-02-10",
-      mobile: "09123456789",
-      email: "juan@example.com",
-      address: "Tagum City",
-      bankName: "",
-      accountName: "",
-      accountNumber: "",
-      sss: "12-3456789-0",
-      ph: "", // missing to show badge
-      pagibig: "1234-5678-9012",
-      tin: ""
-    },
-    {
-      empId: "1044",
-      first: "Maria",
-      last: "Santos",
-      middle: "",
-      dept: "HR",
-      position: "Assistant",
-      type: "Regular",
-      status: "Active",
-      payType: "Monthly",
-      rate: 24000,
-      allowance: 1500,
-      payGroup: "Davao Ã¯Â¿Â½ Semi-monthly (1Ã¯Â¿Â½15 / 16Ã¯Â¿Â½End)",
+  const AUTO_REFRESH_MS = 2000;
+  let isAutoRefreshing = false;
+  let sortLocked = false;
+  let lastHeartbeat = null;
 
-      assignmentType: "Davao",
-      areaPlace: "",
-      birthday: "1999-11-02",
-      hired: "2022-08-01",
-      mobile: "09998887777",
-      email: "maria@example.com",
-      address: "Tagum City",
-      bankName: "BDO",
-      accountName: "Maria Santos",
-      accountNumber: "1234567890",
-      sss: "",
-      ph: "",
-      pagibig: "",
-      tin: ""
-    },
-    {
-      empId: "1102",
-      first: "Leo",
-      last: "Garcia",
-      middle: "",
-      dept: "IT",
-      position: "Staff",
-      type: "Contractual",
-      status: "Inactive",
-      payType: "Monthly",
-      rate: 0, // intentionally missing basic pay to show badge
-      allowance: 0,
+  async function apiFetch(url, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.headers || {}),
+    };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
+
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = data?.message || "Request failed.";
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function fromApi(emp) {
+    return {
+      empId: emp.emp_no,
+      first: emp.first_name,
+      last: emp.last_name,
+      middle: emp.middle_name || "",
+      dept: emp.department || "",
+      position: emp.position || "",
+      type: emp.employment_type || "",
+      status: emp.status || emp.employment_status?.label || "Active",
+      statusId: emp.employment_status_id || "",
+      payType: emp.pay_type || "",
+      rate: Number(emp.basic_pay || 0),
+      allowance: Number(emp.allowance || 0),
       payGroup: "",
 
-      assignmentType: "Tagum",
-      areaPlace: "",
-      birthday: "2000-03-10",
-      hired: "2024-01-15",
-      mobile: "",
-      email: "",
-      address: "",
-      bankName: "",
-      accountName: "",
-      accountNumber: "",
-      sss: "",
-      ph: "",
-      pagibig: "",
-      tin: ""
-    },
-  ];
+      assignmentType: emp.assignment_type || "",
+      areaPlace: emp.area_place || "",
+      birthday: emp.birthday || "",
+      hired: emp.date_hired || "",
+      mobile: emp.mobile || "",
+      email: emp.email || "",
+      address: emp.address || "",
+      bankName: emp.bank_name || "",
+      accountName: emp.bank_account_name || "",
+      accountNumber: emp.bank_account_number || "",
+      sss: emp.sss || "",
+      ph: emp.philhealth || "",
+      pagibig: emp.pagibig || "",
+      tin: emp.tin || "",
+    };
+  }
+
+  function toApi(data) {
+    return {
+      emp_no: data.empId,
+      first_name: data.first,
+      middle_name: data.middle || null,
+      last_name: data.last,
+      status: data.status || null,
+      employment_status_id: data.statusId || null,
+      birthday: data.birthday || null,
+      mobile: data.mobile || null,
+      address: data.address || null,
+      email: data.email || null,
+      department: data.dept,
+      position: data.position,
+      employment_type: data.type || null,
+      pay_type: data.payType || null,
+      date_hired: data.hired || null,
+      assignment_type: data.assignmentType || null,
+      area_place: data.areaPlace || null,
+      basic_pay: data.rate || 0,
+      allowance: data.allowance || 0,
+      bank_name: data.bankName || null,
+      bank_account_name: data.accountName || null,
+      bank_account_number: data.accountNumber || null,
+      payout_method: (data.accountNumber || "").trim() ? "BANK" : "CASH",
+      sss: data.sss || null,
+      philhealth: data.ph || null,
+      pagibig: data.pagibig || null,
+      tin: data.tin || null,
+    };
+  }
+
+  async function loadEmployees(params = {}) {
+    const qs = new URLSearchParams(params);
+    const url = qs.toString() ? `/employees?${qs.toString()}` : "/employees";
+    const rows = await apiFetch(url);
+    employees = Array.isArray(rows) ? rows.map(fromApi) : [];
+  }
+
+  let employees = [];
 
   // ===== Elements =====
   const tbody = document.getElementById("empTbody");
@@ -118,14 +136,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
   const deptFilter = document.getElementById("deptFilter");
   const statusFilter = document.getElementById("statusFilter");
-  const assignBtns = Array.from(document.querySelectorAll(".seg__btn--emp"));
+  const searchSuggest = document.getElementById("searchSuggest");
+  const assignSeg = document.getElementById("assignSeg");
+  let assignBtns = [];
   const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
   const areaPlaceFilter = document.getElementById("areaPlaceFilter");
 
   // import/export
   const exportBtn = document.getElementById("exportBtn");
-  const importBtn = document.getElementById("importBtn");
-  const importFile = document.getElementById("importFile");
+
 
   // table select all
   const selectAll = document.getElementById("selectAll");
@@ -133,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const selectedCountEmp = document.getElementById("selectedCountEmp");
   const bulkDeleteEmpBtn = document.getElementById("bulkDeleteEmpBtn");
   const bulkAssignSelect = document.getElementById("bulkAssignSelect");
+  const bulkAreaPlaceSelect = document.getElementById("bulkAreaPlaceSelect");
   const bulkAssignApply = document.getElementById("bulkAssignApply");
 
   // pagination
@@ -161,6 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const empForm = document.getElementById("empForm");
   const drawerTitleEl = document.getElementById("drawerTitle");
   const drawerSubEl = document.getElementById("drawerSubtitle");
+  const toastEl = document.getElementById("toast");
 
   const F = (id) => document.getElementById(id);
 
@@ -204,6 +225,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedEmpId = null;
   let selectedIds = new Set();
   let assignmentFilter = "All";
+  let filterStatusId = "";
+  let filterDept = "";
+  let statusLabelMap = new Map();
 
   // ===== Drawer helpers =====
   function openDrawer(title, subtitle) {
@@ -224,11 +248,71 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedEmpId = null;
   }
 
+  function showToast(message) {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.classList.add("is-show");
+    setTimeout(() => {
+      toastEl.classList.remove("is-show");
+    }, 1600);
+  }
+
+  function flushPendingToast() {
+    const msg = sessionStorage.getItem("emp_records_toast");
+    if (msg) {
+      sessionStorage.removeItem("emp_records_toast");
+      showToast(msg);
+    }
+  }
+
+  function onlyDigits(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  function formatWithGroups(value, groups) {
+    const digits = onlyDigits(value);
+    if (!digits) return "";
+    const parts = [];
+    let idx = 0;
+    for (const size of groups) {
+      if (idx >= digits.length) break;
+      parts.push(digits.slice(idx, idx + size));
+      idx += size;
+    }
+    if (idx < digits.length) parts.push(digits.slice(idx));
+    return parts.join("-");
+  }
+
+  function formatTIN(value) {
+    return formatWithGroups(onlyDigits(value).slice(0, 12), [3, 3, 3, 3]);
+  }
+
+  function formatSSS(value) {
+    return formatWithGroups(onlyDigits(value).slice(0, 10), [2, 7, 1]);
+  }
+
+  function formatPhilHealth(value) {
+    return formatWithGroups(onlyDigits(value).slice(0, 12), [2, 9, 1]);
+  }
+
+  function formatPagibig(value) {
+    return formatWithGroups(onlyDigits(value).slice(0, 12), [4, 4, 4]);
+  }
+
+  function formatMobile(value) {
+    return formatWithGroups(onlyDigits(value).slice(0, 11), [4, 3, 4]);
+  }
+
+  function formatAccount(value) {
+    const digits = onlyDigits(value).slice(0, 20);
+    return digits.replace(/(.{4})/g, "$1-").replace(/-$/, "");
+  }
+
   function clearForm() {
     empForm?.reset();
     if (f_assignmentType) f_assignmentType.value = "Davao";
     if (f_areaPlace) f_areaPlace.value = "";
-    if (f_status) f_status.value = "Active";
+    if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
     syncAssignmentUI();
     syncCashAdvanceFields();
     syncSalaryFields();
@@ -238,12 +322,19 @@ document.addEventListener("DOMContentLoaded", () => {
   function fillForm(emp) {
     if (!emp) return;
     f_empId && (f_empId.value = emp.empId || "");
-    f_status && (f_status.value = emp.status || "Active");
+    if (f_status) {
+      if (emp.statusId) {
+        f_status.value = String(emp.statusId);
+      } else {
+        const match = Array.from(f_status.options).find(opt => opt.text === (emp.status || ""));
+        if (match) f_status.value = match.value;
+      }
+    }
     f_first && (f_first.value = emp.first || "");
     f_last && (f_last.value = emp.last || "");
     f_middle && (f_middle.value = emp.middle || "");
     f_bday && (f_bday.value = emp.birthday || "");
-    f_mobile && (f_mobile.value = emp.mobile || "");
+    f_mobile && (f_mobile.value = formatMobile(emp.mobile || ""));
     f_email && (f_email.value = emp.email || "");
     f_address && (f_address.value = emp.address || "");
     f_dept && (f_dept.value = emp.dept || "");
@@ -257,13 +348,13 @@ document.addEventListener("DOMContentLoaded", () => {
     f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
 
-    f_sss && (f_sss.value = emp.sss || "");
-    f_ph && (f_ph.value = emp.ph || "");
-    f_pagibig && (f_pagibig.value = emp.pagibig || "");
-    f_tin && (f_tin.value = emp.tin || "");
+    f_sss && (f_sss.value = formatSSS(emp.sss || ""));
+    f_ph && (f_ph.value = formatPhilHealth(emp.ph || ""));
+    f_pagibig && (f_pagibig.value = formatPagibig(emp.pagibig || ""));
+    f_tin && (f_tin.value = formatTIN(emp.tin || ""));
     f_bankName && (f_bankName.value = emp.bankName || "");
     f_accountName && (f_accountName.value = emp.accountName || "");
-    f_accountNumber && (f_accountNumber.value = emp.accountNumber || "");
+    f_accountNumber && (f_accountNumber.value = formatAccount(emp.accountNumber || ""));
 
     syncAssignmentUI();
     syncCashAdvanceFields();
@@ -272,14 +363,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function collectForm() {
+    const statusOption = f_status ? f_status.options[f_status.selectedIndex] : null;
+    const statusLabel = statusOption ? statusOption.text.trim() : "";
     return {
       empId: f_empId?.value?.trim(),
-      status: f_status?.value?.trim(),
+      status: statusLabel,
+      statusId: f_status?.value?.trim(),
       first: f_first?.value?.trim(),
       last: f_last?.value?.trim(),
       middle: f_middle?.value?.trim(),
       birthday: f_bday?.value || "",
-      mobile: f_mobile?.value?.trim(),
+      mobile: onlyDigits(f_mobile?.value),
       email: f_email?.value?.trim(),
       address: f_address?.value?.trim(),
       dept: f_dept?.value?.trim(),
@@ -293,14 +387,14 @@ document.addEventListener("DOMContentLoaded", () => {
       assignmentType: f_assignmentType?.value?.trim(),
       areaPlace: f_areaPlace?.value?.trim(),
 
-      sss: f_sss?.value?.trim(),
-      ph: f_ph?.value?.trim(),
-      pagibig: f_pagibig?.value?.trim(),
-      tin: f_tin?.value?.trim(),
+      sss: onlyDigits(f_sss?.value),
+      ph: onlyDigits(f_ph?.value),
+      pagibig: onlyDigits(f_pagibig?.value),
+      tin: onlyDigits(f_tin?.value),
 
       bankName: f_bankName?.value?.trim(),
       accountName: f_accountName?.value?.trim(),
-      accountNumber: f_accountNumber?.value?.trim(),
+      accountNumber: onlyDigits(f_accountNumber?.value),
     };
   }
 
@@ -350,13 +444,93 @@ document.addEventListener("DOMContentLoaded", () => {
     return { eligible: "Eligible", max: moneyText(max) };
   }
 
+  function exportEmployeesToXlsx(list, filename) {
+    if (!list.length) return;
+    const xlsx = window.XLSX;
+    if (!xlsx) {
+      alert("XLSX library not loaded. Please refresh the page.");
+      return;
+    }
+    const header = [
+      "Employee ID",
+      "Status",
+      "First Name",
+      "Last Name",
+      "Middle Name",
+      "Birthday",
+      "Mobile",
+      "Email",
+      "Address",
+      "Department",
+      "Position",
+      "Employment Type",
+      "Date Hired",
+      "Pay Type",
+      "Basic Pay",
+      "Allowance",
+      "Total Salary",
+      "Assignment Type",
+      "Area Place",
+      "Cash Advance Eligible",
+      "Cash Advance Max",
+      "SSS",
+      "PhilHealth",
+      "Pag-IBIG",
+      "TIN",
+      "Bank Name",
+      "Bank Account Name",
+      "Bank Account Number",
+      "Payout Method",
+    ];
+    const rows = list.map(emp => {
+      const ca = computeCashAdvance(emp.type, emp.rate);
+      return [
+        emp.empId,
+        emp.status || "",
+        emp.first,
+        emp.last,
+        emp.middle || "",
+        emp.birthday || "",
+        emp.mobile || "",
+        emp.email || "",
+        emp.address || "",
+        emp.dept || "",
+        emp.position || "",
+        emp.type || "",
+        emp.hired || "",
+        emp.payType || "",
+        Number(emp.rate || 0),
+        Number(emp.allowance || 0),
+        salaryTotal(emp),
+        emp.assignmentType || "",
+        emp.areaPlace || "",
+        ca.eligible || "",
+        ca.max || "",
+        emp.sss || "",
+        emp.ph || "",
+        emp.pagibig || "",
+        emp.tin || "",
+        emp.bankName || "",
+        emp.accountName || "",
+        emp.accountNumber || "",
+        payoutMethod(emp),
+      ];
+    });
+
+    const ws = xlsx.utils.aoa_to_sheet([header, ...rows]);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Employees");
+    xlsx.writeFile(wb, filename, { bookType: "xlsx" });
+  }
+
+
   function populateAreaPlaces(selectEl) {
     if (!selectEl) return;
     const current = selectEl.value;
     selectEl.innerHTML =
       `<option value="">-- Select area place --</option>` +
-      AREA_PLACES.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (AREA_PLACES.includes(current)) selectEl.value = current;
+      areaPlaces.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (areaPlaces.includes(current)) selectEl.value = current;
   }
 
   function populateAreaFilterPlaces(selectEl) {
@@ -364,8 +538,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const current = selectEl.value;
     selectEl.innerHTML =
       `<option value="All" selected>All</option>` +
-      AREA_PLACES.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (current && (current === "All" || AREA_PLACES.includes(current))) {
+      areaPlaces.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (current && (current === "All" || areaPlaces.includes(current))) {
       selectEl.value = current;
     }
   }
@@ -416,6 +590,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!show) {
       if (bulkAssignSelect) bulkAssignSelect.value = "";
+      if (bulkAreaPlaceSelect) {
+        bulkAreaPlaceSelect.value = "";
+        bulkAreaPlaceSelect.style.display = "none";
+      }
       if (bulkAssignApply) bulkAssignApply.disabled = true;
     } else if (bulkAssignSelect && bulkAssignApply) {
       bulkAssignApply.disabled = !bulkAssignSelect.value;
@@ -517,27 +695,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ? Filters/Search
+  // Server-side filters/search (applyFilters is now a passthrough)
   function applyFilters(list) {
-    const q = (searchInput?.value || "").trim().toLowerCase();
-    const dept = deptFilter?.value || "All";
-    const status = statusFilter?.value || "All";
-    const assign = assignmentFilter || "All";
-    const areaPlace = areaPlaceFilter?.value || "All";
-
-    return list.filter(emp => {
-      const text = `${emp.empId} ${fullName(emp)} ${emp.dept} ${emp.position} ${emp.type} ${emp.status} ${assignmentText(emp)} ${emp.payGroup || ""} ${govShort(emp)} ${payoutMethod(emp)}`
-        .toLowerCase();
-
-      const okQ = !q || text.includes(q);
-      const okDept = dept === "All" || emp.dept === dept;
-      const okStatus = status === "All" || emp.status === status;
-      const t = (emp.assignmentType || "").trim();
-      const okAssign = assign === "All" || t === assign;
-      const okArea = assign !== "Area" || areaPlace === "All" || (emp.areaPlace || "").trim() === areaPlace;
-
-      return okQ && okDept && okStatus && okAssign && okArea;
-    });
+    return list;
   }
 
   // ===== Render =====
@@ -573,6 +733,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isChecked = selectedIds.has(emp.empId);
 
       const tr = document.createElement("tr");
+      if (isChecked) tr.classList.add("is-selected");
       tr.innerHTML = `
         <td class="col-check">
           <input class="empCheck" type="checkbox" data-id="${emp.empId}" ${isChecked ? "checked" : ""} aria-label="Select employee ${emp.empId}">
@@ -580,8 +741,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${emp.empId}</td>
         <td>${fullName(emp)}</td>
         <td>${emp.dept || "-"}</td>
-        <td>${emp.position || "-"}</td>
-        <td>${emp.type || "-"}</td>
         <td>${assignmentText(emp)}</td>
         <td>
           <div class="salaryVal">${money(salaryTotal(emp))}</div>
@@ -589,8 +748,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <!-- ? NEW -->
         <td>${payrollBadgeHTML(emp)}</td>
-
-        <td>${govShort(emp)}</td>
         <td class="actions">
           <button class="iconbtn" type="button" data-action="edit" data-id="${emp.empId}" title="Edit" aria-label="Edit">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -629,28 +786,271 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===== Events =====
-  [searchInput, deptFilter, statusFilter].forEach(el => {
-    if (!el) return;
-    el.addEventListener(el === searchInput ? "input" : "change", () => {
-      currentPage = 1;
-      render();
-    });
-  });
+  async function reloadEmployees() {
+    const q = (searchInput?.value || "").trim();
+    let dept = deptFilter?.value || "";
+    let status = statusFilter?.value || "";
+    const assign = assignmentFilter || "";
+    const areaPlace = areaPlaceFilter?.value || "";
 
-  if (areaPlaceFilter) {
-    populateAreaFilterPlaces(areaPlaceFilter);
-    areaPlaceFilter.addEventListener("change", () => {
-      currentPage = 1;
-      render();
+    if (dept === "All") dept = "";
+    if (status === "All") status = "";
+
+    await loadEmployees({
+      q: q || undefined,
+      department: dept || undefined,
+      status: status || undefined,
+      assignment: assign && assign !== "All" ? assign : undefined,
+      area_place: assign === "Area" && areaPlace && areaPlace !== "All" ? areaPlace : undefined,
+    });
+    currentPage = 1;
+    render();
+  }
+
+  function shouldSkipAutoRefresh() {
+    if (document.hidden) return true;
+    if (drawer?.classList.contains("is-open")) return true;
+    const active = document.activeElement;
+    if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return true;
+    if (selectedIds.size > 0) return true;
+    return false;
+  }
+
+  async function runAutoRefresh() {
+    if (isAutoRefreshing || shouldSkipAutoRefresh()) return;
+    isAutoRefreshing = true;
+    try {
+      const hb = await apiFetch("/employees/heartbeat");
+      const next = hb ? `${hb.max_updated_at || ""}|${hb.total || 0}` : null;
+      if (!lastHeartbeat) {
+        lastHeartbeat = next;
+        return;
+      }
+      if (next && next !== lastHeartbeat) {
+        lastHeartbeat = next;
+        if (serverRendered) {
+          window.location.reload();
+          return;
+        }
+        await reloadEmployees();
+      }
+    } finally {
+      isAutoRefreshing = false;
+    }
+  }
+
+  if (!serverRendered) {
+    [searchInput, deptFilter, statusFilter].forEach(el => {
+      if (!el) return;
+      el.addEventListener(el === searchInput ? "input" : "change", () => {
+        reloadEmployees();
+      });
     });
   }
 
-  if (assignBtns.length) {
+  if (bulkAssignSelect && bulkAssignApply) {
+    bulkAssignSelect.addEventListener("change", () => {
+      const isArea = bulkAssignSelect.value === "Area";
+      if (bulkAreaPlaceSelect) {
+        if (isArea) {
+          populateAreaPlaces(bulkAreaPlaceSelect);
+          bulkAreaPlaceSelect.style.display = "";
+        } else {
+          bulkAreaPlaceSelect.value = "";
+          bulkAreaPlaceSelect.style.display = "none";
+        }
+      }
+      bulkAssignApply.disabled = !bulkAssignSelect.value || (isArea && !bulkAreaPlaceSelect?.value);
+    });
+  }
+
+  bulkAreaPlaceSelect && bulkAreaPlaceSelect.addEventListener("change", () => {
+    const isArea = bulkAssignSelect?.value === "Area";
+    if (bulkAssignApply) {
+      bulkAssignApply.disabled = !bulkAssignSelect?.value || (isArea && !bulkAreaPlaceSelect.value);
+    }
+  });
+
+  bulkAssignApply && bulkAssignApply.addEventListener("click", async () => {
+    const assignment = bulkAssignSelect?.value || "";
+    if (!assignment || selectedIds.size === 0) return;
+
+    const ids = Array.from(selectedIds);
+    const areaPlace = assignment === "Area" ? (bulkAreaPlaceSelect?.value || "") : "";
+    if (assignment === "Area" && !areaPlace) {
+      alert("Please select an Area Place.");
+      return;
+    }
+    try {
+      await apiFetch("/employees/bulk-assign", {
+        method: "POST",
+        body: JSON.stringify({ ids, assignment, area_place: areaPlace || null }),
+      });
+
+      employees.forEach(emp => {
+        if (selectedIds.has(emp.empId)) {
+          emp.assignmentType = assignment;
+          emp.areaPlace = assignment === "Area" ? areaPlace : "";
+        }
+      });
+
+      if (serverRendered) {
+        window.location.reload();
+        return;
+      }
+      render();
+      showToast("Assignment updated.");
+    } catch (err) {
+      alert(err.message || "Failed to apply assignment.");
+    }
+  });
+
+  if (serverRendered) {
+    const filterForm = document.querySelector(".filtersCard");
+    [deptFilter, statusFilter, areaPlaceFilter].forEach(el => {
+      if (!el) return;
+      el.addEventListener("change", () => {
+        filterForm?.submit();
+      });
+    });
+    if (searchInput) {
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          filterForm?.submit();
+        }
+      });
+      searchInput.addEventListener("search", () => {
+        if (!searchInput.value) {
+          filterForm?.submit();
+        }
+      });
+    }
+
+    const rowsPerPage = document.getElementById("rowsPerPage");
+    if (rowsPerPage) {
+      rowsPerPage.addEventListener("change", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("rows", rowsPerPage.value);
+        url.searchParams.delete("page");
+        window.location.href = url.toString();
+      });
+    }
+  }
+
+  if (serverRendered && searchInput && searchSuggest) {
+    let suggestTimer = null;
+    let activeIndex = -1;
+    let currentItems = [];
+
+    function hideSuggest() {
+      searchSuggest.hidden = true;
+      searchSuggest.innerHTML = "";
+      activeIndex = -1;
+      currentItems = [];
+    }
+
+    function renderSuggest(items) {
+      currentItems = items;
+      if (!items.length) {
+        hideSuggest();
+        return;
+      }
+      searchSuggest.innerHTML = items
+        .map((it, idx) => `<div class="suggest__item" data-idx="${idx}">${it.label}</div>`)
+        .join("");
+      searchSuggest.hidden = false;
+    }
+
+    async function fetchSuggest(q) {
+      const res = await fetch(`/employees/suggest?q=${encodeURIComponent(q)}`);
+      const data = await res.json().catch(() => []);
+      return Array.isArray(data) ? data : [];
+    }
+
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim();
+      if (suggestTimer) clearTimeout(suggestTimer);
+      if (q.length < 1) {
+        hideSuggest();
+        return;
+      }
+      suggestTimer = setTimeout(async () => {
+        const items = await fetchSuggest(q);
+        renderSuggest(items);
+      }, 200);
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (searchSuggest.hidden || !currentItems.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % currentItems.length;
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
+      } else if (e.key === "Enter") {
+        if (activeIndex >= 0) {
+          e.preventDefault();
+          const item = currentItems[activeIndex];
+          searchInput.value = item.emp_no;
+          hideSuggest();
+          searchInput.closest("form")?.submit();
+        }
+      } else if (e.key === "Escape") {
+        hideSuggest();
+      }
+
+      const nodes = Array.from(searchSuggest.querySelectorAll(".suggest__item"));
+      nodes.forEach((n, i) => n.classList.toggle("is-active", i === activeIndex));
+    });
+
+    searchSuggest.addEventListener("mousedown", (e) => {
+      const item = e.target.closest(".suggest__item");
+      if (!item) return;
+      const idx = Number(item.getAttribute("data-idx"));
+      const it = currentItems[idx];
+      if (!it) return;
+      searchInput.value = it.emp_no;
+      hideSuggest();
+      searchInput.closest("form")?.submit();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (e.target === searchInput || searchSuggest.contains(e.target)) return;
+      hideSuggest();
+    });
+  }
+
+  if (areaPlaceFilter && !serverRendered) {
+    populateAreaFilterPlaces(areaPlaceFilter);
+    areaPlaceFilter.addEventListener("change", () => {
+      reloadEmployees();
+    });
+  }
+
+  function wireAssignButtons() {
+    assignBtns = assignSeg ? Array.from(assignSeg.querySelectorAll(".seg__btn--emp")) : [];
+    if (!assignBtns.length) return;
     assignBtns.forEach(btn => {
       btn.addEventListener("click", () => {
         assignBtns.forEach(b => b.classList.remove("is-active"));
         btn.classList.add("is-active");
-        assignmentFilter = btn.getAttribute("data-assign") || "All";
+        const rawAssign = btn.getAttribute("data-assign");
+        assignmentFilter = serverRendered ? (rawAssign ?? "") : (rawAssign || "All");
+
+        if (serverRendered) {
+          const assignInput = document.getElementById("assignmentInput");
+          if (assignInput) assignInput.value = assignmentFilter;
+          if (assignmentFilter === "Area") {
+            if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
+          } else {
+            if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "none";
+            if (areaPlaceFilter) areaPlaceFilter.value = "";
+          }
+          btn.closest("form")?.submit();
+          return;
+        }
 
         if (assignmentFilter === "Area") {
           if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
@@ -662,33 +1062,48 @@ document.addEventListener("DOMContentLoaded", () => {
           if (areaPlaceFilter) areaPlaceFilter.value = "All";
         }
 
-        currentPage = 1;
-        render();
+        reloadEmployees();
       });
     });
   }
 
-  // pagination
-  pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
-  firstPageBtn && firstPageBtn.addEventListener("click", () => { currentPage = 1; render(); });
-  prevPageBtn && prevPageBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage - 1); render(); });
-  nextPageBtn && nextPageBtn.addEventListener("click", () => { currentPage = currentPage + 1; render(); });
-  lastPageBtn && lastPageBtn.addEventListener("click", () => {
-    const total = applyFilters(employees).length;
-    const last = Math.max(1, Math.ceil(total / Number(pageSizeEl?.value || 20)));
-    currentPage = last;
-    render();
-  });
-  pageInputEl && pageInputEl.addEventListener("change", () => {
-    const n = Number(pageInputEl.value || 1);
-    if (!Number.isFinite(n)) return;
-    currentPage = Math.max(1, n);
-    render();
-  });
+  if (!serverRendered) {
+    // pagination
+    pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
+    firstPageBtn && firstPageBtn.addEventListener("click", () => { currentPage = 1; render(); });
+    prevPageBtn && prevPageBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage - 1); render(); });
+    nextPageBtn && nextPageBtn.addEventListener("click", () => { currentPage = currentPage + 1; render(); });
+    lastPageBtn && lastPageBtn.addEventListener("click", () => {
+      const total = applyFilters(employees).length;
+      const last = Math.max(1, Math.ceil(total / Number(pageSizeEl?.value || 20)));
+      currentPage = last;
+      render();
+    });
+    pageInputEl && pageInputEl.addEventListener("change", () => {
+      const n = Number(pageInputEl.value || 1);
+      if (!Number.isFinite(n)) return;
+      currentPage = Math.max(1, n);
+      render();
+    });
+  }
 
   // select all (current page)
   if (selectAll) {
     selectAll.addEventListener("change", () => {
+      if (serverRendered) {
+        const checks = tbody ? Array.from(tbody.querySelectorAll("input.empCheck")) : [];
+        checks.forEach(chk => {
+          chk.checked = selectAll.checked;
+          const id = chk.getAttribute("data-id");
+          if (selectAll.checked) selectedIds.add(id);
+          else selectedIds.delete(id);
+          const tr = chk.closest("tr");
+          if (tr) tr.classList.toggle("is-selected", chk.checked);
+        });
+        updateBulkBar();
+        return;
+      }
+
       const list = applySort(applyFilters(employees));
       const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
       currentPage = Math.min(currentPage, totalPages);
@@ -705,13 +1120,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // table click (checkbox/edit/delete)
-  tbody && tbody.addEventListener("click", (e) => {
+  tbody && tbody.addEventListener("click", async (e) => {
     const chk = e.target.closest("input.empCheck");
     if (chk) {
       const id = chk.getAttribute("data-id");
       if (chk.checked) selectedIds.add(id);
       else selectedIds.delete(id);
-      render();
+      const tr = chk.closest("tr");
+      if (tr) tr.classList.toggle("is-selected", chk.checked);
+      if (serverRendered) {
+        updateBulkBar();
+      } else {
+        render();
+      }
       return;
     }
 
@@ -729,22 +1150,35 @@ document.addEventListener("DOMContentLoaded", () => {
       openDrawer("Edit Employee", `${fullName(emp)} - ${emp.empId}`);
     }
     if (action === "delete") {
-      if (confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) {
-        employees = employees.filter(x => x.empId !== id);
+      if (!confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) return;
+      try {
+        await apiFetch(`/employees/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (serverRendered) {
+          window.location.reload();
+          return;
+        }
+        await loadEmployees();
         selectedIds.delete(id);
         render();
+      } catch (err) {
+        alert(err.message || "Failed to delete employee.");
       }
     }
   });
 
-  // import/export demo
-  exportBtn && exportBtn.addEventListener("click", () => alert("Export wired (use your existing exportCSV)"));
-  importBtn && importBtn.addEventListener("click", () => importFile?.click());
-  importFile && importFile.addEventListener("change", () => {
-    const f = importFile.files?.[0];
-    if (!f) return;
-    alert(`Selected file: ${f.name}`);
-    importFile.value = "";
+  // export
+  exportBtn && exportBtn.addEventListener("click", () => {
+    if (selectedIds.size === 0) {
+      alert("Please select at least one employee to export.");
+      return;
+    }
+    const selected = employees.filter(emp => selectedIds.has(emp.empId));
+    if (!selected.length) {
+      alert("No selected employees found.");
+      return;
+    }
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    exportEmployeesToXlsx(selected, `employees_${ts}.xlsx`);
   });
 
   // drawer events
@@ -757,7 +1191,10 @@ document.addEventListener("DOMContentLoaded", () => {
   closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
   cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    closeDrawer();
+  });
 
   // live cash advance preview
   f_type && f_type.addEventListener("change", syncCashAdvanceFields);
@@ -767,24 +1204,87 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   f_allowance && f_allowance.addEventListener("input", syncSalaryFields);
   f_accountNumber && f_accountNumber.addEventListener("input", syncPayoutFields);
+  f_assignmentType && f_assignmentType.addEventListener("change", syncAssignmentUI);
+  f_empId && f_empId.addEventListener("input", () => {
+    const digits = String(f_empId.value || "").replace(/\D/g, "").slice(0, 4);
+    if (f_empId.value !== digits) {
+      f_empId.value = digits;
+    }
+  });
+  f_mobile && f_mobile.addEventListener("input", () => {
+    const next = formatMobile(f_mobile.value);
+    if (f_mobile.value !== next) f_mobile.value = next;
+  });
+  f_sss && f_sss.addEventListener("input", () => {
+    const next = formatSSS(f_sss.value);
+    if (f_sss.value !== next) f_sss.value = next;
+  });
+  f_ph && f_ph.addEventListener("input", () => {
+    const next = formatPhilHealth(f_ph.value);
+    if (f_ph.value !== next) f_ph.value = next;
+  });
+  f_pagibig && f_pagibig.addEventListener("input", () => {
+    const next = formatPagibig(f_pagibig.value);
+    if (f_pagibig.value !== next) f_pagibig.value = next;
+  });
+  f_tin && f_tin.addEventListener("input", () => {
+    const next = formatTIN(f_tin.value);
+    if (f_tin.value !== next) f_tin.value = next;
+  });
+  f_accountNumber && f_accountNumber.addEventListener("input", () => {
+    const next = formatAccount(f_accountNumber.value);
+    if (f_accountNumber.value !== next) f_accountNumber.value = next;
+  });
 
-  deleteBtn && deleteBtn.addEventListener("click", () => {
+  function capFirst(value) {
+    const v = String(value || "");
+    if (!v) return v;
+    return v.charAt(0).toUpperCase() + v.slice(1);
+  }
+
+  const capInputs = [
+    f_first,
+    f_last,
+    f_middle,
+    f_dept,
+    f_position,
+    f_address,
+    f_bankName,
+    f_accountName,
+  ];
+  capInputs.forEach((el) => {
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const next = capFirst(el.value);
+      if (el.value !== next) el.value = next;
+    });
+  });
+
+  deleteBtn && deleteBtn.addEventListener("click", async () => {
     if (!selectedEmpId) return;
     const emp = employees.find(e => e.empId === selectedEmpId);
     if (!emp) return;
-    if (confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) {
-      employees = employees.filter(e => e.empId !== selectedEmpId);
+    if (!confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) return;
+    try {
+      await apiFetch(`/employees/${encodeURIComponent(selectedEmpId)}`, { method: "DELETE" });
+      await loadEmployees();
       selectedIds.delete(selectedEmpId);
       closeDrawer();
       render();
+    } catch (err) {
+      alert(err.message || "Failed to delete employee.");
     }
   });
 
-  empForm && empForm.addEventListener("submit", (e) => {
+  empForm && empForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = collectForm();
 
     // required fields
+    if (!/^\d{4}$/.test(String(data.empId || ""))) {
+      alert("Employee ID must be exactly 4 digits.");
+      return;
+    }
     if (!data.empId || !data.first || !data.last || !data.dept || !data.position) {
       alert("Please fill required fields (Employee ID, First, Last, Department, Position).");
       return;
@@ -804,17 +1304,43 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    if (selectedEmpId) {
-      employees = employees.map(emp => emp.empId === selectedEmpId ? { ...emp, ...data } : emp);
-    } else {
-      const exists = employees.some(emp => emp.empId === data.empId);
-      if (exists && !confirm("Employee ID already exists. Overwrite?")) return;
-      employees = employees.filter(emp => emp.empId !== data.empId);
-      employees.push(data);
-    }
+    const exists = employees.some(emp => emp.empId === data.empId);
 
-    render();
-    closeDrawer();
+    try {
+      if (selectedEmpId) {
+        await apiFetch(`/employees/${encodeURIComponent(selectedEmpId)}`, {
+          method: "PUT",
+          body: JSON.stringify(toApi(data)),
+        });
+      } else if (exists) {
+        if (!confirm("Employee ID already exists. Overwrite?")) return;
+        await apiFetch(`/employees/${encodeURIComponent(data.empId)}`, {
+          method: "PUT",
+          body: JSON.stringify(toApi(data)),
+        });
+      } else {
+        await apiFetch("/employees", {
+          method: "POST",
+          body: JSON.stringify(toApi(data)),
+        });
+      }
+
+      const successMsg = selectedEmpId ? "Employee updated successfully." : "Employee added successfully.";
+      if (serverRendered) {
+        closeDrawer();
+        sessionStorage.setItem("emp_records_toast", successMsg);
+        setTimeout(() => {
+          window.location.reload();
+        }, 700);
+        return;
+      }
+      closeDrawer();
+      showToast(successMsg);
+      await loadEmployees();
+      render();
+    } catch (err) {
+      alert(err.message || "Failed to save employee.");
+    }
   });
 
   // Init
@@ -822,12 +1348,122 @@ document.addEventListener("DOMContentLoaded", () => {
   syncCashAdvanceFields();
   syncSalaryFields();
   syncPayoutFields();
-  if (areaPlaceFilterWrap && assignmentFilter !== "Area") {
-    areaPlaceFilterWrap.style.display = "none";
+  if (!serverRendered) {
+    if (areaPlaceFilterWrap && assignmentFilter !== "Area") {
+      areaPlaceFilterWrap.style.display = "none";
+    }
   }
-  wireHeaderSorting();
-  updateSortIcons();
-  render();
+  if (!serverRendered) {
+    wireHeaderSorting();
+    updateSortIcons();
+  } else {
+    const sortMap = {
+      empId: 1,
+      name: 2,
+      dept: 3,
+      assignment: 4,
+      salary: 5,
+    };
+
+    function parseSalary(text) {
+      const num = String(text || "").replace(/[^\d.]/g, "");
+      return Number(num || 0);
+    }
+
+    function sortTableBy(key) {
+      const colIndex = sortMap[key];
+      if (colIndex == null || !tbody) return;
+
+      sortLocked = true;
+      if (sortState.key === key) {
+        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+      } else {
+        sortState.key = key;
+        sortState.dir = "asc";
+      }
+
+      const rows = Array.from(tbody.querySelectorAll("tr"))
+        .filter(tr => tr.querySelector("td"));
+
+      rows.sort((a, b) => {
+        const aCell = a.children[colIndex]?.textContent?.trim() || "";
+        const bCell = b.children[colIndex]?.textContent?.trim() || "";
+
+        let res = 0;
+        if (key === "salary") {
+          res = parseSalary(aCell) - parseSalary(bCell);
+        } else {
+          res = aCell.localeCompare(bCell);
+        }
+        return sortState.dir === "asc" ? res : -res;
+      });
+
+      rows.forEach(tr => tbody.appendChild(tr));
+      updateSortIcons();
+    }
+
+    document.querySelectorAll("th.sortable").forEach(th => {
+      th.addEventListener("click", () => {
+        const key = th.getAttribute("data-sort");
+        if (!key) return;
+        sortTableBy(key);
+      });
+    });
+    updateSortIcons();
+  }
+  async function loadFilters() {
+    try {
+      const data = await apiFetch("/employees/filters");
+      if (deptFilter) {
+        deptFilter.innerHTML = `<option value="">All</option>` +
+          (data.departments || []).map(d => `<option value="${d}">${d}</option>`).join("");
+      }
+      if (statusFilter) {
+        statusFilter.innerHTML = `<option value="">All</option>` +
+          (data.statuses || []).map(s => `<option value="${s.id}">${s.label}</option>`).join("");
+      }
+      if (f_status) {
+        f_status.innerHTML = (data.statuses || []).map(s => `<option value="${s.id}">${s.label}</option>`).join("");
+      }
+      statusLabelMap = new Map((data.statuses || []).map(s => [String(s.id), s.label]));
+      if (assignSeg) {
+        const assignments = (data.assignments || []).length ? data.assignments : ["Tagum", "Davao", "Area"];
+        assignSeg.innerHTML =
+          `<button type="button" class="seg__btn seg__btn--emp is-active" data-assign="All">All</button>` +
+          assignments.map(a => `<button type="button" class="seg__btn seg__btn--emp" data-assign="${a}">${a}</button>`).join("");
+        assignmentFilter = "All";
+        wireAssignButtons();
+      }
+      if (Array.isArray(data.area_places)) {
+        areaPlaces = data.area_places;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  try {
+    if (serverRendered) {
+      const seed = Array.isArray(window.__serverEmployees) ? window.__serverEmployees : [];
+      employees = seed.map(fromApi);
+      wireAssignButtons();
+    } else {
+      await loadFilters();
+      await loadEmployees();
+    }
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Failed to load employees.");
+  }
+  if (!serverRendered) {
+    render();
+  }
+
+  flushPendingToast();
+
+  if (AUTO_REFRESH_MS > 0) {
+    setInterval(runAutoRefresh, AUTO_REFRESH_MS);
+  }
 
   // ===== Expose helpers (optional) =====
   // You can reuse these in payroll processing by copying these functions there

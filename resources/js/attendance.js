@@ -9,18 +9,73 @@ document.addEventListener("DOMContentLoaded", () => {
   initProfileDrawer();
 
   // =========================================================
-  // DEMO EMPLOYEES (replace with DB later)
+  // DATA: Employees (from DB)
   // =========================================================
-  const employees = [
-    { empId: "1102", name: "Garcia, Leo", department: "Operations", position: "Logistics Aide" },
-    { empId: "1044", name: "Santos, Maria", department: "Finance", position: "Payroll Clerk" },
-    { empId: "1023", name: "Dela Cruz, Juan", department: "Sales", position: "Field Representative" },
-  ];
+  let employees = [];
+  let employeesById = new Map();
 
-  function getEmp(empId) { return employees.find(e => e.empId === empId) || null; }
-  function getEmployeeName(empId) { return getEmp(empId)?.name || empId; }
-  function getEmployeeDept(empId) { return getEmp(empId)?.department || "—"; }
-  function getEmployeePos(empId) { return getEmp(empId)?.position || "—"; }
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
+  async function apiFetch(url, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.headers || {}),
+    };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
+
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = data?.message || "Request failed.";
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function fullName(emp) {
+    if (!emp) return "";
+    return `${emp.last_name}, ${emp.first_name}${emp.middle_name ? " " + emp.middle_name : ""}`;
+  }
+
+  function mapEmployee(emp) {
+    return {
+      id: emp.id,
+      empNo: emp.emp_no,
+      name: fullName(emp),
+      department: emp.department || "—",
+      position: emp.position || "—",
+      assignmentType: emp.assignment_type || "",
+      areaPlace: emp.area_place || "",
+    };
+  }
+
+  async function loadEmployees() {
+    const rows = await apiFetch("/employees");
+    employees = Array.isArray(rows) ? rows.map(mapEmployee) : [];
+    employeesById = new Map(employees.map(e => [String(e.id), e]));
+  }
+
+  function getEmpById(employeeId) {
+    return employeesById.get(String(employeeId)) || null;
+  }
+
+  function getEmpByNo(empNo) {
+    return employees.find(e => String(e.empNo) === String(empNo)) || null;
+  }
+
+  function getEmployeeName(empNo) {
+    return getEmpByNo(empNo)?.name || empNo || "";
+  }
+
+  function getEmployeeDept(empNo) {
+    return getEmpByNo(empNo)?.department || "—";
+  }
+
+  function getEmployeePos(empNo) {
+    return getEmpByNo(empNo)?.position || "—";
+  }
 
   // =========================================================
   // ✅ ATTENDANCE CODE MAPPING
@@ -134,30 +189,46 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // STORAGE: one bucket per cutoff
+  // RECORDS: API mapping
   // =========================================================
-  function storageKeyForCutoff(cutoff) {
-    const mm = String(cutoff.month).padStart(2, "0");
-    return `attendance_cutoff_${cutoff.year}-${mm}_${cutoff.cutoffType}_v1`;
+  function mapRecordApi(r) {
+    return {
+      id: String(r.id),
+      employeeId: String(r.employee_id || ""),
+      empId: r.emp_no || "",
+      empName: r.emp_name || "",
+      department: r.department || "—",
+      position: r.position || "—",
+      date: r.date || "",
+      timeIn: r.clock_in || "",
+      timeOut: r.clock_out || "",
+      totalHours: 0,
+      otHours: Number(r.ot_hours || 0),
+      status: r.status || "",
+      assignType: r.assignment_type || "",
+      areaPlace: r.area_place || "",
+      minutesLate: Number(r.minutes_late || 0),
+      minutesUndertime: Number(r.minutes_undertime || 0),
+      notes: "",
+    };
   }
 
-  function loadRecordsForCutoff(cutoff) {
-    try {
-      const key = storageKeyForCutoff(cutoff);
-      const raw = localStorage.getItem(key);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+  function toApiPayload(record, overrideStatus) {
+    return {
+      employee_id: Number(record.employeeId),
+      date: record.date,
+      status: overrideStatus || record.status,
+      clock_in: record.timeIn || null,
+      clock_out: record.timeOut || null,
+      minutes_late: Number(record.minutesLate || 0),
+      minutes_undertime: Number(record.minutesUndertime || 0),
+      ot_hours: Number(record.otHours || 0),
+    };
   }
 
-  function saveRecordsForCutoff(cutoff, list) {
-    try {
-      const key = storageKeyForCutoff(cutoff);
-      localStorage.setItem(key, JSON.stringify(list));
-    } catch { /* ignore */ }
+  async function loadRecords() {
+    const rows = await apiFetch("/attendance/records");
+    records = Array.isArray(rows) ? rows.map(mapRecordApi) : [];
   }
 
   // =========================================================
@@ -255,6 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const previewTbody = document.getElementById("previewTbody");
   const saveImportBtn = document.getElementById("saveImportBtn");
   const saveMessage = document.getElementById("saveMessage");
+  let importFileContent = "";
 
   // =========================================================
   // EMPLOYEE DRAWER
@@ -284,7 +356,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // default sorting (hoisted early to avoid TDZ when render runs during init)
   let sortState = { key: "name", dir: "asc" };
 
-  function refreshActiveCutoffAndLoad() {
+  async function refreshActiveCutoffAndLoad() {
     // If cutoff UI exists => we require it
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
 
@@ -309,56 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (cutoffRangeLabel) cutoffRangeLabel.textContent = formatRangeLabel(c.range);
 
-      // load bucket
-      records = loadRecordsForCutoff(c);
-
-      // ✅ seed 2 people if empty
-      if (!records.length) {
-        const today = toYMD(new Date());
-        const seedDate = isDateWithinCutoff(today, c.range) ? today : toYMD(c.range.start);
-
-        records = [
-          {
-            id: "SEED001",
-            empId: "1102",
-            empName: getEmployeeName("1102"),
-            department: getEmployeeDept("1102"),
-            position: getEmployeePos("1102"),
-            date: seedDate,
-            timeIn: "08:02",
-            timeOut: "17:11",
-            totalHours: 0,
-            otHours: 0,
-            code: "P",
-            status: "Present",
-            isPaid: true,
-            countsAsPresent: true,
-            assignType: "Tagum",
-            areaPlace: "",
-            notes: "Seed data",
-          },
-          {
-            id: "SEED002",
-            empId: "1044",
-            empName: getEmployeeName("1044"),
-            department: getEmployeeDept("1044"),
-            position: getEmployeePos("1044"),
-            date: seedDate,
-            timeIn: "08:08",
-            timeOut: "17:00",
-            totalHours: 0,
-            otHours: 0.5,
-            code: "L",
-            status: "Late",
-            isPaid: true,
-            countsAsPresent: true,
-            assignType: "Area",
-            areaPlace: "Laak",
-            notes: "Seed data",
-          },
-        ];
-        saveRecordsForCutoff(c, records);
-      }
+      await loadRecords();
 
       // date filter defaults
       const today = toYMD(new Date());
@@ -378,56 +401,14 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // If cutoff UI DOES NOT exist, just seed a simple demo list (2 rows)
+    // If cutoff UI DOES NOT exist, just load records
     activeCutoff = null;
-    if (!records.length) {
-      const today = toYMD(new Date());
-      records = [
-        {
-          id: "SEED001",
-          empId: "1102",
-          empName: getEmployeeName("1102"),
-          department: getEmployeeDept("1102"),
-          position: getEmployeePos("1102"),
-          date: today,
-          timeIn: "08:02",
-          timeOut: "17:11",
-          totalHours: 0,
-          otHours: 0,
-          code: "P",
-          status: "Present",
-          isPaid: true,
-          countsAsPresent: true,
-          assignType: "Tagum",
-          areaPlace: "",
-          notes: "Seed data",
-        },
-        {
-          id: "SEED002",
-          empId: "1044",
-          empName: getEmployeeName("1044"),
-          department: getEmployeeDept("1044"),
-          position: getEmployeePos("1044"),
-          date: today,
-          timeIn: "08:08",
-          timeOut: "17:00",
-          totalHours: 0,
-          otHours: 0.5,
-          code: "PL",
-          status: "Leave",
-          isPaid: true,
-          countsAsPresent: true,
-          assignType: "Area",
-          areaPlace: "Laak",
-          notes: "Seed data",
-        },
-      ];
-    }
+    await loadRecords();
     render();
   }
 
   // init cutoff defaults (only if cutoff UI exists)
-  (function initCutoffDefaults() {
+  (async function initCutoffDefaults() {
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
     if (hasCutoffUI) {
       const now = new Date();
@@ -437,11 +418,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const day = now.getDate();
       cutoffSelect.value = day >= 26 ? "26-10" : "11-25";
     }
-    refreshActiveCutoffAndLoad();
+    await loadEmployees();
+    initEmployeeSelect();
+    if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
+    await refreshActiveCutoffAndLoad();
   })();
 
-  cutoffMonthInput && cutoffMonthInput.addEventListener("change", refreshActiveCutoffAndLoad);
-  cutoffSelect && cutoffSelect.addEventListener("change", refreshActiveCutoffAndLoad);
+  cutoffMonthInput && cutoffMonthInput.addEventListener("change", () => { refreshActiveCutoffAndLoad(); });
+  cutoffSelect && cutoffSelect.addEventListener("change", () => { refreshActiveCutoffAndLoad(); });
 
   // =========================================================
   // HELPERS
@@ -663,12 +647,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (action === "delete") {
         if (confirm(`Delete attendance record ${record.empId} on ${record.date}?`)) {
-          records = records.filter(r => r.id !== id);
-
-          // save if cutoff is active
-          if (activeCutoff) saveRecordsForCutoff(activeCutoff, records);
-
-          render();
+          apiFetch(`/attendance/records/${id}`, { method: "DELETE" })
+            .then(async () => {
+              await loadRecords();
+              render();
+            })
+            .catch(err => alert(err.message || "Failed to delete attendance."));
         }
       }
     }
@@ -681,9 +665,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!f_employee) return;
     f_employee.innerHTML =
       `<option value="">—</option>` +
-      employees.map(e => `<option value="${e.empId}">${e.name} — ${e.empId}</option>`).join("");
+      employees.map(e => `<option value="${e.id}">${e.name} — ${e.empNo}</option>`).join("");
   }
-  initEmployeeSelect();
 
   // =========================================================
   // TABS + FILTER EVENTS
@@ -691,17 +674,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function populateAreaFilter(selectEl) {
     if (!selectEl) return;
     const current = selectEl.value;
-    const fromForm = f_areaPlace
-      ? Array.from(f_areaPlace.options)
-          .map(opt => opt.value)
-          .filter(v => v && v !== "—")
-      : ["Laak", "Pantukan", "Maragusan"];
+    const fromEmployees = employees
+      .filter(e => e.assignmentType === "Area" && e.areaPlace)
+      .map(e => e.areaPlace);
+    const unique = Array.from(new Set(fromEmployees));
 
     selectEl.innerHTML =
       `<option value="All" selected>All</option>` +
-      fromForm.map(p => `<option value="${p}">${p}</option>`).join("");
+      unique.map(p => `<option value="${p}">${p}</option>`).join("");
 
-    if (current && (current === "All" || fromForm.includes(current))) {
+    if (current && (current === "All" || unique.includes(current))) {
       selectEl.value = current;
     }
   }
@@ -749,14 +731,18 @@ document.addEventListener("DOMContentLoaded", () => {
     syncCheckAll();
   });
 
-  bulkDeleteBtn && bulkDeleteBtn.addEventListener("click", () => {
+  bulkDeleteBtn && bulkDeleteBtn.addEventListener("click", async () => {
     const ids = selectedIds();
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} selected record(s)?`)) return;
 
-    records = records.filter(r => !ids.includes(r.id));
-    if (activeCutoff) saveRecordsForCutoff(activeCutoff, records);
-    render();
+    try {
+      await Promise.all(ids.map(id => apiFetch(`/attendance/records/${id}`, { method: "DELETE" })));
+      await loadRecords();
+      render();
+    } catch (err) {
+      alert(err.message || "Failed to delete selected records.");
+    }
   });
 
   bulkStatusSelectInline && bulkStatusSelectInline.addEventListener("change", () => {
@@ -765,13 +751,23 @@ document.addEventListener("DOMContentLoaded", () => {
     if (bulkApplyInline) bulkApplyInline.disabled = !(hasSelection && hasStatus);
   });
 
-  bulkApplyInline && bulkApplyInline.addEventListener("click", () => {
+  bulkApplyInline && bulkApplyInline.addEventListener("click", async () => {
     const ids = selectedIds();
     const newStatus = bulkStatusSelectInline.value;
     if (!ids.length || !newStatus) return;
 
-    records = records.map(r => ids.includes(r.id) ? { ...r, status: newStatus } : r);
-    if (activeCutoff) saveRecordsForCutoff(activeCutoff, records);
+    try {
+      const updates = records.filter(r => ids.includes(r.id));
+      await Promise.all(updates.map(r =>
+        apiFetch(`/attendance/records/${r.id}`, {
+          method: "PUT",
+          body: JSON.stringify(toApiPayload(r, newStatus)),
+        })
+      ));
+      await loadRecords();
+    } catch (err) {
+      alert(err.message || "Failed to update status.");
+    }
 
     bulkStatusSelectInline.value = "";
     if (bulkApplyInline) bulkApplyInline.disabled = true;
@@ -787,6 +783,33 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // ✅ MANUAL DRAWER (Add button works)
   // =========================================================
+  function syncAssignmentFromEmployee() {
+    if (!f_employee) return;
+    const emp = getEmpById(f_employee.value);
+    if (!emp) {
+      if (f_assignType) f_assignType.value = "";
+      if (f_areaPlace) f_areaPlace.value = "";
+      if (areaWrap) areaWrap.hidden = true;
+      return;
+    }
+    if (f_assignType) {
+      f_assignType.value = emp.assignmentType || "";
+      f_assignType.disabled = true;
+    }
+    if (f_areaPlace) {
+      const areaVal = emp.areaPlace || "";
+      if (areaVal && !Array.from(f_areaPlace.options).some(o => o.value === areaVal)) {
+        const opt = document.createElement("option");
+        opt.value = areaVal;
+        opt.textContent = areaVal;
+        f_areaPlace.appendChild(opt);
+      }
+      f_areaPlace.value = areaVal;
+      f_areaPlace.disabled = true;
+    }
+    if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Area";
+  }
+
   function openDrawer(mode, record) {
     if (!drawer || !drawerOverlay) return;
 
@@ -827,28 +850,21 @@ document.addEventListener("DOMContentLoaded", () => {
       f_employee.value = "";
       f_date.value = activeCutoff ? toYMD(activeCutoff.range.start) : toYMD(new Date());
       f_status.value = "";
-      f_assignType.value = "";
-      f_areaPlace.value = "";
+      if (f_assignType) f_assignType.value = "";
+      if (f_areaPlace) f_areaPlace.value = "";
       f_notes.value = "";
       if (areaWrap) areaWrap.hidden = true;
+      syncAssignmentFromEmployee();
     } else {
       drawerTitle.textContent = "Edit Attendance";
       drawerSub.textContent = `Record: ${record.empId} • ${record.date}`;
       editingId.value = record.id;
 
-      f_employee.value = record.empId;
+      f_employee.value = record.employeeId || "";
       f_date.value = record.date;
       f_status.value = record.status;
-      f_assignType.value = record.assignType;
       f_notes.value = record.notes || "";
-
-      if (record.assignType === "Area") {
-        if (areaWrap) areaWrap.hidden = false;
-        f_areaPlace.value = record.areaPlace || "";
-      } else {
-        if (areaWrap) areaWrap.hidden = true;
-        f_areaPlace.value = "";
-      }
+      syncAssignmentFromEmployee();
     }
   }
 
@@ -870,13 +886,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return false;
     }
 
-    const empId = f_employee.value;
+    const employeeId = f_employee.value;
     const date = f_date.value;
     const status = f_status.value;
-    const assignType = f_assignType.value;
-    const area = f_areaPlace.value;
 
-    if (!empId) { if (errEmployee) errEmployee.textContent = "Employee is required."; ok = false; }
+    if (!employeeId) { if (errEmployee) errEmployee.textContent = "Employee is required."; ok = false; }
     if (!date) { if (errDate) errDate.textContent = "Date is required."; ok = false; }
 
     // ✅ date must be within cutoff only if cutoff is active
@@ -886,13 +900,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
-    if (!assignType) { if (errAssignType) errAssignType.textContent = "Assignment Type is required."; ok = false; }
-
-    if (assignType === "Area") {
-      if (!area) { if (errAreaPlace) errAreaPlace.textContent = "Area Place is required for Area assignment."; ok = false; }
-    } else {
-      if (area) { if (errAreaPlace) errAreaPlace.textContent = "Area Place must be empty for Tagum/Davao."; ok = false; }
-    }
 
     return ok;
   }
@@ -902,54 +909,47 @@ document.addEventListener("DOMContentLoaded", () => {
   cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
 
-  f_assignType && f_assignType.addEventListener("change", () => {
-    const type = f_assignType.value;
-    if (type === "Area") {
-      if (areaWrap) areaWrap.hidden = false;
-    } else {
-      if (areaWrap) areaWrap.hidden = true;
-      if (f_areaPlace) f_areaPlace.value = "";
-      if (errAreaPlace) errAreaPlace.textContent = "";
-    }
+  f_employee && f_employee.addEventListener("change", () => {
+    syncAssignmentFromEmployee();
   });
 
   // ✅ Save button now updates table immediately
-  saveBtn && saveBtn.addEventListener("click", () => {
+  saveBtn && saveBtn.addEventListener("click", async () => {
     if (!validateForm()) return;
 
     const id = editingId.value;
-    const empId = f_employee.value;
+    const employeeId = f_employee.value;
 
     const mapped = mapAttendanceCode("", f_status.value);
-
     const payload = {
-      id: id || `A${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
-      empId,
-      empName: getEmployeeName(empId),
-      department: getEmployeeDept(empId),
-      position: getEmployeePos(empId),
+      employee_id: Number(employeeId),
       date: f_date.value,
-      timeIn: "",
-      timeOut: "",
-      totalHours: 0,
-      otHours: 0,
-      code: mapped.code || "",
       status: mapped.status,
-      isPaid: mapped.isPaid,
-      countsAsPresent: mapped.countsAsPresent,
-      assignType: f_assignType.value,
-      areaPlace: f_assignType.value === "Area" ? f_areaPlace.value : "",
-      notes: (f_notes.value || "").trim(),
+      clock_in: null,
+      clock_out: null,
+      minutes_late: 0,
+      minutes_undertime: 0,
+      ot_hours: 0,
     };
 
-    if (!id) records.unshift(payload);
-    else records = records.map(r => r.id === id ? { ...r, ...payload, id } : r);
-
-    // ✅ Persist if cutoff bucket is active
-    if (activeCutoff) saveRecordsForCutoff(activeCutoff, records);
-
-    closeDrawer();
-    render();
+    try {
+      if (!id) {
+        await apiFetch("/attendance/records", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch(`/attendance/records/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+      }
+      await loadRecords();
+      closeDrawer();
+      render();
+    } catch (err) {
+      alert(err.message || "Failed to save attendance.");
+    }
   });
 
   // =========================================================
@@ -985,11 +985,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function isValidStatus(s) {
     return ["Present", "Late", "Absent", "Leave"].includes(s);
   }
-  function isValidAssignType(s) {
-    return ["Davao", "Tagum", "Area"].includes(s);
+  function isValidTime(s) {
+    return !s || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s).trim());
   }
-  function isValidAreaPlace(s) {
-    return ["Laak", "Pantukan", "Maragusan"].includes(s);
+  function isValidNumber(s) {
+    if (s === "" || s == null) return true;
+    return Number.isFinite(Number(s));
   }
 
   function calcHours(timeIn, timeOut) {
@@ -1013,6 +1014,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!r.empId) issues.push(`Row ${r.rowNo}: Missing Employee ID`);
+    if (r.empId && !getEmpByNo(r.empId)) {
+      issues.push(`Row ${r.rowNo}: Employee ID "${r.empId}" not found`);
+    }
 
     if (!r.date || !parseDateOk(r.date)) {
       issues.push(`Row ${r.rowNo}: Invalid or missing Date`);
@@ -1020,15 +1024,11 @@ document.addEventListener("DOMContentLoaded", () => {
       issues.push(`Row ${r.rowNo}: Date ${r.date} is outside cutoff (${formatRangeLabel(activeCutoff.range)})`);
     }
 
-    if (!isValidAssignType(r.assignType)) issues.push(`Row ${r.rowNo}: Invalid Assignment Type "${r.assignType}"`);
-
-    if (r.assignType === "Area") {
-      if (!r.areaPlace || !isValidAreaPlace(r.areaPlace)) {
-        issues.push(`Row ${r.rowNo}: Area Place is required (Laak / Pantukan / Maragusan)`);
-      }
-    } else if (r.assignType === "Tagum" || r.assignType === "Davao") {
-      if (r.areaPlace) issues.push(`Row ${r.rowNo}: Area Place must be empty for ${r.assignType}`);
-    }
+    if (!isValidTime(r.timeIn)) issues.push(`Row ${r.rowNo}: Invalid Clock In (HH:MM)`);
+    if (!isValidTime(r.timeOut)) issues.push(`Row ${r.rowNo}: Invalid Clock Out (HH:MM)`);
+    if (!isValidNumber(r.minutesLate)) issues.push(`Row ${r.rowNo}: Minutes Late must be a number`);
+    if (!isValidNumber(r.minutesUndertime)) issues.push(`Row ${r.rowNo}: Minutes Undertime must be a number`);
+    if (!isValidNumber(r.otHours)) issues.push(`Row ${r.rowNo}: OT Hours must be a number`);
 
     const code = normalizeCode(r.code);
     if (code && !CODE_MAP[code]) {
@@ -1043,14 +1043,64 @@ document.addEventListener("DOMContentLoaded", () => {
     return issues;
   }
 
-  // DEMO rows (replace with real CSV/XLSX parsing)
-  function simulateParsedRows() {
-    const d = toYMD(new Date());
-    return [
-      { rowNo: 2, empId: "1102", date: d, timeIn: "08:02", timeOut: "17:11", otHours: 0.0, code: "P",  status: "",         assignType: "Tagum", areaPlace: "" },
-      { rowNo: 3, empId: "1044", date: d, timeIn: "08:08", timeOut: "17:00", otHours: 0.5, code: "PL", status: "",         assignType: "Area",  areaPlace: "Laak" },
-      { rowNo: 4, empId: "1023", date: d, timeIn: "08:01", timeOut: "17:03", otHours: 1.0, code: "",   status: "Present",  assignType: "Davao", areaPlace: "" },
-    ];
+  function parseCsv(text) {
+    const rows = [];
+    let cur = "";
+    let inQuotes = false;
+    const row = [];
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+      if (ch === '"' && inQuotes && next === '"') {
+        cur += '"';
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (ch === "," && !inQuotes) {
+        row.push(cur);
+        cur = "";
+        continue;
+      }
+      if ((ch === "\n" || ch === "\r") && !inQuotes) {
+        if (ch === "\r" && next === "\n") i++;
+        row.push(cur);
+        rows.push(row.splice(0));
+        cur = "";
+        continue;
+      }
+      cur += ch;
+    }
+    row.push(cur);
+    rows.push(row.splice(0));
+    return rows.filter(r => r.some(c => String(c).trim() !== ""));
+  }
+
+  function buildParsedRowsFromCsv(text) {
+    const rows = parseCsv(text);
+    if (!rows.length) return [];
+    const header = rows[0].map(h => String(h || "").trim().toLowerCase());
+    const idx = (name) => header.indexOf(name);
+    const get = (r, name) => {
+      const i = idx(name);
+      return i >= 0 ? String(r[i] ?? "").trim() : "";
+    };
+
+    return rows.slice(1).map((r, i) => ({
+      rowNo: i + 2,
+      empId: get(r, "emp_no") || get(r, "employee_id") || get(r, "emp_id"),
+      date: get(r, "date"),
+      timeIn: get(r, "clock_in"),
+      timeOut: get(r, "clock_out"),
+      minutesLate: get(r, "minutes_late"),
+      minutesUndertime: get(r, "minutes_undertime"),
+      otHours: get(r, "ot_hours"),
+      status: get(r, "status"),
+      code: get(r, "code"),
+    }));
   }
 
   function buildImportRows(parsed) {
@@ -1060,6 +1110,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const mapped = mapAttendanceCode(r.code, r.status);
       const finalStatus = mapped.status || (r.status || "");
+      const emp = getEmpByNo(r.empId);
 
       return {
         ...r,
@@ -1070,6 +1121,8 @@ document.addEventListener("DOMContentLoaded", () => {
         empName: r.empId ? getEmployeeName(r.empId) : "",
         department: r.empId ? getEmployeeDept(r.empId) : "",
         position: r.empId ? getEmployeePos(r.empId) : "",
+        assignType: emp?.assignmentType || "",
+        areaPlace: emp?.areaPlace || "",
         totalHours,
         isError: issues.length > 0,
         issues,
@@ -1133,7 +1186,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function runPreviewImport() {
-    const parsed = simulateParsedRows();
+    const parsed = buildParsedRowsFromCsv(importFileContent || "");
     importRows = buildImportRows(parsed);
     previewMode = "errors";
 
@@ -1145,38 +1198,33 @@ document.addEventListener("DOMContentLoaded", () => {
     openPreview();
   }
 
-  function saveImport() {
-    const clean = importRows.filter(r => !r.isError).map(r => ({
-      id: `A${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
-      empId: r.empId,
-      empName: r.empName,
-      department: r.department,
-      position: r.position,
-      date: r.date,
-      timeIn: r.timeIn || "",
-      timeOut: r.timeOut || "",
-      totalHours: r.totalHours || 0,
-      otHours: Number(r.otHours || 0),
-      code: r.code || "",
-      status: r.status,
-      isPaid: r.isPaid,
-      countsAsPresent: r.countsAsPresent,
-      assignType: r.assignType,
-      areaPlace: r.assignType === "Area" ? (r.areaPlace || "") : "",
-      notes: "",
-    }));
-
-    // overwrite current view
-    records = clean;
-
-    // persist only if cutoff is active
-    if (activeCutoff) saveRecordsForCutoff(activeCutoff, records);
-
-    closePreview();
-    render();
-    alert(activeCutoff
-      ? "Imported attendance saved (front-end demo) into selected cutoff."
-      : "Imported attendance saved (front-end demo).");
+  async function saveImport() {
+    const clean = importRows.filter(r => !r.isError);
+    try {
+      for (const r of clean) {
+        const emp = getEmpByNo(r.empId);
+        if (!emp) continue;
+        await apiFetch("/attendance/records", {
+          method: "POST",
+          body: JSON.stringify({
+            employee_id: Number(emp.id),
+            date: r.date,
+            status: r.status,
+            clock_in: r.timeIn || null,
+            clock_out: r.timeOut || null,
+            minutes_late: Number(r.minutesLate || 0),
+            minutes_undertime: Number(r.minutesUndertime || 0),
+            ot_hours: Number(r.otHours || 0),
+          }),
+        });
+      }
+      await loadRecords();
+      closePreview();
+      render();
+      alert("Imported attendance saved.");
+    } catch (err) {
+      alert(err.message || "Failed to import attendance.");
+    }
   }
 
   // Import file events
@@ -1184,8 +1232,13 @@ document.addEventListener("DOMContentLoaded", () => {
     importFile.addEventListener("change", () => {
       const file = importFile.files && importFile.files[0] ? importFile.files[0] : null;
       if (!file) return;
-      setImportUISelected(file);
-      runPreviewImport();
+      const reader = new FileReader();
+      reader.onload = () => {
+        importFileContent = String(reader.result || "");
+        setImportUISelected(file);
+        runPreviewImport();
+      };
+      reader.readAsText(file);
     });
   }
 
@@ -1231,19 +1284,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setImportUISelected(null);
   });
 
-  // CSV template updated to include Code
   downloadTemplateBtn && downloadTemplateBtn.addEventListener("click", () => {
-    const csv = [
-      "Employee ID,Date,Time In,Time Out,OT,Code,Status,Assignment,Area",
-    ].join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "attendance_template.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+    window.location.href = "/attendance_template.csv";
   });
 
   function bindPreviewClose() {
@@ -1295,7 +1337,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function openEmpDrawer(empId) {
     currentEmpId = empId;
 
-    const emp = getEmp(empId);
+    const emp = getEmpByNo(empId);
     const name = emp?.name || getEmployeeName(empId) || empId;
     const dept = emp?.department || getEmployeeDept(empId) || "—";
     const pos = emp?.position || getEmployeePos(empId) || "—";

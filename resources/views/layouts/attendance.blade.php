@@ -60,12 +60,12 @@
                             <div class="dropzone__title">
                                 <span class="linkLike">Click here</span> to upload your file or drag.
                             </div>
-                            <div class="dropzone__sub">Supported format: CSV, XLSX (10mb each)</div>
+                    <div class="dropzone__sub">Supported format: CSV (10mb)</div>
                         </div>
                     </div>
                 </div>
 
-                <input type="file" id="importFile" accept=".csv,.xlsx" hidden />
+                <input type="file" id="importFile" accept=".csv" hidden />
             </div>
 
             <div class="importFooter">
@@ -288,7 +288,7 @@
 
                 <div class="field">
                     <label>Assignment Type</label>
-                    <select id="f_assignType" required>
+                    <select id="f_assignType" required disabled>
                         <option value="">—</option>
                         <option>Tagum</option>
                         <option>Davao</option>
@@ -300,7 +300,7 @@
 
             <div class="field" id="areaWrap" hidden>
                 <label>Area Place</label>
-                <select id="f_areaPlace">
+                <select id="f_areaPlace" disabled>
                     <option value="">—</option>
                     <option>Laak</option>
                     <option>Pantukan</option>

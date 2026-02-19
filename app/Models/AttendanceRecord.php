@@ -11,6 +11,8 @@ class AttendanceRecord extends Model
         'employee_id',
         'date',
         'status',
+        'clock_in',
+        'clock_out',
         'minutes_late',
         'minutes_undertime',
         'ot_hours',
