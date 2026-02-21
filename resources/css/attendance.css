@@ -436,6 +436,11 @@ h1 {
     color: #1a1416;
     letter-spacing: 0.2px;
 }
+.dropzone__filename {
+    font-weight: 900;
+    color: var(--maroon);
+    margin-top: 6px;
+}
 .linkLike {
     color: #9c1d3c;
     text-decoration: underline;
@@ -733,32 +738,39 @@ h1 {
 .tablewrap {
     border-radius: 16px;
     border: 1px solid var(--line);
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 .table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    min-width: 1180px;
+    min-width: 0;
     background: #fff;
+}
+.table:not(.table--preview) {
+    table-layout: fixed;
 }
 thead th {
     position: sticky;
     top: 0;
-    background: rgba(255, 255, 255, 0.98);
+    background: #f4f5f7;
     border-bottom: 1px solid var(--line);
     text-align: left;
-    padding: 12px 10px;
-    font-size: 12px;
+    padding: 8px 8px;
+    font-size: 11px;
     color: var(--muted);
     font-weight: 1000;
+    white-space: nowrap;
 }
 tbody td {
-    padding: 12px 10px;
+    padding: 8px 8px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
     font-weight: 800;
-    font-size: 13px;
+    font-size: 12px;
     vertical-align: middle;
+    white-space: normal;
+    word-break: break-word;
 }
 tbody tr {
     cursor: pointer;
@@ -773,6 +785,26 @@ tbody tr:hover {
 .col-actions {
     width: 140px;
 }
+
+/* Compact attendance table widths */
+.table:not(.table--preview) th:nth-child(2),
+.table:not(.table--preview) td:nth-child(2) { width: 90px; }  /* Date */
+.table:not(.table--preview) th:nth-child(3),
+.table:not(.table--preview) td:nth-child(3) { width: 80px; }  /* Emp ID */
+.table:not(.table--preview) th:nth-child(4),
+.table:not(.table--preview) td:nth-child(4) { width: 180px; } /* Name */
+.table:not(.table--preview) th:nth-child(5),
+.table:not(.table--preview) td:nth-child(5) { width: 130px; } /* Department */
+.table:not(.table--preview) th:nth-child(6),
+.table:not(.table--preview) td:nth-child(6) { width: 110px; } /* Assignment */
+.table:not(.table--preview) th:nth-child(7),
+.table:not(.table--preview) td:nth-child(7) { width: 110px; } /* Area */
+.table:not(.table--preview) th:nth-child(8),
+.table:not(.table--preview) td:nth-child(8) { width: 120px; } /* Clock In/Out */
+.table:not(.table--preview) th:nth-child(9),
+.table:not(.table--preview) td:nth-child(9) { width: 60px; }  /* OT */
+.table:not(.table--preview) th:nth-child(10),
+.table:not(.table--preview) td:nth-child(10) { width: 90px; } /* Status */
 
 .tableFooter {
     display: flex;
@@ -869,9 +901,9 @@ tbody tr:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 6px 12px;
+    padding: 4px 8px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 1000;
     border: 1px solid transparent;
 }
@@ -895,10 +927,40 @@ tbody tr:hover {
     border-color: rgba(245, 158, 11, 0.22);
     color: #92400e;
 }
+.chip--unpaid {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.22);
+    color: #991b1b;
+}
+.chip--paid {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.22);
+    color: #166534;
+}
+.chip--halfday {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.22);
+    color: #1e40af;
+}
+.chip--off {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #475569;
+}
+.chip--holiday {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.22);
+    color: #92400e;
+}
+.chip--loa {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.18);
+    color: #991b1b;
+}
 
 .iconbtn {
-    width: 38px;
-    height: 38px;
+    width: 32px;
+    height: 32px;
     border-radius: 12px;
     border: 1px solid var(--line);
     background: #fff;
@@ -1026,6 +1088,13 @@ tbody tr:hover {
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
 }
+#empDrawer .previewSummary {
+    grid-template-columns: repeat(3, 1fr);
+}
+#empDrawer .sumCard {
+    align-items: center;
+    text-align: center;
+}
 .sumCard {
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -1124,9 +1193,49 @@ tbody tr:hover {
 
 .tablewrap--preview {
     max-height: 360px;
+    scrollbar-gutter: stable;
+    padding-right: 12px;
 }
 .table--preview {
-    min-width: 980px;
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+}
+.tablewrap--preview .table--preview th,
+.tablewrap--preview .table--preview td {
+    padding: 8px 8px;
+    font-size: 11px;
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
+    vertical-align: middle;
+}
+.tablewrap--preview .table--preview th:nth-child(1),
+.tablewrap--preview .table--preview td:nth-child(1) { width: 110px; } /* Date */
+.tablewrap--preview .table--preview th:nth-child(2),
+.tablewrap--preview .table--preview td:nth-child(2) { width: 110px; } /* Time In */
+.tablewrap--preview .table--preview th:nth-child(3),
+.tablewrap--preview .table--preview td:nth-child(3) { width: 110px; } /* Time Out */
+.tablewrap--preview .table--preview th:nth-child(4),
+.tablewrap--preview .table--preview td:nth-child(4) { width: 80px; }  /* OT */
+.tablewrap--preview .table--preview th:nth-child(5),
+.tablewrap--preview .table--preview td:nth-child(5) { width: 90px; }  /* Total */
+.tablewrap--preview .table--preview th:last-child,
+.tablewrap--preview .table--preview td:last-child {
+    padding-right: 26px;
+}
+.tablewrap--preview .table--preview tbody td:last-child {
+    border-right: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+/* Employee drawer: let the table grow to reduce footer gap */
+#empDrawer .drawer__body {
+    display: flex;
+    flex-direction: column;
+}
+#empDrawer .tablewrap--preview {
+    flex: 1;
+    max-height: none;
 }
 .col-rowno {
     width: 74px;
@@ -1295,6 +1404,10 @@ th.sortable.is-desc .sortIcon {
     background: rgba(156, 29, 60, 0.04);
     min-width: 260px;
 }
+.cutoffInfo--mini {
+    min-width: 200px;
+    padding: 8px 10px;
+}
 
 .cutoffRange {
     font-weight: 1000;
@@ -1309,6 +1422,12 @@ th.sortable.is-desc .sortIcon {
 
 .importNote {
     margin-top: 10px;
+}
+.drawerFilters {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
 }
 .user-dropdown__item--btn {
     background: none;

@@ -1,4 +1,4 @@
-﻿import { initClock } from "./shared/clock";
+import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 
@@ -20,7 +20,8 @@ document.addEventListener("DOMContentLoaded", () => {
       Accept: "application/json",
       ...(options.headers || {}),
     };
-    if (options.body && !headers["Content-Type"]) {
+    const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+    if (options.body && !headers["Content-Type"] && !isFormData) {
       headers["Content-Type"] = "application/json";
     }
     if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
@@ -55,6 +56,62 @@ document.addEventListener("DOMContentLoaded", () => {
     const rows = await apiFetch("/employees");
     employees = Array.isArray(rows) ? rows.map(mapEmployee) : [];
     employeesById = new Map(employees.map(e => [String(e.id), e]));
+  }
+
+  // =========================================================
+  // DATA: Attendance Codes (from DB)
+  // =========================================================
+  const statusFilter = document.getElementById("statusFilter");
+  const bulkStatusSelectInline = document.getElementById("bulkStatusSelectInline");
+  const f_status = document.getElementById("f_status");
+
+  function buildStatusListFromCodes(codes) {
+    const list = [];
+    const seen = new Set();
+    (codes || []).forEach(c => {
+      const desc = String(c.description || c.desc || "").trim();
+      if (!desc || seen.has(desc)) return;
+      seen.add(desc);
+      list.push(desc);
+    });
+    return list;
+  }
+
+  function buildFallbackStatuses() {
+    const list = [];
+    const seen = new Set();
+    Object.values(CODE_MAP).forEach(v => {
+      const s = String(v.status || "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      list.push(s);
+    });
+    return list;
+  }
+
+  function setStatusOptions(statuses) {
+    if (statusFilter) {
+      statusFilter.innerHTML = `<option value="All" selected>All</option>` +
+        statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    }
+    if (bulkStatusSelectInline) {
+      bulkStatusSelectInline.innerHTML = `<option value="">Set statusâ€¦</option>` +
+        statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    }
+    if (f_status) {
+      f_status.innerHTML = `<option value="">â€”</option>` +
+        statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    }
+  }
+
+  async function loadAttendanceCodes() {
+    try {
+      const data = await apiFetch("/settings/attendance-codes");
+      const statuses = buildStatusListFromCodes(data?.codes || []);
+      setStatusOptions(statuses.length ? statuses : buildFallbackStatuses());
+    } catch (err) {
+      setStatusOptions(buildFallbackStatuses());
+    }
   }
 
   function getEmpById(employeeId) {
@@ -93,15 +150,21 @@ document.addEventListener("DOMContentLoaded", () => {
     "A":  { status: "Absent",  isPaid: false, countsAsPresent: false },
     "AB": { status: "Absent",  isPaid: false, countsAsPresent: false },
 
-    // Paid Leave (counts as paid + present day)
-    "PL":  { status: "Leave", isPaid: true,  countsAsPresent: true },
-    "VL":  { status: "Leave", isPaid: true,  countsAsPresent: true },
-    "SL":  { status: "Leave", isPaid: true,  countsAsPresent: true },
-    "SPL": { status: "Leave", isPaid: true,  countsAsPresent: true },
-
     // Unpaid Leave
-    "UL":   { status: "Leave", isPaid: false, countsAsPresent: false },
-    "LWOP": { status: "Leave", isPaid: false, countsAsPresent: false },
+    "UL":   { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
+    "LWOP": { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
+
+    // Paid Leave
+    "PL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
+    "VL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
+    "SL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
+    "SPL": { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
+
+    // Half-day / Off / Holiday / LOA
+    "HD":  { status: "Half-day", isPaid: true, countsAsPresent: true },
+    "OFF": { status: "Day Off", isPaid: false, countsAsPresent: false },
+    "HOL": { status: "Holiday", isPaid: true, countsAsPresent: true },
+    "LOA": { status: "LOA", isPaid: false, countsAsPresent: false },
   };
 
   function normalizeCode(code) {
@@ -115,6 +178,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!s) return { status: "Present", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Absent") return { status: "Absent", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Leave") return { status: "Leave", isPaid: false, countsAsPresent: false, code: "" };
+      if (s === "Unpaid Leave") return { status: "Unpaid Leave", isPaid: false, countsAsPresent: false, code: "" };
+      if (s === "Paid Leave") return { status: "Paid Leave", isPaid: true, countsAsPresent: true, code: "" };
+      if (s === "Half-day") return { status: "Half-day", isPaid: true, countsAsPresent: true, code: "" };
+      if (s === "Day Off") return { status: "Day Off", isPaid: false, countsAsPresent: false, code: "" };
+      if (s === "Holiday") return { status: "Holiday", isPaid: true, countsAsPresent: true, code: "" };
+      if (s === "LOA") return { status: "LOA", isPaid: false, countsAsPresent: false, code: "" };
       return { status: s, isPaid: true, countsAsPresent: true, code: "" };
     }
     const mapped = CODE_MAP[c];
@@ -192,21 +261,28 @@ document.addEventListener("DOMContentLoaded", () => {
   // RECORDS: API mapping
   // =========================================================
   function mapRecordApi(r) {
+    const emp = r.employee_id ? getEmpById(r.employee_id) : null;
+    const empNo = r.emp_no || emp?.empNo || "";
+    const empName = r.emp_name || emp?.name || (empNo ? empNo : "");
+    const dept = r.department || emp?.department || "—";
+    const pos = r.position || emp?.position || "—";
+    const assignType = r.assignment_type || emp?.assignmentType || "";
+    const areaPlace = r.area_place || emp?.areaPlace || "";
     return {
       id: String(r.id),
       employeeId: String(r.employee_id || ""),
-      empId: r.emp_no || "",
-      empName: r.emp_name || "",
-      department: r.department || "—",
-      position: r.position || "—",
+      empId: empNo,
+      empName: empName,
+      department: dept,
+      position: pos,
       date: r.date || "",
       timeIn: r.clock_in || "",
       timeOut: r.clock_out || "",
       totalHours: 0,
       otHours: Number(r.ot_hours || 0),
       status: r.status || "",
-      assignType: r.assignment_type || "",
-      areaPlace: r.area_place || "",
+      assignType: assignType,
+      areaPlace: areaPlace,
       minutesLate: Number(r.minutes_late || 0),
       minutesUndertime: Number(r.minutes_undertime || 0),
       notes: "",
@@ -235,7 +311,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // FILTERS / TABLE ELEMENTS
   // =========================================================
   const dateInput = document.getElementById("dateInput");
-  const statusFilter = document.getElementById("statusFilter");
   const searchInput = document.getElementById("searchInput");
   const segBtns = Array.from(
     document.querySelectorAll(".filterbar__right .seg__btn[data-assign]")
@@ -252,12 +327,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const tbody = document.getElementById("attTbody");
   const resultsMeta = document.getElementById("resultsMeta");
+  const attFooterInfo = document.getElementById("attFooterInfo");
+  const attRowsSelect = document.getElementById("attRowsSelect");
+  const attFirst = document.getElementById("attFirst");
+  const attPrev = document.getElementById("attPrev");
+  const attNext = document.getElementById("attNext");
+  const attLast = document.getElementById("attLast");
+  const attPageInput = document.getElementById("attPageInput");
+  const attPageTotal = document.getElementById("attPageTotal");
 
   const checkAll = document.getElementById("checkAll");
   const bulkBar = document.getElementById("bulkBar");
   const selectedCount = document.getElementById("selectedCount");
   const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
-  const bulkStatusSelectInline = document.getElementById("bulkStatusSelectInline");
   const bulkApplyInline = document.getElementById("bulkApplyInline");
 
   // =========================================================
@@ -275,7 +357,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const f_employee = document.getElementById("f_employee");
   const f_date = document.getElementById("f_date");
-  const f_status = document.getElementById("f_status");
   const f_assignType = document.getElementById("f_assignType");
   const areaWrap = document.getElementById("areaWrap");
   const f_areaPlace = document.getElementById("f_areaPlace");
@@ -300,6 +381,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const clearFileBtn = document.getElementById("clearFileBtn");
   const previewImportBtn = document.getElementById("previewImportBtn");
   const fileNameLabel = document.getElementById("fileNameLabel");
+  const dropzoneTitle = document.getElementById("dropzoneTitle");
+  const dropzoneFileName = document.getElementById("dropzoneFileName");
   const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
 
   const previewDrawer = document.getElementById("previewDrawer");
@@ -344,7 +427,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const empSumTotal = document.getElementById("empSumTotal");
   const empSumHours = document.getElementById("empSumHours");
   const empSumOT = document.getElementById("empSumOT");
-  const empSumAbsent = document.getElementById("empSumAbsent");
+
+  const empCutoffMonthInput = document.getElementById("empCutoffMonth");
+  const empCutoffSelect = document.getElementById("empCutoffSelect");
+  const empCutoffRangeLabel = document.getElementById("empCutoffRangeLabel");
 
   let currentEmpId = "";
 
@@ -355,6 +441,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let records = [];
   // default sorting (hoisted early to avoid TDZ when render runs during init)
   let sortState = { key: "name", dir: "asc" };
+  let pageState = { page: 1, rows: 20 };
+  let lastFilterSig = "";
 
   async function refreshActiveCutoffAndLoad() {
     // If cutoff UI exists => we require it
@@ -419,6 +507,7 @@ document.addEventListener("DOMContentLoaded", () => {
       cutoffSelect.value = day >= 26 ? "26-10" : "11-25";
     }
     await loadEmployees();
+    await loadAttendanceCodes();
     initEmployeeSelect();
     if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
     await refreshActiveCutoffAndLoad();
@@ -445,7 +534,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (status === "Present") return `<span class="chip chip--present">Present</span>`;
     if (status === "Late") return `<span class="chip chip--late">Late</span>`;
     if (status === "Absent") return `<span class="chip chip--absent">Absent</span>`;
-    return `<span class="chip chip--leave">Leave</span>`;
+    if (status === "Unpaid Leave") return `<span class="chip chip--unpaid">Unpaid Leave</span>`;
+    if (status === "Paid Leave") return `<span class="chip chip--paid">Paid Leave</span>`;
+    if (status === "Half-day") return `<span class="chip chip--halfday">Half-day</span>`;
+    if (status === "Day Off") return `<span class="chip chip--off">Day Off</span>`;
+    if (status === "Holiday") return `<span class="chip chip--holiday">Holiday</span>`;
+    if (status === "LOA") return `<span class="chip chip--loa">LOA</span>`;
+    return `<span class="chip chip--leave">${escapeHtml(status || "—")}</span>`;
   }
 
   function assignmentText(r) {
@@ -509,7 +604,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return list.slice().sort((a, b) => {
       let av = "";
       let bv = "";
-      if (key === "name") {
+      if (key === "empId") {
+        av = normalize(a.empId);
+        bv = normalize(b.empId);
+      } else if (key === "name") {
         av = normalize(a.empName);
         bv = normalize(b.empName);
       } else if (key === "department") {
@@ -518,6 +616,9 @@ document.addEventListener("DOMContentLoaded", () => {
       } else if (key === "assignment") {
         av = normalize(assignmentText(a));
         bv = normalize(assignmentText(b));
+      } else if (key === "area") {
+        av = normalize(a.areaPlace);
+        bv = normalize(b.areaPlace);
       }
       return av.localeCompare(bv) * mul;
     });
@@ -567,24 +668,64 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function getFilterSignature() {
+    return [
+      dateInput?.value || "",
+      statusFilter?.value || "",
+      searchInput?.value || "",
+      assignmentFilter || "",
+      areaPlaceFilter?.value || "",
+    ].join("|");
+  }
+
+  function applyPagination(list) {
+    const total = list.length;
+    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
+    pageState.rows = rows;
+    const totalPages = Math.max(1, Math.ceil(total / rows));
+    pageState.page = Math.min(Math.max(1, pageState.page), totalPages);
+    const start = (pageState.page - 1) * rows;
+    const end = start + rows;
+    return { total, totalPages, slice: list.slice(start, end) };
+  }
+
   function render() {
     if (!tbody) return;
 
+    const sig = getFilterSignature();
+    if (sig !== lastFilterSig) {
+      pageState.page = 1;
+      lastFilterSig = sig;
+    }
+
     const filtered = applyFilters(records);
     const sorted = applySorting(filtered);
+    const paged = applyPagination(sorted);
 
     if (statTotal) statTotal.textContent = filtered.length;
-    if (statPresent) statPresent.textContent = filtered.filter(r => r.status === "Present").length;
+    if (statPresent) statPresent.textContent = filtered.filter(r => ["Present", "Half-day"].includes(r.status)).length;
     if (statLate) statLate.textContent = filtered.filter(r => r.status === "Late").length;
     if (statAbsent) statAbsent.textContent = filtered.filter(r => r.status === "Absent").length;
-    if (statLeave) statLeave.textContent = filtered.filter(r => r.status === "Leave").length;
+    if (statLeave) {
+      const leaveSet = new Set(["Leave", "Unpaid Leave", "Paid Leave", "LOA", "Holiday", "Day Off"]);
+      statLeave.textContent = filtered.filter(r => leaveSet.has(r.status)).length;
+    }
 
     if (resultsMeta) resultsMeta.textContent = `Showing ${filtered.length} record(s)`;
+    if (attFooterInfo) {
+      attFooterInfo.textContent = `Page ${pageState.page} of ${paged.totalPages}`;
+    }
+    if (attPageTotal) attPageTotal.textContent = `/ ${paged.totalPages}`;
+    if (attPageInput) attPageInput.value = String(pageState.page);
+    if (attFirst) attFirst.disabled = pageState.page <= 1;
+    if (attPrev) attPrev.disabled = pageState.page <= 1;
+    if (attNext) attNext.disabled = pageState.page >= paged.totalPages;
+    if (attLast) attLast.disabled = pageState.page >= paged.totalPages;
 
     const selected = new Set(selectedIds());
     tbody.innerHTML = "";
 
-    sorted.forEach(r => {
+    paged.slice.forEach(r => {
       const tr = document.createElement("tr");
       tr.dataset.empId = r.empId;
       tr.innerHTML = `
@@ -626,6 +767,33 @@ document.addEventListener("DOMContentLoaded", () => {
     updateBulkBar();
     syncCheckAll();
   }
+
+  // Pagination events
+  attRowsSelect && attRowsSelect.addEventListener("change", () => {
+    pageState.page = 1;
+    render();
+  });
+  attFirst && attFirst.addEventListener("click", () => {
+    pageState.page = 1;
+    render();
+  });
+  attPrev && attPrev.addEventListener("click", () => {
+    pageState.page = Math.max(1, pageState.page - 1);
+    render();
+  });
+  attNext && attNext.addEventListener("click", () => {
+    pageState.page = pageState.page + 1;
+    render();
+  });
+  attLast && attLast.addEventListener("click", () => {
+    pageState.page = Number.MAX_SAFE_INTEGER;
+    render();
+  });
+  attPageInput && attPageInput.addEventListener("change", () => {
+    const n = Number(attPageInput.value || 1);
+    pageState.page = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+    render();
+  });
 
   // Table row actions: view employee, edit, delete
   tbody && tbody.addEventListener("click", (e) => {
@@ -962,6 +1130,18 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fileNameLabel) fileNameLabel.textContent = file ? file.name : "No file selected.";
     if (clearFileBtn) clearFileBtn.disabled = !file;
     if (previewImportBtn) previewImportBtn.disabled = !file;
+    if (dropzoneTitle) dropzoneTitle.hidden = !!file;
+    if (dropzoneFileName) {
+      dropzoneFileName.hidden = !file;
+      dropzoneFileName.textContent = file ? file.name : "";
+    }
+  }
+  function getImportFilters() {
+    const month = cutoffMonthInput?.value || "";
+    const cutoff = cutoffSelect?.value || "";
+    const assignment = assignmentFilter || "All";
+    const area = assignment === "Area" ? (areaPlaceFilter?.value || "") : "";
+    return { month, cutoff, assignment, area };
   }
 
   function openPreview() {
@@ -983,7 +1163,18 @@ document.addEventListener("DOMContentLoaded", () => {
     return /^\d{4}-\d{2}-\d{2}$/.test(yyyy_mm_dd || "");
   }
   function isValidStatus(s) {
-    return ["Present", "Late", "Absent", "Leave"].includes(s);
+    return [
+      "Present",
+      "Late",
+      "Absent",
+      "Leave",
+      "Unpaid Leave",
+      "Paid Leave",
+      "Half-day",
+      "Day Off",
+      "Holiday",
+      "LOA",
+    ].includes(s);
   }
   function isValidTime(s) {
     return !s || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(s).trim());
@@ -1185,17 +1376,53 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function runPreviewImport() {
-    const parsed = buildParsedRowsFromCsv(importFileContent || "");
-    importRows = buildImportRows(parsed);
-    previewMode = "errors";
+  async function uploadImportFile() {
+    const file = importFile?.files?.[0];
+    if (!file) {
+      alert("Please choose an Excel file.");
+      return;
+    }
 
-    showErrorsOnlyBtn && showErrorsOnlyBtn.classList.add("is-active");
-    showAllRowsBtn && showAllRowsBtn.classList.remove("is-active");
+    const f = getImportFilters();
+    if (!f.month || !f.cutoff) {
+      alert("Please select a payroll month and cutoff.");
+      return;
+    }
 
-    updatePreviewSummary();
-    renderPreviewTable();
-    openPreview();
+    const fd = new FormData();
+    fd.append("month", f.month);
+    fd.append("cutoff", f.cutoff);
+    fd.append("assignment", f.assignment);
+    fd.append("area", f.area);
+    fd.append("file", file);
+
+    try {
+      const res = await fetch("/attendance/import", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          ...(csrfToken ? { "X-CSRF-TOKEN": csrfToken } : {}),
+        },
+        body: fd,
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 422 && data?.errors) {
+          alert("Import failed:\n\n" + data.errors.slice(0, 30).join("\n"));
+          return;
+        }
+        alert(data?.message || "Import failed. Check server logs.");
+        return;
+      }
+
+      alert("Imported successfully.");
+      if (importFile) importFile.value = "";
+      setImportUISelected(null);
+      await refreshActiveCutoffAndLoad();
+    } catch (err) {
+      alert(err.message || "Import failed.");
+    }
   }
 
   async function saveImport() {
@@ -1231,14 +1458,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (importFile) {
     importFile.addEventListener("change", () => {
       const file = importFile.files && importFile.files[0] ? importFile.files[0] : null;
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        importFileContent = String(reader.result || "");
-        setImportUISelected(file);
-        runPreviewImport();
-      };
-      reader.readAsText(file);
+      setImportUISelected(file);
     });
   }
 
@@ -1285,7 +1505,18 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   downloadTemplateBtn && downloadTemplateBtn.addEventListener("click", () => {
-    window.location.href = "/attendance_template.csv";
+    const f = getImportFilters();
+    if (!f.month || !f.cutoff) {
+      alert("Please select a payroll month and cutoff.");
+      return;
+    }
+    const qs = new URLSearchParams({
+      month: f.month,
+      cutoff: f.cutoff,
+      assignment: f.assignment,
+      area: f.area,
+    });
+    window.location.href = `/attendance/template?${qs.toString()}`;
   });
 
   function bindPreviewClose() {
@@ -1309,29 +1540,48 @@ document.addEventListener("DOMContentLoaded", () => {
     renderPreviewTable();
   });
 
-  saveImportBtn && saveImportBtn.addEventListener("click", () => {
-    if (saveImportBtn.disabled) return;
-    saveImport();
+  previewImportBtn && previewImportBtn.addEventListener("click", () => {
+    if (previewImportBtn.disabled) return;
+    uploadImportFile();
   });
 
   // =========================================================
   // EMPLOYEE DRAWER
   // =========================================================
   function toMinutes(t) {
-    const m = /^(\d{2}):(\d{2})$/.exec(t || "");
+    const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(t || ""));
     if (!m) return null;
     const hh = Number(m[1]);
     const mm = Number(m[2]);
+    const ss = Number(m[3] || 0);
     if (!isFinite(hh) || !isFinite(mm)) return null;
-    return hh * 60 + mm;
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) return null;
+    return hh * 60 + mm + (ss / 60);
   }
 
   function computeTotalHours(r) {
     if (Number(r.totalHours) > 0) return Number(r.totalHours);
     const a = toMinutes(r.timeIn);
-    const b = toMinutes(r.timeOut);
-    if (a == null || b == null || b <= a) return 0;
-    return (b - a) / 60;
+    let b = toMinutes(r.timeOut);
+    if (a == null || b == null) return 0;
+    if (b <= a) {
+      b += 12 * 60;
+    }
+    if (b <= a) return 0;
+
+    const work1Start = 8 * 60;
+    const work1End = 12 * 60;
+    const work2Start = 13 * 60;
+    const work2End = 17 * 60;
+
+    const overlap = (start, end, winStart, winEnd) => {
+      const s = Math.max(start, winStart);
+      const e = Math.min(end, winEnd);
+      return e > s ? (e - s) : 0;
+    };
+
+    const mins = overlap(a, b, work1Start, work1End) + overlap(a, b, work2Start, work2End);
+    return mins > 0 ? mins / 60 : 0;
   }
 
   function openEmpDrawer(empId) {
@@ -1358,6 +1608,18 @@ document.addEventListener("DOMContentLoaded", () => {
         `Assignment: <strong>${escapeHtml(assign)}</strong>`;
     }
 
+    if (empCutoffMonthInput && !empCutoffMonthInput.value) {
+      if (cutoffMonthInput?.value) {
+        empCutoffMonthInput.value = cutoffMonthInput.value;
+      } else {
+        const now = new Date();
+        empCutoffMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      }
+    }
+    if (empCutoffSelect && !empCutoffSelect.value) {
+      empCutoffSelect.value = cutoffSelect?.value || "11-25";
+    }
+
     renderEmpRecords();
 
     if (empDrawer) {
@@ -1382,11 +1644,28 @@ document.addEventListener("DOMContentLoaded", () => {
   closeEmpDrawerFooter && closeEmpDrawerFooter.addEventListener("click", closeEmpDrawer);
   empOverlay && empOverlay.addEventListener("click", closeEmpDrawer);
 
+  empCutoffMonthInput && empCutoffMonthInput.addEventListener("change", () => renderEmpRecords());
+  empCutoffSelect && empCutoffSelect.addEventListener("change", () => renderEmpRecords());
+
+  function getEmpActiveCutoff() {
+    const ym = parseYM(empCutoffMonthInput?.value);
+    const cutoffType = empCutoffSelect?.value || "11-25";
+    if (!ym) return null;
+    const range = getCutoffRange(ym.y, ym.m, cutoffType);
+    return { year: ym.y, month: ym.m, cutoffType, range };
+  }
+
   function renderEmpRecords() {
     if (!empTbody || !currentEmpId) return;
 
+    const empCutoff = getEmpActiveCutoff();
+    if (empCutoffRangeLabel) {
+      empCutoffRangeLabel.textContent = empCutoff ? formatRangeLabel(empCutoff.range) : "—";
+    }
+
     const list = records
       .filter(r => r.empId === currentEmpId)
+      .filter(r => !empCutoff || isDateWithinCutoff(r.date, empCutoff.range))
       .slice()
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
@@ -1394,7 +1673,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let totalHours = 0;
     let totalOT = 0;
-    let absentCount = 0;
+
+    const noTimeStatuses = new Set([
+      "Absent",
+      "Leave",
+      "Unpaid Leave",
+      "Paid Leave",
+      "Day Off",
+      "Holiday",
+      "LOA",
+    ]);
 
     list.forEach(r => {
       const hrs = computeTotalHours(r);
@@ -1402,30 +1690,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
       totalHours += hrs;
       totalOT += ot;
-      if (r.status === "Absent") absentCount++;
+
+      const statusLabel = String(r.status || "").toUpperCase();
+      const showStatus = noTimeStatuses.has(r.status);
+      const timeInDisplay = showStatus ? statusLabel : (r.timeIn || "—");
+      const timeOutDisplay = showStatus ? "—" : (r.timeOut || "—");
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(r.date || "—")}</td>
-        <td>${escapeHtml(r.timeIn || "—")}</td>
-        <td>${escapeHtml(r.timeOut || "—")}</td>
-        <td class="num">${escapeHtml(formatHours(hrs))}</td>
+        <td>${escapeHtml(timeInDisplay)}</td>
+        <td>${escapeHtml(timeOutDisplay)}</td>
         <td class="num">${escapeHtml(formatHours(ot))}</td>
-        <td>${chip(r.status)}</td>
+        <td class="num">${escapeHtml(formatHours(hrs))}</td>
       `;
       empTbody.appendChild(tr);
     });
 
     if (!list.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">No attendance records found.</td>`;
+      tr.innerHTML = `<td colspan="5" class="muted small">No attendance records found.</td>`;
       empTbody.appendChild(tr);
     }
 
     if (empSumTotal) empSumTotal.textContent = String(list.length);
     if (empSumHours) empSumHours.textContent = formatHours(totalHours);
     if (empSumOT) empSumOT.textContent = formatHours(totalOT);
-    if (empSumAbsent) empSumAbsent.textContent = String(absentCount);
   }
 
   // =========================================================

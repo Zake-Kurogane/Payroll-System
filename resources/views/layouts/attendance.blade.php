@@ -57,15 +57,16 @@
 
                     <div class="dropzone__text">
                         <div class="dropzone__pill">
-                            <div class="dropzone__title">
+                            <div class="dropzone__title" id="dropzoneTitle">
                                 <span class="linkLike">Click here</span> to upload your file or drag.
                             </div>
-                    <div class="dropzone__sub">Supported format: CSV (10mb)</div>
+                            <div class="dropzone__sub">Supported format: XLSX (10mb)</div>
+                            <div class="dropzone__filename" id="dropzoneFileName" hidden></div>
                         </div>
                     </div>
                 </div>
 
-                <input type="file" id="importFile" accept=".csv" hidden />
+                <input type="file" id="importFile" accept=".xlsx" hidden />
             </div>
 
             <div class="importFooter">
@@ -78,15 +79,15 @@
                         </button>
                     </div>
                     <button class="btn" type="button" id="clearFileBtn" disabled>Clear</button>
-                    <button class="btn btn--maroon" type="button" id="previewImportBtn" disabled
-                        style="display:none;">Preview Import</button>
+                    <button class="btn btn--maroon" type="button" id="previewImportBtn" disabled>Import Excel</button>
                 </div>
             </div>
 
             <div class="muted small importNote">
-                Tip: You can use <strong>Code</strong> like <strong>PL</strong>, <strong>SL</strong>,
-                <strong>A</strong>, <strong>P</strong>.
-                Codes will be mapped automatically.
+                Tip: Use codes like <strong>P</strong>, <strong>L</strong>, <strong>A</strong>,
+                <strong>UL</strong>, <strong>PL</strong>, <strong>HD</strong>, <strong>OFF</strong>,
+                <strong>HOL</strong>, <strong>LOA</strong>.
+                Codes are mapped automatically.
             </div>
         </section>
 
@@ -102,10 +103,6 @@
                     <label>Status</label>
                     <select id="statusFilter">
                         <option value="All" selected>All</option>
-                        <option value="Present">Present</option>
-                        <option value="Late">Late</option>
-                        <option value="Absent">Absent</option>
-                        <option value="Leave">Leave</option>
                     </select>
                 </div>
 
@@ -175,10 +172,6 @@
 
                         <select id="bulkStatusSelectInline" class="bulkSelect" aria-label="Bulk status">
                             <option value="">Set status…</option>
-                            <option value="Present">Present</option>
-                            <option value="Late">Late</option>
-                            <option value="Absent">Absent</option>
-                            <option value="Leave">Leave</option>
                         </select>
 
                         <button class="btn btn--maroon" type="button" id="bulkApplyInline" disabled>Apply</button>
@@ -198,14 +191,16 @@
                                 <input id="checkAll" type="checkbox" aria-label="Select all rows" />
                             </th>
                             <th>Date</th>
-                            <th>Emp ID</th>
+                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
+                                    aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
                             <th class="sortable" data-sort="department">Department <span class="sortIcon"
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
-                            <th>Area</th>
+                            <th class="sortable" data-sort="area">Area <span class="sortIcon"
+                                    aria-hidden="true"></span></th>
                             <th>Clock In/Out</th>
                             <th>OT</th>
                             <th>Status</th>
@@ -223,7 +218,7 @@
                     <select class="rowsSelect" id="attRowsSelect">
                         <option>10</option>
                         <option selected>20</option>
-                        <option>50</option>
+                        <option>30</option>
                     </select>
                     <div class="pager">
                         <button class="pagerBtn" type="button" id="attFirst">&#124;&#9664;</button>
@@ -278,10 +273,6 @@
                     <label>Status</label>
                     <select id="f_status" required>
                         <option value="">—</option>
-                        <option>Present</option>
-                        <option>Late</option>
-                        <option>Absent</option>
-                        <option>Leave</option>
                     </select>
                     <small class="err" id="errStatus"></small>
                 </div>
@@ -429,6 +420,24 @@
         </div>
 
         <div class="drawer__body">
+            <div class="drawerFilters">
+                <div class="f">
+                    <label>Month</label>
+                    <input id="empCutoffMonth" type="month">
+                </div>
+                <div class="f">
+                    <label>Cut-off</label>
+                    <select id="empCutoffSelect">
+                        <option value="11-25">11–25</option>
+                        <option value="26-10">26–10</option>
+                    </select>
+                </div>
+                <div class="cutoffInfo cutoffInfo--mini" id="empCutoffInfo" aria-live="polite">
+                    <div class="tiny muted">Range</div>
+                    <div class="cutoffRange" id="empCutoffRangeLabel">—</div>
+                </div>
+            </div>
+
             <div class="previewSummary">
                 <div class="sumCard">
                     <div class="sumVal" id="empSumTotal">0</div>
@@ -442,10 +451,6 @@
                     <div class="sumVal" id="empSumOT">0</div>
                     <div class="sumLbl">Total OT Hours</div>
                 </div>
-                <div class="sumCard sumCard--danger">
-                    <div class="sumVal" id="empSumAbsent">0</div>
-                    <div class="sumLbl">Absent</div>
-                </div>
             </div>
 
             <div class="tablewrap tablewrap--preview">
@@ -455,9 +460,8 @@
                             <th>Date</th>
                             <th>Time In</th>
                             <th>Time Out</th>
-                            <th class="num">Total Hours</th>
                             <th class="num">OT Hours</th>
-                            <th>Status</th>
+                            <th class="num">Total Hours</th>
                         </tr>
                     </thead>
                     <tbody id="empTbody"></tbody>
@@ -472,3 +476,5 @@
 
 
 @endsection
+
+

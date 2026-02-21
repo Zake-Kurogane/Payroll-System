@@ -1,7 +1,7 @@
 import { esc } from "./utils";
 import { createDrawer } from "./drawer";
 
-export function initAttendanceCodes(toast) {
+export function initAttendanceCodes(toast, apiFetch) {
   const codesTbody = document.getElementById("codesTbody");
   const addCodeBtn = document.getElementById("addCodeBtn");
 
@@ -24,14 +24,8 @@ export function initAttendanceCodes(toast) {
 
   let editCodeKey = null;
 
-  let codes = [
-    { code: "P", desc: "Present", present: true, paid: true, deduct: false, notes: "" },
-    { code: "PL", desc: "Paid Leave", present: true, paid: true, deduct: false, notes: "" },
-    { code: "UL", desc: "Unpaid Leave", present: false, paid: false, deduct: true, notes: "" },
-    { code: "A", desc: "Absent", present: false, paid: false, deduct: true, notes: "Default no log" },
-    { code: "HD", desc: "Half-day", present: true, paid: true, deduct: true, notes: "Depends later" },
-    { code: "OFF", desc: "Rest Day", present: false, paid: false, deduct: false, notes: "Default Sunday" },
-  ];
+  let codes = [];
+  let defaults = { default_no_log_code: "", default_sunday_code: "" };
 
   if (codeDrawer && codeDrawer.parentElement !== document.body) {
     document.body.appendChild(codeDrawer);
@@ -85,8 +79,58 @@ export function initAttendanceCodes(toast) {
       if (chosen) sel.value = chosen;
     };
 
-    makeOpts(defaultNoLogCode, codes.some((c) => c.code === "A") ? "A" : (codes[0]?.code || ""));
-    makeOpts(defaultSundayCode, codes.some((c) => c.code === "OFF") ? "OFF" : (codes[0]?.code || ""));
+    makeOpts(defaultNoLogCode, defaults.default_no_log_code || (codes[0]?.code || ""));
+    makeOpts(defaultSundayCode, defaults.default_sunday_code || (codes[0]?.code || ""));
+  }
+
+  async function loadCodes() {
+    if (!apiFetch) return;
+    try {
+      const data = await apiFetch("/settings/attendance-codes");
+      codes = Array.isArray(data?.codes)
+        ? data.codes.map((c) => ({
+            code: c.code,
+            desc: c.description,
+            present: !!c.counts_as_present,
+            paid: !!c.counts_as_paid,
+            deduct: !!c.affects_deductions,
+            notes: c.notes || "",
+          }))
+        : [];
+      defaults = {
+        default_no_log_code: data?.defaults?.default_no_log_code || "",
+        default_sunday_code: data?.defaults?.default_sunday_code || "",
+      };
+      renderCodes();
+      fillCodeDefaults();
+    } catch (err) {
+      toast(err.message || "Failed to load attendance codes.", "error");
+    }
+  }
+
+  async function saveCodes() {
+    if (!apiFetch) return;
+    try {
+      await apiFetch("/settings/attendance-codes", {
+        method: "POST",
+        body: JSON.stringify({
+          codes: codes.map((c) => ({
+            code: c.code,
+            description: c.desc,
+            counts_as_present: !!c.present,
+            counts_as_paid: !!c.paid,
+            affects_deductions: !!c.deduct,
+            notes: c.notes || "",
+          })),
+          defaults: {
+            default_no_log_code: defaultNoLogCode?.value || "",
+            default_sunday_code: defaultSundayCode?.value || "",
+          },
+        }),
+      });
+    } catch (err) {
+      toast(err.message || "Failed to save attendance codes.", "error");
+    }
   }
 
   function openAddCode() {
@@ -126,6 +170,7 @@ export function initAttendanceCodes(toast) {
       codes = codes.filter((x) => x.code !== code);
       renderCodes();
       fillCodeDefaults();
+      saveCodes();
       toast("Code deleted.");
     }
   });
@@ -169,10 +214,14 @@ export function initAttendanceCodes(toast) {
     drawer?.close();
     renderCodes();
     fillCodeDefaults();
+    saveCodes();
     toast("Saved attendance code.");
   });
 
+  defaultNoLogCode?.addEventListener("change", () => saveCodes());
+  defaultSundayCode?.addEventListener("change", () => saveCodes());
+
   renderCodes();
   fillCodeDefaults();
+  loadCodes();
 }
-
