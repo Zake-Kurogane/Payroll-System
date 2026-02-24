@@ -22,7 +22,6 @@
                         <label class="field__label">Search</label>
                         <input id="searchInput" name="q" class="field__control" type="search"
                             value="{{ request('q') }}" placeholder="Search employee id or name" />
-                        <div class="suggest" id="searchSuggest" hidden></div>
                     </div>
                     <div class="field">
                         <label class="field__label">Department</label>

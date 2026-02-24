@@ -1,7 +1,7 @@
 import { esc } from "./utils";
 import { createDrawer } from "./drawer";
 
-export function initAttendanceCodes(toast, apiFetch) {
+export function initAttendanceCodes(toast, apiFetch, noticeEl) {
   const codesTbody = document.getElementById("codesTbody");
   const addCodeBtn = document.getElementById("addCodeBtn");
 
@@ -32,6 +32,17 @@ export function initAttendanceCodes(toast, apiFetch) {
   }
 
   const drawer = createDrawer(codeDrawer, codeDrawerOverlay, [closeCodeDrawer, cancelCodeBtn]);
+
+  function showNotice(message) {
+    if (!noticeEl) return false;
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+    clearTimeout(noticeEl._hideTimer);
+    noticeEl._hideTimer = setTimeout(() => {
+      noticeEl.hidden = true;
+    }, 3500);
+    return true;
+  }
 
   function renderCodes() {
     if (!codesTbody) return;
@@ -128,6 +139,7 @@ export function initAttendanceCodes(toast, apiFetch) {
           },
         }),
       });
+      showNotice("Attendance codes saved.");
     } catch (err) {
       toast(err.message || "Failed to save attendance codes.", "error");
     }
@@ -171,7 +183,9 @@ export function initAttendanceCodes(toast, apiFetch) {
       renderCodes();
       fillCodeDefaults();
       saveCodes();
-      toast("Code deleted.");
+      if (!showNotice("Attendance code deleted.")) {
+        toast("Code deleted.");
+      }
     }
   });
 
@@ -215,7 +229,9 @@ export function initAttendanceCodes(toast, apiFetch) {
     renderCodes();
     fillCodeDefaults();
     saveCodes();
-    toast("Saved attendance code.");
+    if (!showNotice("Attendance code saved.")) {
+      toast("Saved attendance code.");
+    }
   });
 
   defaultNoLogCode?.addEventListener("change", () => saveCodes());

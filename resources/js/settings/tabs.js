@@ -9,6 +9,11 @@ export function initTabs() {
     if (panel) panelByTab.set(btn, panel);
   });
 
+  const STORAGE_KEY = "settings.activeTab";
+  const storage = (() => {
+    try { return window.sessionStorage; } catch { return null; }
+  })();
+
   function activate(btn, shouldFocus = false) {
     tabs.forEach((b) => {
       const active = b === btn;
@@ -23,10 +28,28 @@ export function initTabs() {
       }
     });
 
+    const tabId = btn.getAttribute("data-tab") || btn.id || "";
+    if (tabId && storage) {
+      try { storage.setItem(STORAGE_KEY, tabId); } catch {}
+    }
+
     if (shouldFocus) btn.focus();
   }
 
-  const initial = tabs.find((b) => b.getAttribute("aria-selected") === "true") || tabs[0];
+  let initial = null;
+  try {
+    const ref = document.referrer || "";
+    if (/\/login\b|\/logout\b/i.test(ref) && storage) {
+      storage.removeItem(STORAGE_KEY);
+    }
+    const saved = storage ? storage.getItem(STORAGE_KEY) : null;
+    if (saved) {
+      initial = tabs.find((b) => b.getAttribute("data-tab") === saved || b.id === saved) || null;
+    }
+  } catch {}
+  if (!initial) {
+    initial = tabs.find((b) => b.getAttribute("aria-selected") === "true") || tabs[0];
+  }
   activate(initial, false);
 
   tabs.forEach((btn) => {
@@ -49,4 +72,3 @@ export function initTabs() {
     activate(tabs[nextIndex], true);
   });
 }
-

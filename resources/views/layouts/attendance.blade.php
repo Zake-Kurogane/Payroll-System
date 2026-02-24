@@ -199,8 +199,8 @@
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
-                            <th class="sortable" data-sort="area">Area <span class="sortIcon"
-                                    aria-hidden="true"></span></th>
+                            <th class="sortable" data-sort="area">Area <span class="sortIcon" aria-hidden="true"></span>
+                            </th>
                             <th>Clock In/Out</th>
                             <th>OT</th>
                             <th>Status</th>
@@ -476,5 +476,3 @@
 
 
 @endsection
-
-

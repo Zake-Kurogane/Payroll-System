@@ -1,7 +1,7 @@
 import { esc } from "./utils";
 import { createDrawer } from "./drawer";
 
-export function initCashAdvance(toast) {
+export function initCashAdvance(toast, apiFetch, noticeEl) {
   const caTbody = document.getElementById("caTbody");
   const newCaBtn = document.getElementById("newCaBtn");
 
@@ -10,16 +10,69 @@ export function initCashAdvance(toast) {
   const closeCaDrawer = document.getElementById("closeCaDrawer");
   const cancelCaBtn = document.getElementById("cancelCaBtn");
   const caForm = document.getElementById("caForm");
+  const caViewDrawer = document.getElementById("caViewDrawer");
+  const caViewDrawerOverlay = document.getElementById("caViewDrawerOverlay");
+  const closeCaViewDrawer = document.getElementById("closeCaViewDrawer");
+  const closeCaViewBtn = document.getElementById("closeCaViewBtn");
+  const caViewTitle = document.getElementById("caViewDrawerTitle");
+  const caViewSubtitle = document.getElementById("caViewDrawerSubtitle");
+  const caViewEmployee = document.getElementById("caViewEmployee");
+  const caViewAmount = document.getElementById("caViewAmount");
+  const caViewTerm = document.getElementById("caViewTerm");
+  const caViewStart = document.getElementById("caViewStart");
+  const caViewStatus = document.getElementById("caViewStatus");
+  const caActionBanner = document.getElementById("caActionBanner");
+  const caEmployeeInput = document.getElementById("caEmployeeInput");
+  const caEmployeeId = document.getElementById("caEmployeeId");
+  const caEmployeeList = document.getElementById("caEmployeeList");
 
   if (caDrawer && caDrawer.parentElement !== document.body) {
     document.body.appendChild(caDrawer);
   }
+  if (caViewDrawer && caViewDrawer.parentElement !== document.body) {
+    document.body.appendChild(caViewDrawer);
+  }
 
   const drawer = createDrawer(caDrawer, caDrawerOverlay, [closeCaDrawer, cancelCaBtn]);
+  const viewDrawer = createDrawer(caViewDrawer, caViewDrawerOverlay, [closeCaViewDrawer, closeCaViewBtn]);
 
-  let cashAdvances = [
-    { id: 1, employee: "Maria Santos", amount: 5000, term: 3, start: "2026-02", method: "salary_deduction", status: "Active" },
-  ];
+  let cashAdvances = [];
+  let employees = [];
+  let employeeLabelToId = new Map();
+
+  function showNotice(message) {
+    if (!noticeEl) return false;
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+    clearTimeout(noticeEl._hideTimer);
+    noticeEl._hideTimer = setTimeout(() => {
+      noticeEl.hidden = true;
+    }, 3500);
+    return true;
+  }
+
+  function showBanner(message) {
+    if (!caActionBanner) return false;
+    caActionBanner.textContent = message;
+    caActionBanner.hidden = false;
+    clearTimeout(caActionBanner._hideTimer);
+    caActionBanner._hideTimer = setTimeout(() => {
+      caActionBanner.hidden = true;
+    }, 4000);
+    return true;
+  }
+
+  function openViewDrawer(row, mode) {
+    if (!row) return;
+    if (caViewTitle) caViewTitle.textContent = mode === "edit" ? "Edit Cash Advance" : "Cash Advance Details";
+    if (caViewSubtitle) caViewSubtitle.textContent = mode === "edit" ? "Edit cash advance entry (UI only)." : "View cash advance entry.";
+    if (caViewEmployee) caViewEmployee.value = row.employee_name || "";
+    if (caViewAmount) caViewAmount.value = peso(row.amount || 0);
+    if (caViewTerm) caViewTerm.value = row.term_months || "";
+    if (caViewStart) caViewStart.value = String(row.start_month || "").slice(0, 7);
+    if (caViewStatus) caViewStatus.value = row.status || "";
+    viewDrawer?.open();
+  }
 
   function peso(n) {
     const v = Number(n);
@@ -27,6 +80,37 @@ export function initCashAdvance(toast) {
     return `₱ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  
+  function formatPesoInput(raw) {
+    const cleaned = String(raw || "").replace(/[^0-9.]/g, "");
+    if (!cleaned) return { display: "", value: 0 };
+    const parts = cleaned.split(".");
+    const intPart = parts[0] || "0";
+    const decPart = parts[1] ? parts[1].slice(0, 2) : "";
+    const num = Number(`${intPart}.${decPart || ""}`);
+    const formattedInt = Number(intPart || 0).toLocaleString();
+    const formatted = decPart.length ? `${formattedInt}.${decPart}` : formattedInt;
+    return { display: `\u20B1${formatted}`, value: Number.isFinite(num) ? num : 0 };
+  }
+
+  function syncAmountInput() {
+    const el = document.getElementById("caAmount");
+    const hidden = document.getElementById("caAmountValue");
+    if (!el || !hidden) return;
+    const { display, value } = formatPesoInput(el.value);
+    el.value = display;
+    hidden.value = value ? String(value) : "";
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  }
+
+  function getAmountValue() {
+    const hidden = document.getElementById("caAmountValue");
+    if (hidden && hidden.value) return Number(hidden.value);
+    const el = document.getElementById("caAmount");
+    const { value } = formatPesoInput(el?.value || "");
+    return value;
+  }
   function computePerCutoff(amount, termMonths) {
     const cutoffsPerMonth = 2;
     const totalCutoffs = Math.max(1, Number(termMonths) * cutoffsPerMonth);
@@ -38,22 +122,17 @@ export function initCashAdvance(toast) {
     caTbody.innerHTML = "";
 
     cashAdvances.forEach((row) => {
-      const per = computePerCutoff(row.amount, row.term);
+      const per = Number(row.per_cutoff_deduction ?? computePerCutoff(row.amount, row.term_months));
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(row.employee)}</td>
+        <td>${esc(row.employee_name || "—")}</td>
         <td>${esc(peso(row.amount))}</td>
-        <td>${esc(row.term)} mo</td>
-        <td>${esc(row.start)}</td>
-        <td>${esc(peso(per))} <span class="muted small">(placeholder)</span></td>
+        <td>${esc(row.term_months)} mo</td>
+        <td>${esc(String(row.start_month || "").slice(0, 7))}</td>
+        <td>${esc(peso(per))}</td>
         <td>${esc(row.status)}</td>
         <td>
           <div class="miniRow">
-            <button class="miniBtn" data-ca="view" data-id="${row.id}" aria-label="View">
-              <svg class="miniBtn__icon" viewBox="0 0 24 24">
-                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
             <button class="miniBtn" data-ca="edit" data-id="${row.id}" aria-label="Edit">
               <svg class="miniBtn__icon" viewBox="0 0 24 24">
                 <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
@@ -73,30 +152,49 @@ export function initCashAdvance(toast) {
     caForm?.reset();
     document.getElementById("caTerm").value = document.getElementById("caDefaultTermMonths")?.value || "3";
     document.getElementById("caMethodTxn").value = document.getElementById("caMethod")?.value || "salary_deduction";
+    if (caEmployeeInput) caEmployeeInput.value = "";
+    if (caEmployeeId) caEmployeeId.value = "";
+    if (caEmployeeList) { caEmployeeList.innerHTML = ""; caEmployeeList.hidden = true; }
     drawer?.open();
   }
 
   newCaBtn?.addEventListener("click", openNewCa);
 
-  caForm?.addEventListener("submit", (e) => {
+  document.getElementById("caAmount")?.addEventListener("input", syncAmountInput);
+  document.getElementById("caAmount")?.addEventListener("blur", syncAmountInput);
+
+  caForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const employee = document.getElementById("caEmployee").value;
-    const amount = Number(document.getElementById("caAmount").value || 0);
+    const resolvedId = Number(caEmployeeId?.value || 0);
+    const amount = getAmountValue();
     const term = Number(document.getElementById("caTerm").value || 1);
     const start = document.getElementById("caStartMonth").value;
     const method = document.getElementById("caMethodTxn").value;
 
-    if (!employee || !start || !Number.isFinite(amount) || amount <= 0) {
+    if (!resolvedId || !start || !Number.isFinite(amount) || amount <= 0) {
       toast("Please fill Employee, Amount, Start month.", "error");
       return;
     }
 
-    const id = Math.max(0, ...cashAdvances.map((x) => x.id)) + 1;
-    cashAdvances.push({ id, employee, amount, term, start, method, status: "Active" });
-
-    drawer?.close();
-    renderCa();
-    toast("Cash advance added.");
+    try {
+      await apiFetch("/settings/cash-advances", {
+        method: "POST",
+        body: JSON.stringify({
+          employee_id: resolvedId,
+          amount,
+          term_months: term,
+          start_month: start,
+          method,
+        }),
+      });
+      await loadCashAdvances();
+      drawer?.close();
+      if (!showNotice("Cash advance added.")) {
+        toast("Cash advance added.");
+      }
+    } catch (err) {
+      toast(err.message || "Failed to add cash advance.", "error");
+    }
   });
 
   caTbody?.addEventListener("click", (e) => {
@@ -107,28 +205,153 @@ export function initCashAdvance(toast) {
     const row = cashAdvances.find((x) => x.id === id);
     if (!row) return;
 
-    if (act === "view") {
-      toast(`${row.employee}: ${peso(row.amount)} | ${row.term} mo | ${row.start} | ${row.status}`);
-    }
-
     if (act === "edit") {
-      toast("Edit UI: wire a second drawer state if you want. (Kept simple here.)");
+      openViewDrawer(row, "edit");
     }
 
     if (act === "close") {
       if (!confirm("Close this cash advance?")) return;
-      cashAdvances = cashAdvances.map((x) => (x.id === id ? { ...x, status: "Completed" } : x));
+      apiFetch(`/settings/cash-advances/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "Completed" }),
+      })
+        .then(() => loadCashAdvances())
+        .then(() => {
+          if (!showNotice("Cash advance closed.")) {
+            toast("Cash advance closed.");
+          }
+        })
+        .catch((err) => toast(err.message || "Failed to close cash advance.", "error"));
+    }
+  });
+  async function loadEmployees() {
+    try {
+      const rows = await apiFetch("/employees");
+      employees = Array.isArray(rows) ? rows : [];
+      if (caEmployeeInput && caEmployeeInput.value.trim()) {
+        renderEmployeeOptions(caEmployeeInput.value);
+      } else if (caEmployeeList) {
+        caEmployeeList.innerHTML = "";
+        caEmployeeList.hidden = true;
+      }
+    } catch (err) {
+      toast(err.message || "Failed to load employees.", "error");
+    }
+  }
+
+  function buildEmployeeLabel(e) {
+    const name = `${e.last_name || ""}, ${e.first_name || ""}${e.middle_name ? " " + e.middle_name : ""}`.trim();
+    const empNo = e.emp_no || e.emp_id || e.empId || "";
+    return `${empNo} ${name}`.trim();
+  }
+
+  function syncEmployeeIdFromInput() {
+    if (!caEmployeeInput || !caEmployeeId) return;
+    const label = caEmployeeInput.value.trim();
+    const id = employeeLabelToId.get(label);
+    caEmployeeId.value = id ? String(id) : "";
+  }
+
+  function renderEmployeeOptions(term) {
+    if (!caEmployeeList) return;
+    const q = String(term || "").trim().toLowerCase();
+    if (!q) {
+      caEmployeeList.innerHTML = "";
+      caEmployeeList.hidden = true;
+      return;
+    }
+    const filtered = employees.filter((e) => {
+      const label = buildEmployeeLabel(e).toLowerCase();
+      return label.includes(q);
+    });
+
+    employeeLabelToId = new Map();
+    if (!filtered.length) {
+      caEmployeeList.innerHTML = `<div class="typeahead__empty">No matches found</div>`;
+      caEmployeeList.hidden = false;
+      return;
+    }
+
+    caEmployeeList.innerHTML = filtered.map((e) => {
+      const label = buildEmployeeLabel(e);
+      employeeLabelToId.set(label, e.id);
+      return `<div class="typeahead__item" data-id="${e.id}" data-label="${label}">${label}</div>`;
+    }).join("");
+    caEmployeeList.hidden = false;
+  }
+
+  caEmployeeInput?.addEventListener("input", (e) => {
+    renderEmployeeOptions(e.target.value);
+    syncEmployeeIdFromInput();
+  });
+  caEmployeeInput?.addEventListener("focus", (e) => {
+    renderEmployeeOptions(e.target.value);
+  });
+  caEmployeeInput?.addEventListener("blur", () => {
+    setTimeout(() => {
+      if (caEmployeeList) caEmployeeList.hidden = true;
+    }, 120);
+  });
+  caEmployeeInput?.addEventListener("change", syncEmployeeIdFromInput);
+  caEmployeeList?.addEventListener("mousedown", (e) => {
+    const item = e.target.closest(".typeahead__item");
+    if (!item || !caEmployeeInput || !caEmployeeId) return;
+    caEmployeeInput.value = item.dataset.label || "";
+    caEmployeeId.value = item.dataset.id || "";
+    caEmployeeList.hidden = true;
+  });
+
+  async function loadCashAdvancePolicy() {
+    try {
+      const row = await apiFetch("/settings/cash-advance-policy");
+      document.getElementById("caEnabled") && (document.getElementById("caEnabled").checked = !!row.enabled);
+      document.getElementById("caMethod") && (document.getElementById("caMethod").value = row.default_method ?? "salary_deduction");
+      document.getElementById("caDefaultTermMonths") && (document.getElementById("caDefaultTermMonths").value = row.default_term_months ?? 3);
+      document.getElementById("caDeductTiming") && (document.getElementById("caDeductTiming").value = row.deduct_timing ?? "split");
+      document.getElementById("caPriority") && (document.getElementById("caPriority").value = row.priority ?? 1);
+      document.getElementById("caDeductionMethod") && (document.getElementById("caDeductionMethod").value = row.deduction_method ?? "equal_amortization");
+    } catch (err) {
+      toast(err.message || "Failed to load Cash Advance Policy.", "error");
+    }
+  }
+
+  async function loadCashAdvances() {
+    try {
+      const rows = await apiFetch("/settings/cash-advances");
+      cashAdvances = Array.isArray(rows) ? rows : [];
       renderCa();
-      toast("Cash advance closed.");
+    } catch (err) {
+      toast(err.message || "Failed to load Cash Advances.", "error");
+    }
+  }
+
+  document.getElementById("caPolicySave")?.addEventListener("click", async () => {
+    try {
+      await apiFetch("/settings/cash-advance-policy", {
+        method: "POST",
+        body: JSON.stringify({
+          enabled: !!document.getElementById("caEnabled")?.checked,
+          default_method: document.getElementById("caMethod")?.value || "salary_deduction",
+          default_term_months: Number(document.getElementById("caDefaultTermMonths")?.value || 3),
+          deduct_timing: document.getElementById("caDeductTiming")?.value || "split",
+          priority: Number(document.getElementById("caPriority")?.value || 1),
+          deduction_method: document.getElementById("caDeductionMethod")?.value || "equal_amortization",
+        }),
+      });
+      if (!showNotice("Cash advance policy saved.")) {
+        toast("Saved Cash Advance Policy.");
+      }
+    } catch (err) {
+      toast(err.message || "Failed to save Cash Advance Policy.", "error");
     }
   });
 
-  document.getElementById("caPolicySave")?.addEventListener("click", () => {
-    toast("Saved Cash Advance Policy (UI only).");
-  });
-
-  renderCa();
+  loadEmployees();
+  loadCashAdvancePolicy();
+  loadCashAdvances();
 }
+
+
 
 
 

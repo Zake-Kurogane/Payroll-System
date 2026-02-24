@@ -6,6 +6,10 @@
     @vite(['resources/css/settings.css', 'resources/js/settings.js'])
 @endsection
 
+@push('scripts')
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+@endpush
+
 @section('content')
     <section class="content">
         <div class="headline">
@@ -22,8 +26,6 @@
                 aria-controls="tab-company" aria-selected="true" tabindex="0">Company Setup</button>
             <button type="button" class="tab" data-tab="calendar" id="tab-calendar-btn" role="tab"
                 aria-controls="tab-calendar" aria-selected="false" tabindex="-1">Payroll Calendar</button>
-            <button type="button" class="tab" data-tab="paygroups" id="tab-paygroups-btn" role="tab"
-                aria-controls="tab-paygroups" aria-selected="false" tabindex="-1">Pay Groups</button>
             <button type="button" class="tab" data-tab="proration" id="tab-proration-btn" role="tab"
                 aria-controls="tab-proration" aria-selected="false" tabindex="-1">Salary &amp; Proration Rules</button>
             <button type="button" class="tab" data-tab="timekeeping" id="tab-timekeeping-btn" role="tab"
@@ -50,6 +52,7 @@
                             later.</div>
                     </div>
                 </div>
+                <div class="notice notice--success" id="companyNotice" hidden></div>
 
                 <div class="grid2">
                     <div class="field">
@@ -116,6 +119,7 @@
                         <div class="muted small">Defines cutoffs + pay dates (PH fixed schedule).</div>
                     </div>
                 </div>
+                <div class="notice notice--success" id="calendarNotice" hidden></div>
 
                 <div class="sectionTitle">Pay Dates</div>
                 <div class="grid2">
@@ -184,43 +188,6 @@
             </div>
         </section>
 
-        <!-- 3) PAY GROUPS -->
-        <section class="tabPanel" id="tab-paygroups" role="tabpanel" aria-labelledby="tab-paygroups-btn" hidden>
-            <div class="card">
-                <div class="card__head">
-                    <div>
-                        <div class="card__title">Pay Groups</div>
-                        <div class="muted small">Keep payroll clean by assignment; minimal overrides only if
-                            needed.</div>
-                    </div>
-                </div>
-
-                <div class="tablewrap">
-                    <table class="table" style="min-width: 920px;">
-                        <thead>
-                            <tr>
-                                <th>Pay Group</th>
-                                <th>Pay Frequency</th>
-                                <th>Calendar</th>
-                                <th>Default Shift Start (optional)</th>
-                                <th>Default OT Mode (optional)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pgTbody"></tbody>
-                    </table>
-                </div>
-
-                <div class="hint" style="margin-top: 10px;">
-                    Employee Records should store: <b>Pay Group = Tagum / Davao / Area</b> (dropdown).
-                </div>
-
-                <div class="actionsRow">
-                    <div class="spacer"></div>
-                    <button class="btn btn--maroon" type="button" id="pgSave">Save Pay Groups</button>
-                </div>
-            </div>
-        </section>
-
         <!-- 4) SALARY & PRORATION RULES -->
         <section class="tabPanel" id="tab-proration" role="tabpanel" aria-labelledby="tab-proration-btn" hidden>
             <div class="card">
@@ -231,6 +198,7 @@
                         </div>
                     </div>
                 </div>
+                <div class="notice notice--success" id="prorationNotice" hidden></div>
 
                 <div class="sectionTitle">Salary Computation Mode</div>
                 <div class="grid2">
@@ -284,6 +252,7 @@
                             in backend.</div>
                     </div>
                 </div>
+                <div class="notice notice--success" id="timekeepingNotice" hidden></div>
 
                 <div class="sectionTitle">Shift &amp; Grace</div>
                 <div class="grid2">
@@ -385,6 +354,7 @@
                         <button class="btn btn--maroon" type="button" id="addCodeBtn">+ Add Code</button>
                     </div>
                 </div>
+                <div class="notice notice--success" id="attendanceNotice" hidden></div>
 
                 <div class="grid2" style="margin-bottom:12px;">
                     <div class="field">
@@ -487,6 +457,7 @@
                         </div>
                     </div>
                 </div>
+                <div class="notice notice--success" id="overtimeNotice" hidden></div>
 
                 <div class="sectionTitle">OT Computation Mode</div>
                 <div class="grid2">
@@ -556,24 +527,47 @@
 
         <!-- 8) STATUTORY SETUP -->
         <section class="tabPanel" id="tab-statutory" role="tabpanel" aria-labelledby="tab-statutory-btn" hidden>
+            <div class="notice notice--success" id="statutoryNotice" hidden></div>
             <div class="grid2">
                 <div class="card">
                     <div class="card__head">
                         <div>
                             <div class="card__title">SSS Contribution Table</div>
-                            <div class="muted small">Not implemented yet — placeholder for future</div>
+                            <div class="muted small">Upload a CSV/XLSX to preview and cache locally.</div>
                         </div>
                     </div>
 
-                    <div class="actionsRow">
+                    <div class="cardDivider"></div>
+
+                    <div class="importedBar" id="sssImportedWrap" style="display:none;">
+                        <div class="importedBar__label">Imported:</div>
+                        <div class="importedBar__bar">
+                            <div class="importedBar__name" id="sssImportedName"></div>
+                            <div class="importedBar__actions">
+                                <button class="btn btn--ghost" type="button" id="sssToggleBtn">View</button>
+                                <button class="btn btn--ghost" type="button" id="sssClearBtn">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="emptyState" id="sssEmptyState">
+                        <div class="emptyState__title">No table loaded</div>
+                        <div class="emptyState__text">Upload a CSV/XLSX to preview the SSS table.
+                        </div>
+                    </div>
+
+                    <div class="tablewrap" id="sssPreviewWrap" style="display:none; margin-top:12px;">
+                        <table class="table" style="min-width:760px;">
+                            <thead id="sssPreviewHead"></thead>
+                            <tbody id="sssPreviewBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="hint" id="sssMeta" style="margin-top:8px; display:none;"></div>
+
+                    <div class="actionsRow actionsRow--noLine">
+                        <div class="spacer"></div>
                         <button class="btn btn--soft" type="button" id="sssImportBtn">Import Table</button>
                         <input type="file" id="sssImportFile" accept=".csv,.xlsx" hidden />
-                    </div>
-
-                    <div class="emptyState">
-                        <div class="emptyState__title">No table loaded</div>
-                        <div class="emptyState__text">Upload a CSV/XLSX later when backend import is ready.
-                        </div>
                     </div>
                 </div>
 
@@ -665,6 +659,7 @@
         <!-- 9) WITHHOLDING TAX (BIR) -->
         <section class="tabPanel" id="tab-withholdingtax" role="tabpanel" aria-labelledby="tab-withholdingtax-btn"
             hidden>
+            <div class="notice notice--success" id="withholdingNotice" hidden></div>
             <div class="grid2">
                 <div class="card">
                     <div class="card__head">
@@ -762,8 +757,17 @@
                     <div class="actionsRow">
                         <button class="btn btn--soft" type="button" id="wtImportBtn">Import Table</button>
                         <input type="file" id="wtImportFile" accept=".csv,.xlsx" hidden />
-                        <div class="spacer"></div>
-                        <button class="btn" type="button" id="wtSeedBtn">Use Default (Seed)</button>
+                    </div>
+
+                    <div class="importedBar" id="wtImportedWrap" style="display:none;">
+                        <div class="importedBar__label">Imported:</div>
+                        <div class="importedBar__bar">
+                            <div class="importedBar__name" id="wtImportedName"></div>
+                            <div class="importedBar__actions">
+                                <button class="btn btn--ghost" type="button" id="wtToggleBtn">View</button>
+                                <button class="btn btn--ghost" type="button" id="wtClearBtn">Clear</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="emptyState" id="wtEmptyState">
@@ -774,7 +778,7 @@
 
                     <div class="tablewrap" id="wtPreviewWrap" style="display:none; margin-top:12px;">
                         <table class="table" style="min-width:720px;">
-                            <thead>
+                            <thead id="wtPreviewHead">
                                 <tr>
                                     <th>Bracket From</th>
                                     <th>Bracket To</th>
@@ -797,6 +801,7 @@
 
         <!-- 10) CASH ADVANCE -->
         <section class="tabPanel" id="tab-cashadvance" role="tabpanel" aria-labelledby="tab-cashadvance-btn" hidden>
+            <div class="notice notice--success" id="cashAdvanceNotice" hidden></div>
             <div class="grid2">
                 <div class="card">
                     <div class="card__head">
@@ -870,6 +875,8 @@
                         </div>
                     </div>
 
+                    <div class="notice notice--info" id="caActionBanner" hidden></div>
+
                     <div class="tablewrap">
                         <table class="table">
                             <thead>
@@ -905,19 +912,20 @@
                         <div class="grid2">
                             <div class="field">
                                 <label>Employee</label>
-                                <select id="caEmployee" required>
-                                    <option value="" selected disabled>Select employee...</option>
-                                    <option value="Juan Dela Cruz">Juan Dela Cruz</option>
-                                    <option value="Maria Santos">Maria Santos</option>
-                                    <option value="Leo Garcia">Leo Garcia</option>
-                                </select>
+                                <div class="typeahead" id="caEmployeeTypeahead">
+                                    <input type="text" id="caEmployeeInput" placeholder="Type to search employee..."
+                                        autocomplete="off" required />
+                                    <input type="hidden" id="caEmployeeId" />
+                                    <div class="typeahead__list" id="caEmployeeList" hidden></div>
+                                </div>
                             </div>
 
                             <div class="field">
                                 <label>Amount</label>
-                                <div class="moneyInput">
-                                    <span class="moneyPrefix">₱</span>
-                                    <input type="number" id="caAmount" min="0" step="0.01" required />
+                                <div class="moneyInput moneyInput--inline">
+                                    <input type="text" id="caAmount" inputmode="decimal" autocomplete="off"
+                                        placeholder="&#8369;0.00" required />
+                                    <input type="hidden" id="caAmountValue" />
                                 </div>
                             </div>
 
@@ -944,6 +952,49 @@
                             <button class="btn btn--soft" type="button" id="cancelCaBtn">Cancel</button>
                             <div class="spacer"></div>
                             <button class="btn btn--maroon" type="submit">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </aside>
+
+            <!-- View/Edit Drawer -->
+            <aside class="drawer" id="caViewDrawer" aria-hidden="true">
+                <div class="drawer__overlay" id="caViewDrawerOverlay"></div>
+                <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="caViewDrawerTitle">
+                    <div class="drawer__head">
+                        <div>
+                            <div class="drawer__title" id="caViewDrawerTitle">Cash Advance Details</div>
+                            <div class="muted small" id="caViewDrawerSubtitle">View cash advance entry.</div>
+                        </div>
+                        <button class="iconbtn" id="closeCaViewDrawer" type="button" aria-label="Close">✕</button>
+                    </div>
+
+                    <form class="form" id="caViewForm">
+                        <div class="grid2">
+                            <div class="field">
+                                <label>Employee</label>
+                                <input type="text" id="caViewEmployee" readonly />
+                            </div>
+                            <div class="field">
+                                <label>Amount</label>
+                                <input type="text" id="caViewAmount" readonly />
+                            </div>
+                            <div class="field">
+                                <label>Term (months)</label>
+                                <input type="number" id="caViewTerm" readonly />
+                            </div>
+                            <div class="field">
+                                <label>Start month</label>
+                                <input type="month" id="caViewStart" readonly />
+                            </div>
+                            <div class="field">
+                                <label>Status</label>
+                                <input type="text" id="caViewStatus" readonly />
+                            </div>
+                        </div>
+
+                        <div class="actionsRow">
+                            <button class="btn btn--soft" type="button" id="closeCaViewBtn">Close</button>
                         </div>
                     </form>
                 </div>

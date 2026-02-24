@@ -128,6 +128,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let employees = [];
 
+  function normalize(value) {
+    return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function statusMatches(emp, filterVal) {
+    if (!filterVal || filterVal === "All") return true;
+    const raw = String(filterVal);
+    if (String(emp.statusId || "") === raw) return true;
+    const label = statusLabelMap.get(raw);
+    if (label) return normalize(emp.status) === normalize(label);
+    return normalize(emp.status) === normalize(raw);
+  }
+
+  function currentAssignmentFilter() {
+    if (!assignSeg) return assignmentFilter || "All";
+    const active = assignSeg.querySelector(".seg__btn--emp.is-active");
+    const raw = active ? active.getAttribute("data-assign") : "";
+    return raw && raw !== "" ? raw : "All";
+  }
+
   // ===== Elements =====
   const tbody = document.getElementById("empTbody");
   const resultsMeta = document.getElementById("resultsMeta");
@@ -136,7 +156,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const searchInput = document.getElementById("searchInput");
   const deptFilter = document.getElementById("deptFilter");
   const statusFilter = document.getElementById("statusFilter");
-  const searchSuggest = document.getElementById("searchSuggest");
   const assignSeg = document.getElementById("assignSeg");
   let assignBtns = [];
   const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
@@ -156,14 +175,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const bulkAssignApply = document.getElementById("bulkAssignApply");
 
   // pagination
-  const pageSizeEl = document.getElementById("pageSize");
-  const pageMetaEl = document.getElementById("pageMeta");
+  const pageSizeEl = document.getElementById("pageSize") || document.getElementById("rowsPerPage");
+  const pageMetaEl = document.getElementById("pageMeta") || document.querySelector(".tableFooter__left");
   const pageInputEl = document.getElementById("pageInput");
-  const totalPagesEl = document.getElementById("totalPages");
-  const firstPageBtn = document.getElementById("firstPage");
-  const prevPageBtn = document.getElementById("prevPage");
-  const nextPageBtn = document.getElementById("nextPage");
-  const lastPageBtn = document.getElementById("lastPage");
+  const totalPagesEl = document.getElementById("totalPages") || document.getElementById("pageTotal");
+  const firstPageBtn = document.getElementById("firstPage") || document.querySelector('.pagerBtn[aria-label="First page"]');
+  const prevPageBtn = document.getElementById("prevPage") || document.querySelector('.pagerBtn[aria-label="Previous page"]');
+  const nextPageBtn = document.getElementById("nextPage") || document.querySelector('.pagerBtn[aria-label="Next page"]');
+  const lastPageBtn = document.getElementById("lastPage") || document.querySelector('.pagerBtn[aria-label="Last page"]');
 
   let pageSize = Number(pageSizeEl?.value || 20);
   let currentPage = 1;
@@ -695,9 +714,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // Server-side filters/search (applyFilters is now a passthrough)
+  // Client-side filters/search
   function applyFilters(list) {
-    return list;
+    const q = normalize(searchInput?.value || "");
+    const deptVal = deptFilter?.value || "";
+    const statusVal = statusFilter?.value || "";
+    const assignVal = assignmentFilter || "All";
+    const areaVal = areaPlaceFilter?.value || "";
+
+    return list.filter(emp => {
+      const okDept = !deptVal || deptVal === "All" || (emp.dept || "") === deptVal;
+      const okStatus = statusMatches(emp, statusVal);
+      const okAssign = assignVal === "All" || !assignVal || (emp.assignmentType || "") === assignVal;
+      const okArea =
+        assignVal !== "Area" ||
+        !areaVal ||
+        areaVal === "All" ||
+        (emp.areaPlace || "") === areaVal;
+
+      const text = normalize(
+        `${emp.empId} ${fullName(emp)} ${emp.dept || ""} ${emp.position || ""} ${emp.type || ""} ${emp.status || ""} ${assignmentText(emp)}`
+      );
+      const okSearch = !q || text.includes(q);
+
+      return okDept && okStatus && okAssign && okArea && okSearch;
+    });
+  }
+
+  function setPagerDisabled(el, disabled) {
+    if (!el) return;
+    if ("disabled" in el) el.disabled = disabled;
+    el.classList.toggle("is-disabled", disabled);
+    if (disabled) el.setAttribute("aria-disabled", "true");
+    else el.removeAttribute("aria-disabled");
   }
 
   // ===== Render =====
@@ -719,13 +768,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (resultsMeta) resultsMeta.textContent = `Showing ${pageList.length} of ${totalItems} employee${totalItems === 1 ? "" : "s"}`;
 
     if (pageMetaEl) pageMetaEl.textContent = `Page ${currentPage} of ${totalPages}`;
-    if (totalPagesEl) totalPagesEl.textContent = String(totalPages);
+    if (totalPagesEl) {
+      totalPagesEl.textContent = totalPagesEl.id === "pageTotal" ? `/ ${totalPages}` : String(totalPages);
+    }
     if (pageInputEl) pageInputEl.value = String(currentPage);
 
-    if (firstPageBtn) firstPageBtn.disabled = currentPage === 1;
-    if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
-    if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
-    if (lastPageBtn) lastPageBtn.disabled = currentPage === totalPages;
+    setPagerDisabled(firstPageBtn, currentPage === 1);
+    setPagerDisabled(prevPageBtn, currentPage === 1);
+    setPagerDisabled(nextPageBtn, currentPage === totalPages);
+    setPagerDisabled(lastPageBtn, currentPage === totalPages);
 
     tbody.innerHTML = "";
 
@@ -787,23 +838,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== Events =====
   async function reloadEmployees() {
-    const q = (searchInput?.value || "").trim();
-    let dept = deptFilter?.value || "";
-    let status = statusFilter?.value || "";
-    const assign = assignmentFilter || "";
-    const areaPlace = areaPlaceFilter?.value || "";
-
-    if (dept === "All") dept = "";
-    if (status === "All") status = "";
-
-    await loadEmployees({
-      q: q || undefined,
-      department: dept || undefined,
-      status: status || undefined,
-      assignment: assign && assign !== "All" ? assign : undefined,
-      area_place: assign === "Area" && areaPlace && areaPlace !== "All" ? areaPlace : undefined,
-    });
-    currentPage = 1;
+    await loadEmployees();
     render();
   }
 
@@ -828,10 +863,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       if (next && next !== lastHeartbeat) {
         lastHeartbeat = next;
-        if (serverRendered) {
-          window.location.reload();
-          return;
-        }
         await reloadEmployees();
       }
     } finally {
@@ -839,14 +870,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  if (!serverRendered) {
-    [searchInput, deptFilter, statusFilter].forEach(el => {
-      if (!el) return;
-      el.addEventListener(el === searchInput ? "input" : "change", () => {
-        reloadEmployees();
-      });
+  [searchInput, deptFilter, statusFilter].forEach(el => {
+    if (!el) return;
+    const eventName = el === searchInput ? "input" : "change";
+    el.addEventListener(eventName, () => {
+      currentPage = 1;
+      render();
     });
-  }
+  });
 
   if (bulkAssignSelect && bulkAssignApply) {
     bulkAssignSelect.addEventListener("change", () => {
@@ -894,10 +925,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       });
 
-      if (serverRendered) {
-        window.location.reload();
-        return;
-      }
       render();
       showToast("Assignment updated.");
     } catch (err) {
@@ -905,127 +932,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  if (serverRendered) {
-    const filterForm = document.querySelector(".filtersCard");
-    [deptFilter, statusFilter, areaPlaceFilter].forEach(el => {
-      if (!el) return;
-      el.addEventListener("change", () => {
-        filterForm?.submit();
-      });
-    });
-    if (searchInput) {
-      searchInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          filterForm?.submit();
-        }
-      });
-      searchInput.addEventListener("search", () => {
-        if (!searchInput.value) {
-          filterForm?.submit();
-        }
-      });
-    }
-
-    const rowsPerPage = document.getElementById("rowsPerPage");
-    if (rowsPerPage) {
-      rowsPerPage.addEventListener("change", () => {
-        const url = new URL(window.location.href);
-        url.searchParams.set("rows", rowsPerPage.value);
-        url.searchParams.delete("page");
-        window.location.href = url.toString();
-      });
-    }
+  const filterForm = document.querySelector(".filtersCard");
+  if (filterForm) {
+    filterForm.addEventListener("submit", (e) => e.preventDefault());
   }
-
-  if (serverRendered && searchInput && searchSuggest) {
-    let suggestTimer = null;
-    let activeIndex = -1;
-    let currentItems = [];
-
-    function hideSuggest() {
-      searchSuggest.hidden = true;
-      searchSuggest.innerHTML = "";
-      activeIndex = -1;
-      currentItems = [];
-    }
-
-    function renderSuggest(items) {
-      currentItems = items;
-      if (!items.length) {
-        hideSuggest();
-        return;
-      }
-      searchSuggest.innerHTML = items
-        .map((it, idx) => `<div class="suggest__item" data-idx="${idx}">${it.label}</div>`)
-        .join("");
-      searchSuggest.hidden = false;
-    }
-
-    async function fetchSuggest(q) {
-      const res = await fetch(`/employees/suggest?q=${encodeURIComponent(q)}`);
-      const data = await res.json().catch(() => []);
-      return Array.isArray(data) ? data : [];
-    }
-
-    searchInput.addEventListener("input", () => {
-      const q = searchInput.value.trim();
-      if (suggestTimer) clearTimeout(suggestTimer);
-      if (q.length < 1) {
-        hideSuggest();
-        return;
-      }
-      suggestTimer = setTimeout(async () => {
-        const items = await fetchSuggest(q);
-        renderSuggest(items);
-      }, 200);
-    });
-
+  if (searchInput) {
     searchInput.addEventListener("keydown", (e) => {
-      if (searchSuggest.hidden || !currentItems.length) return;
-      if (e.key === "ArrowDown") {
+      if (e.key === "Enter") {
         e.preventDefault();
-        activeIndex = (activeIndex + 1) % currentItems.length;
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
-      } else if (e.key === "Enter") {
-        if (activeIndex >= 0) {
-          e.preventDefault();
-          const item = currentItems[activeIndex];
-          searchInput.value = item.emp_no;
-          hideSuggest();
-          searchInput.closest("form")?.submit();
-        }
-      } else if (e.key === "Escape") {
-        hideSuggest();
       }
-
-      const nodes = Array.from(searchSuggest.querySelectorAll(".suggest__item"));
-      nodes.forEach((n, i) => n.classList.toggle("is-active", i === activeIndex));
     });
-
-    searchSuggest.addEventListener("mousedown", (e) => {
-      const item = e.target.closest(".suggest__item");
-      if (!item) return;
-      const idx = Number(item.getAttribute("data-idx"));
-      const it = currentItems[idx];
-      if (!it) return;
-      searchInput.value = it.emp_no;
-      hideSuggest();
-      searchInput.closest("form")?.submit();
-    });
-
-    document.addEventListener("click", (e) => {
-      if (e.target === searchInput || searchSuggest.contains(e.target)) return;
-      hideSuggest();
+    searchInput.addEventListener("search", () => {
+      if (!searchInput.value) {
+        currentPage = 1;
+        render();
+      }
     });
   }
 
-  if (areaPlaceFilter && !serverRendered) {
+
+  if (areaPlaceFilter) {
     populateAreaFilterPlaces(areaPlaceFilter);
     areaPlaceFilter.addEventListener("change", () => {
-      reloadEmployees();
+      currentPage = 1;
+      render();
     });
   }
 
@@ -1037,20 +967,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         assignBtns.forEach(b => b.classList.remove("is-active"));
         btn.classList.add("is-active");
         const rawAssign = btn.getAttribute("data-assign");
-        assignmentFilter = serverRendered ? (rawAssign ?? "") : (rawAssign || "All");
-
-        if (serverRendered) {
-          const assignInput = document.getElementById("assignmentInput");
-          if (assignInput) assignInput.value = assignmentFilter;
-          if (assignmentFilter === "Area") {
-            if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
-          } else {
-            if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "none";
-            if (areaPlaceFilter) areaPlaceFilter.value = "";
-          }
-          btn.closest("form")?.submit();
-          return;
-        }
+        assignmentFilter = rawAssign && rawAssign !== "" ? rawAssign : "All";
+        const assignInput = document.getElementById("assignmentInput");
+        if (assignInput) assignInput.value = assignmentFilter === "All" ? "" : assignmentFilter;
 
         if (assignmentFilter === "Area") {
           if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
@@ -1062,48 +981,46 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (areaPlaceFilter) areaPlaceFilter.value = "All";
         }
 
-        reloadEmployees();
+        currentPage = 1;
+        render();
       });
     });
   }
 
-  if (!serverRendered) {
-    // pagination
-    pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
-    firstPageBtn && firstPageBtn.addEventListener("click", () => { currentPage = 1; render(); });
-    prevPageBtn && prevPageBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage - 1); render(); });
-    nextPageBtn && nextPageBtn.addEventListener("click", () => { currentPage = currentPage + 1; render(); });
-    lastPageBtn && lastPageBtn.addEventListener("click", () => {
-      const total = applyFilters(employees).length;
-      const last = Math.max(1, Math.ceil(total / Number(pageSizeEl?.value || 20)));
-      currentPage = last;
-      render();
-    });
-    pageInputEl && pageInputEl.addEventListener("change", () => {
-      const n = Number(pageInputEl.value || 1);
-      if (!Number.isFinite(n)) return;
-      currentPage = Math.max(1, n);
-      render();
-    });
-  }
+  // pagination
+  pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
+  firstPageBtn && firstPageBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    currentPage = 1;
+    render();
+  });
+  prevPageBtn && prevPageBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    currentPage = Math.max(1, currentPage - 1);
+    render();
+  });
+  nextPageBtn && nextPageBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    currentPage = currentPage + 1;
+    render();
+  });
+  lastPageBtn && lastPageBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const total = applyFilters(employees).length;
+    const last = Math.max(1, Math.ceil(total / Number(pageSizeEl?.value || 20)));
+    currentPage = last;
+    render();
+  });
+  pageInputEl && pageInputEl.addEventListener("change", () => {
+    const n = Number(pageInputEl.value || 1);
+    if (!Number.isFinite(n)) return;
+    currentPage = Math.max(1, n);
+    render();
+  });
 
   // select all (current page)
   if (selectAll) {
     selectAll.addEventListener("change", () => {
-      if (serverRendered) {
-        const checks = tbody ? Array.from(tbody.querySelectorAll("input.empCheck")) : [];
-        checks.forEach(chk => {
-          chk.checked = selectAll.checked;
-          const id = chk.getAttribute("data-id");
-          if (selectAll.checked) selectedIds.add(id);
-          else selectedIds.delete(id);
-          const tr = chk.closest("tr");
-          if (tr) tr.classList.toggle("is-selected", chk.checked);
-        });
-        updateBulkBar();
-        return;
-      }
-
       const list = applySort(applyFilters(employees));
       const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
       currentPage = Math.min(currentPage, totalPages);
@@ -1128,11 +1045,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       else selectedIds.delete(id);
       const tr = chk.closest("tr");
       if (tr) tr.classList.toggle("is-selected", chk.checked);
-      if (serverRendered) {
-        updateBulkBar();
-      } else {
-        render();
-      }
+      render();
       return;
     }
 
@@ -1153,10 +1066,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) return;
       try {
         await apiFetch(`/employees/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (serverRendered) {
-          window.location.reload();
-          return;
-        }
         await loadEmployees();
         selectedIds.delete(id);
         render();
@@ -1326,14 +1235,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const successMsg = selectedEmpId ? "Employee updated successfully." : "Employee added successfully.";
-      if (serverRendered) {
-        closeDrawer();
-        sessionStorage.setItem("emp_records_toast", successMsg);
-        setTimeout(() => {
-          window.location.reload();
-        }, 700);
-        return;
-      }
       closeDrawer();
       showToast(successMsg);
       await loadEmployees();
@@ -1348,69 +1249,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   syncCashAdvanceFields();
   syncSalaryFields();
   syncPayoutFields();
-  if (!serverRendered) {
-    if (areaPlaceFilterWrap && assignmentFilter !== "Area") {
-      areaPlaceFilterWrap.style.display = "none";
-    }
+  assignmentFilter = currentAssignmentFilter();
+  if (areaPlaceFilterWrap) {
+    areaPlaceFilterWrap.style.display = assignmentFilter === "Area" ? "" : "none";
   }
-  if (!serverRendered) {
-    wireHeaderSorting();
-    updateSortIcons();
-  } else {
-    const sortMap = {
-      empId: 1,
-      name: 2,
-      dept: 3,
-      assignment: 4,
-      salary: 5,
-    };
-
-    function parseSalary(text) {
-      const num = String(text || "").replace(/[^\d.]/g, "");
-      return Number(num || 0);
-    }
-
-    function sortTableBy(key) {
-      const colIndex = sortMap[key];
-      if (colIndex == null || !tbody) return;
-
-      sortLocked = true;
-      if (sortState.key === key) {
-        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-      } else {
-        sortState.key = key;
-        sortState.dir = "asc";
-      }
-
-      const rows = Array.from(tbody.querySelectorAll("tr"))
-        .filter(tr => tr.querySelector("td"));
-
-      rows.sort((a, b) => {
-        const aCell = a.children[colIndex]?.textContent?.trim() || "";
-        const bCell = b.children[colIndex]?.textContent?.trim() || "";
-
-        let res = 0;
-        if (key === "salary") {
-          res = parseSalary(aCell) - parseSalary(bCell);
-        } else {
-          res = aCell.localeCompare(bCell);
-        }
-        return sortState.dir === "asc" ? res : -res;
-      });
-
-      rows.forEach(tr => tbody.appendChild(tr));
-      updateSortIcons();
-    }
-
-    document.querySelectorAll("th.sortable").forEach(th => {
-      th.addEventListener("click", () => {
-        const key = th.getAttribute("data-sort");
-        if (!key) return;
-        sortTableBy(key);
-      });
-    });
-    updateSortIcons();
-  }
+  wireHeaderSorting();
+  updateSortIcons();
   async function loadFilters() {
     try {
       const data = await apiFetch("/employees/filters");
@@ -1443,21 +1287,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    if (serverRendered) {
+    if (!serverRendered) {
+      await loadFilters();
+    } else {
       const seed = Array.isArray(window.__serverEmployees) ? window.__serverEmployees : [];
       employees = seed.map(fromApi);
       wireAssignButtons();
-    } else {
-      await loadFilters();
+      assignmentFilter = currentAssignmentFilter();
+    }
+
+    try {
       await loadEmployees();
+    } catch (err) {
+      if (!serverRendered) throw err;
+      console.warn("Failed to load full employee list. Using server seed.", err);
     }
   } catch (err) {
     console.error(err);
     alert(err.message || "Failed to load employees.");
   }
-  if (!serverRendered) {
-    render();
-  }
+  render();
 
   flushPendingToast();
 

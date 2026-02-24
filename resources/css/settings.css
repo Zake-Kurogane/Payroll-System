@@ -267,6 +267,40 @@ h1 {
     font-weight: 800;
     background: #fff;
 }
+
+/* typeahead */
+.typeahead {
+    position: relative;
+}
+.typeahead__list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 10px 20px rgba(17, 24, 39, 0.12);
+    z-index: 20;
+    max-height: 220px;
+    overflow: auto;
+    padding: 6px;
+}
+.typeahead__item {
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.typeahead__item:hover,
+.typeahead__item.is-active {
+    background: rgba(156, 29, 60, 0.08);
+}
+.typeahead__empty {
+    padding: 8px 10px;
+    color: var(--muted);
+    font-weight: 700;
+}
 .field input:focus,
 .field select:focus {
     border-color: rgba(156, 29, 60, 0.45);
@@ -306,14 +340,18 @@ h1 {
 }
 .moneyPrefix {
     position: absolute;
-    left: 12px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
     font-weight: 1000;
     color: var(--maroon);
+    pointer-events: none;
 }
 .moneyInput input {
-    padding-left: 34px;
+    padding-left: 46px;
+}
+.moneyInput--inline input {
+    padding-left: 12px;
 }
 
 .actionsRow {
@@ -323,6 +361,15 @@ h1 {
     margin-top: 14px;
     padding-top: 14px;
     border-top: 1px solid var(--line);
+}
+.actionsRow--noLine {
+    border-top: none;
+    padding-top: 0;
+}
+.cardDivider {
+    height: 1px;
+    background: var(--line);
+    margin: 10px 0 8px;
 }
 .spacer {
     flex: 1;
@@ -337,6 +384,9 @@ h1 {
     background: #fff;
     cursor: pointer;
     font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition:
         box-shadow 0.15s ease,
         transform 0.12s ease,
@@ -353,9 +403,51 @@ h1 {
     border-color: rgba(156, 29, 60, 0.18);
     color: var(--maroon);
 }
+.btn--ghost {
+    background: #fff;
+    border-color: rgba(17, 24, 39, 0.16);
+    color: var(--text);
+    box-shadow: 0 6px 12px rgba(17, 24, 39, 0.12);
+}
 .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
+}
+
+/* import indicator */
+.importedBar,
+.sssImported {
+    margin-top: 12px;
+    display: grid;
+    gap: 8px;
+}
+.importedBar__label {
+    font-weight: 900;
+    color: var(--muted);
+    font-size: 12px;
+}
+.importedBar__bar {
+    border-radius: 12px;
+    border: 1px solid rgba(156, 29, 60, 0.35);
+    background: rgba(156, 29, 60, 0.08);
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    box-shadow: 0 6px 14px rgba(17, 24, 39, 0.12);
+}
+.importedBar__name {
+    font-weight: 900;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.importedBar__actions {
+    display: inline-flex;
+    gap: 8px;
+    flex: 0 0 auto;
 }
 
 /* tabs */
@@ -618,6 +710,25 @@ tbody tr:hover {
 .toast.is-visible {
     opacity: 1;
     transform: translateY(0);
+}
+
+.notice {
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin: 8px 0 12px;
+    border: 1px solid transparent;
+}
+
+.notice--success {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #7f1d1d;
+}
+.notice--info {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
 }
 
 /* lock scroll when drawer open */

@@ -44,11 +44,26 @@ Route::middleware('auth')->group(function () {
     Route::view('/payslip', 'layouts.payslip')->name('payslip');
     Route::view('/report', 'layouts.reports')->name('report');
     Route::view('/settings', 'layouts.settings')->name('settings');
+    Route::get('/settings/company-setup', [SettingsController::class, 'getCompanySetup'])->name('settings.company_setup.get');
+    Route::post('/settings/company-setup', [SettingsController::class, 'saveCompanySetup'])->name('settings.company_setup.save');
+    Route::get('/settings/salary-proration', [SettingsController::class, 'getSalaryProration'])->name('settings.salary_proration.get');
+    Route::post('/settings/salary-proration', [SettingsController::class, 'saveSalaryProration'])->name('settings.salary_proration.save');
+    Route::get('/settings/timekeeping-rules', [SettingsController::class, 'getTimekeepingRules'])->name('settings.timekeeping.get');
+    Route::post('/settings/timekeeping-rules', [SettingsController::class, 'saveTimekeepingRules'])->name('settings.timekeeping.save');
+    Route::get('/settings/statutory-setup', [SettingsController::class, 'getStatutorySetup'])->name('settings.statutory.get');
+    Route::post('/settings/statutory-setup', [SettingsController::class, 'saveStatutorySetup'])->name('settings.statutory.save');
+    Route::get('/settings/withholding-tax-policy', [SettingsController::class, 'getWithholdingTaxPolicy'])->name('settings.withholding_tax.policy.get');
+    Route::post('/settings/withholding-tax-policy', [SettingsController::class, 'saveWithholdingTaxPolicy'])->name('settings.withholding_tax.policy.save');
+    Route::get('/settings/withholding-tax-brackets', [SettingsController::class, 'getWithholdingTaxBrackets'])->name('settings.withholding_tax.brackets.get');
+    Route::post('/settings/withholding-tax-brackets', [SettingsController::class, 'saveWithholdingTaxBrackets'])->name('settings.withholding_tax.brackets.save');
+    Route::get('/settings/cash-advance-policy', [SettingsController::class, 'getCashAdvancePolicy'])->name('settings.cash_advance.policy.get');
+    Route::post('/settings/cash-advance-policy', [SettingsController::class, 'saveCashAdvancePolicy'])->name('settings.cash_advance.policy.save');
+    Route::get('/settings/cash-advances', [SettingsController::class, 'getCashAdvances'])->name('settings.cash_advance.list');
+    Route::post('/settings/cash-advances', [SettingsController::class, 'saveCashAdvance'])->name('settings.cash_advance.create');
+    Route::patch('/settings/cash-advances/{cashAdvance}', [SettingsController::class, 'updateCashAdvanceStatus'])->name('settings.cash_advance.update');
 
     Route::get('/settings/payroll-calendar', [SettingsController::class, 'getPayrollCalendar'])->name('settings.payroll_calendar.get');
     Route::post('/settings/payroll-calendar', [SettingsController::class, 'savePayrollCalendar'])->name('settings.payroll_calendar.save');
-    Route::get('/settings/pay-groups', [SettingsController::class, 'getPayGroups'])->name('settings.pay_groups.get');
-    Route::post('/settings/pay-groups', [SettingsController::class, 'savePayGroups'])->name('settings.pay_groups.save');
     Route::get('/settings/overtime-rules', [SettingsController::class, 'getOvertimeRules'])->name('settings.overtime.get');
     Route::post('/settings/overtime-rules', [SettingsController::class, 'saveOvertimeRules'])->name('settings.overtime.save');
     Route::get('/settings/attendance-codes', [SettingsController::class, 'getAttendanceCodes'])->name('settings.attendance_codes.get');
