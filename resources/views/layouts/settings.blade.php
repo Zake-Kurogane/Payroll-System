@@ -564,6 +564,19 @@
                     </div>
                     <div class="hint" id="sssMeta" style="margin-top:8px; display:none;"></div>
 
+                    <div class="cardDivider"></div>
+                    <div class="grid2">
+                        <div class="field field--full">
+                            <label>Split rule</label>
+                            <select id="sssSplitRule">
+                                <option value="monthly" selected>monthly (deduct once per month)</option>
+                                <option value="split_cutoffs">split_cutoffs (split 1st + 2nd cutoff)</option>
+                                <option value="cutoff1_only">1st cutoff only</option>
+                                <option value="cutoff2_only">2nd cutoff only</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div class="actionsRow actionsRow--noLine">
                         <div class="spacer"></div>
                         <button class="btn btn--soft" type="button" id="sssImportBtn">Import Table</button>
@@ -614,13 +627,22 @@
                     <div class="card__head">
                         <div>
                             <div class="card__title">Pag-IBIG</div>
-                            <div class="muted small">Percent + cap</div>
+                            <div class="muted small">Rate bands + cap</div>
                         </div>
                     </div>
 
                     <div class="grid2">
                         <div class="field">
-                            <label>Employee %</label>
+                            <label>Employee % (≤ threshold)</label>
+                            <input type="number" id="piEePercentLow" value="1" min="0" step="0.01" />
+                        </div>
+                        <div class="field">
+                            <label>Salary threshold</label>
+                            <input type="number" id="piEeThreshold" value="1500" min="0" step="0.01" />
+                        </div>
+
+                        <div class="field">
+                            <label>Employee % (above threshold)</label>
                             <input type="number" id="piEePercent" value="2" min="0" step="0.01" />
                         </div>
                         <div class="field">
@@ -630,7 +652,7 @@
 
                         <div class="field">
                             <label>Monthly cap</label>
-                            <input type="number" id="piCap" value="100" min="0" step="0.01" />
+                            <input type="number" id="piCap" value="5000" min="0" step="0.01" />
                         </div>
 
                         <div class="field">
@@ -712,6 +734,16 @@
                             <select id="wtTiming">
                                 <option value="monthly" selected>Monthly (recommended)</option>
                                 <option value="per_pay_period">Per pay period</option>
+                            </select>
+                        </div>
+
+                        <div class="field field--full">
+                            <label>Split rule</label>
+                            <select id="wtSplitRule">
+                                <option value="monthly" selected>monthly (deduct once per month)</option>
+                                <option value="split_cutoffs">split_cutoffs (split 1st + 2nd cutoff)</option>
+                                <option value="cutoff1_only">1st cutoff only</option>
+                                <option value="cutoff2_only">2nd cutoff only</option>
                             </select>
                         </div>
 

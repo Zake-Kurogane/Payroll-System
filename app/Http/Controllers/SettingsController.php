@@ -132,9 +132,12 @@ class SettingsController extends Controller
             'ph_max_cap' => ['sometimes', 'numeric', 'min:0'],
             'ph_split_rule' => ['sometimes', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
             'pi_ee_percent' => ['sometimes', 'numeric', 'min:0'],
+            'pi_ee_percent_low' => ['sometimes', 'numeric', 'min:0'],
+            'pi_ee_threshold' => ['sometimes', 'numeric', 'min:0'],
             'pi_er_percent' => ['sometimes', 'numeric', 'min:0'],
             'pi_cap' => ['sometimes', 'numeric', 'min:0'],
             'pi_split_rule' => ['sometimes', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
+            'sss_split_rule' => ['sometimes', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
         ]);
 
         $row = StatutorySetup::query()->first();
@@ -171,6 +174,7 @@ class SettingsController extends Controller
             'basis_ph' => ['required', 'boolean'],
             'basis_pi' => ['required', 'boolean'],
             'timing' => ['required', Rule::in(['monthly', 'per_pay_period'])],
+            'split_rule' => ['required', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
             'fixed_amount' => ['required', 'numeric', 'min:0'],
             'percent' => ['required', 'numeric', 'min:0'],
         ]);
@@ -396,7 +400,11 @@ class SettingsController extends Controller
         if (!$row) {
             $row = OvertimeRule::create([]);
         }
-        return response()->json($row);
+        $payload = $row->toArray();
+        if (!array_key_exists('rounding', $payload) && array_key_exists('rounding_option', $payload)) {
+            $payload['rounding'] = $payload['rounding_option'];
+        }
+        return response()->json($payload);
     }
 
     public function saveOvertimeRules(Request $request)
@@ -411,9 +419,9 @@ class SettingsController extends Controller
 
         $row = OvertimeRule::query()->first();
         if (!$row) {
-            $row = OvertimeRule::create($validated);
+            $row = OvertimeRule::create($validated + ['rounding_option' => $validated['rounding']]);
         } else {
-            $row->update($validated);
+            $row->update($validated + ['rounding_option' => $validated['rounding']]);
         }
 
         return response()->json($row);

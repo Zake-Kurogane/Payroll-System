@@ -14,6 +14,7 @@ class WithholdingTaxPolicy extends Model
         'basis_ph',
         'basis_pi',
         'timing',
+        'split_rule',
         'fixed_amount',
         'percent',
         'wt_table_source',

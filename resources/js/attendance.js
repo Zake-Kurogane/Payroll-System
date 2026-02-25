@@ -197,7 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // NOTE: If these elements DON'T exist in your HTML, the code still works.
   // Add these IDs if you want full cutoff UI:
   //   <input id="cutoffMonth" type="month">
-  //   <select id="cutoffSelect"><option value="11-25">11–25</option><option value="26-10">26–10</option></select>
+  //   <select id="cutoffSelect"><option value="1-15">Cutoff A</option><option value="16-end">Cutoff B</option></select>
   //   <div id="cutoffRangeLabel"></div>
   const cutoffMonthInput = document.getElementById("cutoffMonth"); // type=month
   const cutoffSelect = document.getElementById("cutoffSelect");   // 11-25 or 26-10
@@ -227,15 +227,51 @@ document.addEventListener("DOMContentLoaded", () => {
     return { y, m: mo };
   }
 
-  function getCutoffRange(year, month, cutoffType) {
-    if (cutoffType === "11-25") {
-      const start = new Date(year, month - 1, 11);
-      const end = new Date(year, month - 1, 25);
-      return { start, end };
+  let payrollCalendar = null;
+  async function loadPayrollCalendarSettings() {
+    try {
+      payrollCalendar = await apiFetch("/settings/payroll-calendar");
+    } catch {
+      payrollCalendar = null;
     }
-    const start = new Date(year, month - 1, 26);
-    const end = new Date(year, month, 10); // next month day 10
+  }
+
+  function resolveCutoffDays(year, month, cutoffType) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const cal = payrollCalendar || {};
+    let from = cutoffType === "11-25" ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
+    let to = cutoffType === "11-25" ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
+    if (!Number.isFinite(from) || from <= 0) from = 1;
+    if (!Number.isFinite(to) || to <= 0) to = cutoffType === "11-25" ? 25 : lastDay;
+    return { from, to, lastDay };
+  }
+
+  function getCutoffRange(year, month, cutoffType) {
+    const { from, to } = resolveCutoffDays(year, month, cutoffType);
+    const start = new Date(year, month - 1, from);
+    let end = new Date(year, month - 1, to);
+    if (from > to) {
+      end = new Date(year, month, to);
+    }
     return { start, end };
+  }
+
+  function updateCutoffOptionLabels() {
+    const ym = parseYM(cutoffMonthInput?.value);
+    if (!ym || !cutoffSelect) return;
+    const optA = cutoffSelect.querySelector('option[value="11-25"]');
+    const optB = cutoffSelect.querySelector('option[value="26-10"]');
+    if (optA) optA.textContent = "11–25";
+    if (optB) optB.textContent = "26–10";
+  }
+
+  function updateEmpCutoffOptionLabels() {
+    const ym = parseYM(empCutoffMonthInput?.value);
+    if (!ym || !empCutoffSelect) return;
+    const optA = empCutoffSelect.querySelector('option[value="11-25"]');
+    const optB = empCutoffSelect.querySelector('option[value="26-10"]');
+    if (optA) optA.textContent = "11–25";
+    if (optB) optB.textContent = "26–10";
   }
 
   function isDateWithinCutoff(ymd, range) {
@@ -449,6 +485,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
 
     if (hasCutoffUI) {
+      if (!payrollCalendar) {
+        await loadPayrollCalendarSettings();
+      }
       // Ensure the cutoff inputs always have defaults so we don't bail out.
       if (cutoffMonthInput && !cutoffMonthInput.value) {
         const now = new Date();
@@ -467,6 +506,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       activeCutoff = c;
 
+      updateCutoffOptionLabels();
       if (cutoffRangeLabel) cutoffRangeLabel.textContent = formatRangeLabel(c.range);
 
       await loadRecords();
@@ -499,12 +539,15 @@ document.addEventListener("DOMContentLoaded", () => {
   (async function initCutoffDefaults() {
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
     if (hasCutoffUI) {
+      await loadPayrollCalendarSettings();
       const now = new Date();
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       cutoffMonthInput.value = ym;
 
       const day = now.getDate();
-      cutoffSelect.value = day >= 26 ? "26-10" : "11-25";
+      const cutoffBFrom = Number(payrollCalendar?.cutoff_b_from ?? 26);
+      cutoffSelect.value = day >= cutoffBFrom ? "26-10" : "11-25";
+      updateCutoffOptionLabels();
     }
     await loadEmployees();
     await loadAttendanceCodes();
@@ -1619,6 +1662,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (empCutoffSelect && !empCutoffSelect.value) {
       empCutoffSelect.value = cutoffSelect?.value || "11-25";
     }
+    updateEmpCutoffOptionLabels();
 
     renderEmpRecords();
 

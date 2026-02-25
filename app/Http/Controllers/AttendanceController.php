@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
 use App\Models\Employee;
+use App\Models\PayrollCalendarSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -474,17 +475,22 @@ class AttendanceController extends Controller
 
     private function cutoffRange(string $month, string $cutoff): array
     {
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
         [$y, $m] = array_map('intval', explode('-', $month));
-        $start = Carbon::create($y, $m, 1)->startOfDay();
-        $end = Carbon::create($y, $m, 1)->endOfMonth()->startOfDay();
+        $base = Carbon::create($y, $m, 1)->startOfDay();
 
         if ($cutoff === '11-25') {
-            return [$start->copy()->day(11), $start->copy()->day(25)];
+            return $this->cutoffWindow($base, (int) ($calendar->cutoff_a_from ?? 11), (int) ($calendar->cutoff_a_to ?? 25));
         }
-        if ($cutoff === '26-10') {
-            $from = $start->copy()->day(26);
-            $to = $start->copy()->addMonthNoOverflow()->day(10);
-            return [$from, $to];
+        return $this->cutoffWindow($base, (int) ($calendar->cutoff_b_from ?? 26), (int) ($calendar->cutoff_b_to ?? 10));
+    }
+
+    private function cutoffWindow(Carbon $base, int $fromDay, int $toDay): array
+    {
+        $start = $base->copy()->day($fromDay);
+        $end = $base->copy()->day($toDay);
+        if ($fromDay > $toDay) {
+            $end = $end->addMonthNoOverflow();
         }
         return [$start, $end];
     }

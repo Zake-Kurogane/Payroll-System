@@ -373,17 +373,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (sssEmptyState) sssEmptyState.style.display = "none";
-    sssPreviewWrap.style.display = "block";
+    sssPreviewWrap.style.display = "none";
     if (sssMeta) {
       const stamp = importedAt ? new Date(importedAt).toLocaleString() : "";
       const extra = rows.length > maxPreview ? ` • showing first ${maxPreview}` : "";
       sssMeta.textContent = `${sourceName || "Imported file"} • ${rows.length} rows, ${header.length} columns${extra}${stamp ? ` • ${stamp}` : ""}`;
-      sssMeta.style.display = "block";
+      sssMeta.style.display = "none";
     }
     if (sssImportedWrap) sssImportedWrap.style.display = "grid";
     if (sssImportedName) sssImportedName.textContent = sourceName || "Imported file";
     if (sssToggleBtn) {
-      sssToggleBtn.textContent = "Hide";
+      sssToggleBtn.textContent = "View";
       sssToggleBtn.style.display = "inline-flex";
     }
     if (sssClearBtn) sssClearBtn.style.display = "inline-flex";
@@ -450,14 +450,17 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         clearSssTable();
       }
+      document.getElementById("sssSplitRule") && (document.getElementById("sssSplitRule").value = row.sss_split_rule ?? "monthly");
       document.getElementById("phEePercent") && (document.getElementById("phEePercent").value = row.ph_ee_percent ?? 2.5);
       document.getElementById("phErPercent") && (document.getElementById("phErPercent").value = row.ph_er_percent ?? 2.5);
       document.getElementById("phMinCap") && (document.getElementById("phMinCap").value = row.ph_min_cap ?? 0);
       document.getElementById("phMaxCap") && (document.getElementById("phMaxCap").value = row.ph_max_cap ?? 0);
       document.getElementById("phSplitRule") && (document.getElementById("phSplitRule").value = row.ph_split_rule ?? "monthly");
+      document.getElementById("piEePercentLow") && (document.getElementById("piEePercentLow").value = row.pi_ee_percent_low ?? 1);
+      document.getElementById("piEeThreshold") && (document.getElementById("piEeThreshold").value = row.pi_ee_threshold ?? 1500);
       document.getElementById("piEePercent") && (document.getElementById("piEePercent").value = row.pi_ee_percent ?? 2);
       document.getElementById("piErPercent") && (document.getElementById("piErPercent").value = row.pi_er_percent ?? 2);
-      document.getElementById("piCap") && (document.getElementById("piCap").value = row.pi_cap ?? 100);
+      document.getElementById("piCap") && (document.getElementById("piCap").value = row.pi_cap ?? 5000);
       document.getElementById("piSplitRule") && (document.getElementById("piSplitRule").value = row.pi_split_rule ?? "monthly");
     } catch (err) {
       toast(err.message || "Failed to load Statutory Setup.", "error");
@@ -469,11 +472,14 @@ document.addEventListener("DOMContentLoaded", () => {
       await apiFetch("/settings/statutory-setup", {
         method: "POST",
         body: JSON.stringify({
+          sss_split_rule: document.getElementById("sssSplitRule")?.value || "monthly",
           ph_ee_percent: Number(document.getElementById("phEePercent")?.value || 0),
           ph_er_percent: Number(document.getElementById("phErPercent")?.value || 0),
           ph_min_cap: Number(document.getElementById("phMinCap")?.value || 0),
           ph_max_cap: Number(document.getElementById("phMaxCap")?.value || 0),
           ph_split_rule: document.getElementById("phSplitRule")?.value || "monthly",
+          pi_ee_percent_low: Number(document.getElementById("piEePercentLow")?.value || 0),
+          pi_ee_threshold: Number(document.getElementById("piEeThreshold")?.value || 0),
           pi_ee_percent: Number(document.getElementById("piEePercent")?.value || 0),
           pi_er_percent: Number(document.getElementById("piErPercent")?.value || 0),
           pi_cap: Number(document.getElementById("piCap")?.value || 0),
@@ -541,11 +547,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (wtEmptyState) wtEmptyState.style.display = "none";
-    wtPreviewWrap.style.display = "block";
+    wtPreviewWrap.style.display = "none";
     if (wtImportedWrap) wtImportedWrap.style.display = "grid";
     if (wtImportedName) wtImportedName.textContent = sourceName || "Imported file";
     if (wtToggleBtn) {
-      wtToggleBtn.textContent = "Hide";
+      wtToggleBtn.textContent = "View";
       wtToggleBtn.style.display = "inline-flex";
     }
     if (wtClearBtn) wtClearBtn.style.display = "inline-flex";
@@ -717,6 +723,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("wtBasisPH") && (document.getElementById("wtBasisPH").checked = !!row.basis_ph);
       document.getElementById("wtBasisPI") && (document.getElementById("wtBasisPI").checked = !!row.basis_pi);
       document.getElementById("wtTiming") && (document.getElementById("wtTiming").value = row.timing ?? "monthly");
+      document.getElementById("wtSplitRule") && (document.getElementById("wtSplitRule").value = row.split_rule ?? "monthly");
       document.getElementById("wtFixedAmount") && (document.getElementById("wtFixedAmount").value = row.fixed_amount ?? 0);
       document.getElementById("wtPercent") && (document.getElementById("wtPercent").value = row.percent ?? 0);
       wtTableSourceName = row.wt_table_source || "";
@@ -749,11 +756,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
       if (wtEmptyState) wtEmptyState.style.display = "none";
-      if (wtPreviewWrap) wtPreviewWrap.style.display = "block";
+      if (wtPreviewWrap) wtPreviewWrap.style.display = "none";
       if (wtImportedWrap) wtImportedWrap.style.display = "grid";
       if (wtImportedName) wtImportedName.textContent = wtTableSourceName || "Imported table";
       if (wtToggleBtn) {
-        wtToggleBtn.textContent = "Hide";
+        wtToggleBtn.textContent = "View";
         wtToggleBtn.style.display = "inline-flex";
       }
       if (wtClearBtn) wtClearBtn.style.display = "inline-flex";
@@ -776,6 +783,7 @@ document.addEventListener("DOMContentLoaded", () => {
           basis_ph: !!document.getElementById("wtBasisPH")?.checked,
           basis_pi: !!document.getElementById("wtBasisPI")?.checked,
           timing: document.getElementById("wtTiming")?.value || "monthly",
+          split_rule: document.getElementById("wtSplitRule")?.value || "monthly",
           fixed_amount: Number(document.getElementById("wtFixedAmount")?.value || 0),
           percent: Number(document.getElementById("wtPercent")?.value || 0),
         }),
@@ -800,6 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
           basis_ph: !!document.getElementById("wtBasisPH")?.checked,
           basis_pi: !!document.getElementById("wtBasisPI")?.checked,
           timing: document.getElementById("wtTiming")?.value || "monthly",
+          split_rule: document.getElementById("wtSplitRule")?.value || "monthly",
           fixed_amount: Number(document.getElementById("wtFixedAmount")?.value || 0),
           percent: Number(document.getElementById("wtPercent")?.value || 0),
         }),

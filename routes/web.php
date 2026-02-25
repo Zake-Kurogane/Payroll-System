@@ -5,6 +5,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\PayrollRunController;
+use App\Http\Controllers\PayslipController;
 
 Route::get('/', fn () => redirect()->route('login'));
 
@@ -41,7 +43,18 @@ Route::middleware('auth')->group(function () {
     Route::put('/attendance/records/{record}', [AttendanceController::class, 'update'])->name('attendance.records.update');
     Route::delete('/attendance/records/{record}', [AttendanceController::class, 'destroy'])->name('attendance.records.destroy');
     Route::view('/payroll-processing', 'layouts.payroll_processing')->name('payroll.processing');
+    Route::get('/payroll-runs', [PayrollRunController::class, 'index'])->name('payroll_runs.index');
+    Route::post('/payroll-runs', [PayrollRunController::class, 'store'])->name('payroll_runs.store');
+    Route::post('/payroll-runs/{run}/compute', [PayrollRunController::class, 'compute'])->name('payroll_runs.compute');
+    Route::post('/payroll-runs/{run}/overrides', [PayrollRunController::class, 'saveOverride'])->name('payroll_runs.overrides');
+    Route::get('/payroll-runs/{run}/rows', [PayrollRunController::class, 'rows'])->name('payroll_runs.rows');
+    Route::post('/payroll-runs/{run}/lock', [PayrollRunController::class, 'lock'])->name('payroll_runs.lock');
+    Route::post('/payroll-runs/{run}/unlock', [PayrollRunController::class, 'unlock'])->name('payroll_runs.unlock');
+    Route::post('/payroll-runs/{run}/release', [PayrollRunController::class, 'release'])->name('payroll_runs.release');
+    Route::post('/payroll-runs/{run}/payslips', [PayslipController::class, 'generate'])->name('payroll_runs.payslips.generate');
     Route::view('/payslip', 'layouts.payslip')->name('payslip');
+    Route::get('/payslips/runs', [PayslipController::class, 'runs'])->name('payslips.runs');
+    Route::get('/payslips', [PayslipController::class, 'index'])->name('payslips.index');
     Route::view('/report', 'layouts.reports')->name('report');
     Route::view('/settings', 'layouts.settings')->name('settings');
     Route::get('/settings/company-setup', [SettingsController::class, 'getCompanySetup'])->name('settings.company_setup.get');

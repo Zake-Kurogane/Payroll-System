@@ -1,4 +1,5 @@
 ﻿import { initClock } from "./shared/clock";
+import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
@@ -33,30 +34,141 @@ document.addEventListener("DOMContentLoaded", () => {
   const sumAmounts = (arr) =>
     (Array.isArray(arr) ? arr : []).reduce((a, r) => a + Number(r?.amount || 0), 0);
 
+  const maskAccount = (num) => {
+    const raw = String(num || "");
+    if (!raw) return "";
+    const last4 = raw.slice(-4);
+    return raw.length > 4 ? `****${last4}` : raw;
+  };
+
+  function mapPayslipFromApi(p) {
+    const adjustments = Array.isArray(p.adjustments) ? p.adjustments : [];
+    const earnAdj = adjustments.filter(a => a.type === "earning");
+    const dedAdj = adjustments.filter(a => a.type === "deduction");
+    const otHours = Number(p.ot_hours || 0);
+    const otPay = Number(p.ot_pay || 0);
+    const otRate = otHours > 0 ? (otPay / otHours) : 0;
+    return {
+      id: String(p.id),
+      runId: String(p.payroll_run_id || ""),
+      empId: p.emp_no || String(p.employee_id || ""),
+      empName: p.emp_name || "",
+      department: p.department || "",
+      position: p.position || "",
+      empType: p.employment_type || "",
+      assignmentType: p.assignment_type || "",
+      areaPlace: p.area_place || "",
+      periodMonth: p.period_month || "",
+      cutoff: p.cutoff || "",
+      netPay: Number(p.net_pay || 0),
+      releaseStatus: p.release_status || "Draft",
+      payslipNo: p.payslip_no || "",
+      generatedDate: p.generated_at ? String(p.generated_at).slice(0, 10) : "",
+      payDate: p.pay_date || "—",
+      bankName: p.bank_name || "",
+      accountNumber: p.bank_account_number || "",
+      payMethod: p.pay_method || "CASH",
+      basicPay: Number(p.basic_pay_cutoff || 0),
+      allowancePay: Number(p.allowance_cutoff || 0),
+      otHours,
+      otRate,
+      otPay,
+      earningsAdjustments: earnAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
+      deductionAdjustments: dedAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
+      attendanceDeductionTotal: Number(p.attendance_deduction || 0),
+      sssEe: Number(p.sss_ee || 0),
+      philhealthEe: Number(p.philhealth_ee || 0),
+      pagibigEe: Number(p.pagibig_ee || 0),
+      withholdingTax: Number(p.tax || 0),
+      otherDeductionTotal: 0,
+      cashAdvance: Number(p.cash_advance || 0),
+      sssEr: Number(p.sss_er || 0),
+      philhealthEr: Number(p.philhealth_er || 0),
+      pagibigEr: Number(p.pagibig_er || 0),
+      gross: Number(p.gross || 0),
+      deductionsTotal: Number(p.deductions_total || 0),
+      notes: "—",
+      deliveryStatus: p.delivery_status || "Not Sent",
+      email: "",
+    };
+  }
+
   function safeText(id, value) {
     const el = $(id);
     if (el) el.textContent = value;
   }
 
-  // month yyyy-mm + cutoff -> cutoff date range (simple demo)
-  // Replace later with your Payroll Calendar rules if needed.
-  function cutoffDates(periodMonth, cutoffLabel) {
-    // cutoffLabel examples: "1–15", "16–End"
-    if (!periodMonth) return { from: "—", to: "—" };
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  async function apiFetch(url, options = {}) {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": csrfToken,
+        ...(options.headers || {}),
+      },
+      credentials: "same-origin",
+      ...options,
+    });
+    if (!res.ok) {
+      let msg = "Request failed.";
+      try {
+        const data = await res.json();
+        msg = data.message || msg;
+      } catch {
+        // ignore
+      }
+      throw new Error(msg);
+    }
+    if (res.status === 204) return null;
+    return res.json();
+  }
 
+  let payrollCalendar = null;
+  async function loadPayrollCalendarSettings() {
+    try {
+      payrollCalendar = await apiFetch("/settings/payroll-calendar");
+    } catch {
+      payrollCalendar = null;
+    }
+  }
+
+  function resolveCutoffDays(year, month, cutoffType) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const cal = payrollCalendar || {};
+    let from = cutoffType === "11-25" ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
+    let to = cutoffType === "11-25" ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
+    if (!Number.isFinite(from) || from <= 0) from = 1;
+    if (!Number.isFinite(to) || to <= 0) to = cutoffType === "11-25" ? 25 : lastDay;
+    return { from, to };
+  }
+
+  function formatCutoffLabel(monthVal, cutoffVal) {
+    if (!monthVal) return cutoffVal === "11-25" ? "11–25" : "26–10";
+    const [yStr, mStr] = monthVal.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const { from, to } = resolveCutoffDays(y, m, cutoffVal);
+    if (from > to) {
+      const nextMonth = String(m + 1).padStart(2, "0");
+      return `${y}-${mStr}-${String(from).padStart(2, "0")} to ${y}-${nextMonth}-${String(to).padStart(2, "0")}`;
+    }
+    return `${y}-${mStr}-${String(from).padStart(2, "0")} to ${y}-${mStr}-${String(to).padStart(2, "0")}`;
+  }
+
+  function cutoffDates(periodMonth, cutoffVal) {
+    if (!periodMonth) return { from: "—", to: "—" };
     const [yStr, mStr] = String(periodMonth).split("-");
     const y = Number(yStr);
     const m = Number(mStr);
-
-    // last day of month
-    const lastDay = new Date(y, m, 0).getDate(); // JS month in Date is 1-based here due to using (y, m, 0)
-    if (cutoffLabel === "1–15") {
-      return { from: `${periodMonth}-01`, to: `${periodMonth}-15` };
+    const { from, to } = resolveCutoffDays(y, m, cutoffVal);
+    const mm = String(m).padStart(2, "0");
+    const fromText = `${mm}-${String(from).padStart(2, "0")}-${yStr}`;
+    if (from > to) {
+      const nextM = m + 1;
+      const nextMm = String(nextM).padStart(2, "0");
+      return { from: fromText, to: `${nextMm}-${String(to).padStart(2, "0")}-${yStr}` };
     }
-    if (cutoffLabel === "16–End") {
-      return { from: `${periodMonth}-16`, to: `${periodMonth}-${pad(lastDay)}` };
-    }
-    return { from: "—", to: "—" };
+    return { from: fromText, to: `${mm}-${String(to).padStart(2, "0")}-${yStr}` };
   }
 
   // =========================================================
@@ -65,7 +177,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const monthInput = $("monthInput");
   const cutoffInput = $("cutoffInput");
   const searchInput = $("searchInput");
-  const segBtns = $$(".filterbar__right .seg__btn[data-assign]");
+  const assignmentSeg = document.querySelector(".filterbar__right .seg[aria-label='Assignment filter']");
+  let segBtns = $$(".filterbar__right .seg__btn[data-assign]");
   const areaFilterWrap = $("areaFilterWrap");
   const areaPlaceFilter = $("areaPlaceFilter");
 
@@ -116,133 +229,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const psDedAdjRows = $("psDedAdjRows");
 
   // =========================================================
-  // DEMO DATA (replace with backend later)
+  // DATA (backend-driven)
   // =========================================================
-  const RUNS = [
-    {
-      id: "RUN-2026-01-16E-ALL",
-      month: "2026-01",
-      cutoff: "16–End",
-      assignment: "All",
-      status: "Processed",
-      employees: 32,
-      totalNet: 512345.67,
-      processedAt: "2026-01-31 17:20",
-      processedBy: "Admin",
-    },
-    {
-      id: "RUN-2026-02-115-TAGUM",
-      month: "2026-02",
-      cutoff: "1–15",
-      assignment: "Tagum",
-      status: "Released",
-      employees: 18,
-      totalNet: 221900.0,
-      processedAt: "2026-02-15 18:05",
-      processedBy: "Admin",
-    },
-  ];
-
-  const PAYSLIPS = [
-    {
-      id: "PS-0001",
-      runId: "RUN-2026-01-16E-ALL",
-      empId: "1023",
-      empName: "Dela Cruz, Juan",
-      department: "Sales",
-      position: "Field Representative",
-      empType: "Regular",
-      assignmentType: "Tagum",
-      areaPlace: "",
-      periodMonth: "2026-01",
-      cutoff: "16–End",
-      netPay: 7997.5,
-      releaseStatus: "Draft",
-
-      payslipNo: "PS-2026-01-00123",
-      generatedDate: "2026-02-10",
-      payDate: "—",
-      bankName: "BDO",
-      accountNumber: "1234567890",
-
-      basicPay: 10000,
-      allowancePay: 750,
-
-      otHours: 4.5,
-      otRate: 95,
-      otPay: 427.5,
-
-      // ✅ NEW: adjustments
-      earningsAdjustments: [{ name: "Allowance (one-time)", amount: 800 }],
-      deductionAdjustments: [{ name: "Penalty (policy)", amount: 50 }],
-
-      attendanceDeductionTotal: 0,
-      sssEe: 300,
-      philhealthEe: 150,
-      pagibigEe: 100,
-      withholdingTax: 0,
-
-      otherDeductionTotal: 0,
-      cashAdvance: 0,
-
-      sssEr: 650,
-      philhealthEr: 300,
-      pagibigEr: 200,
-
-      notes: "—",
-      deliveryStatus: "Not sent",
-      email: "juan@example.com",
-    },
-
-    {
-      id: "PS-0002",
-      runId: "RUN-2026-01-16E-ALL",
-      empId: "1044",
-      empName: "Santos, Maria",
-      department: "Finance",
-      position: "Payroll Clerk",
-      empType: "Regular",
-      assignmentType: "Area",
-      areaPlace: "Laak",
-      periodMonth: "2026-01",
-      cutoff: "16–End",
-      netPay: 9050,
-      releaseStatus: "Released",
-
-      payslipNo: "PS-2026-01-00124",
-      generatedDate: "2026-02-10",
-      payDate: "—",
-      bankName: "",
-      accountNumber: "",
-
-      basicPay: 10500,
-      allowancePay: 500,
-
-      otHours: 2,
-      otRate: 105,
-      otPay: 210,
-
-      earningsAdjustments: [],
-      deductionAdjustments: [{ name: "Cash bond", amount: 120 }],
-
-      attendanceDeductionTotal: 0,
-      sssEe: 320,
-      philhealthEe: 160,
-      pagibigEe: 100,
-      withholdingTax: 0,
-
-      otherDeductionTotal: 0,
-      cashAdvance: 0,
-
-      sssEr: 680,
-      philhealthEr: 320,
-      pagibigEr: 200,
-
-      notes: "—",
-      deliveryStatus: "Sent",
-      email: "",
-    },
-  ];
+  let runs = [];
+  let payslips = [];
 
   // =========================================================
   // STATE
@@ -289,9 +279,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!runSelect) return;
     runSelect.innerHTML =
       `<option value="" selected>— Select a run —</option>` +
-      RUNS.map((r) => {
-        const label = `${r.month} (${r.cutoff}) • ${r.assignment} • ${r.status} • ${r.employees} employees`;
-        return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
+      runs.map((r) => {
+        const cutoffLabel = formatCutoffLabel(r.period_month, r.cutoff);
+        const label = `${r.period_month} (${cutoffLabel}) • ${r.assignment_filter || "All"} • ${r.status} • ${r.headcount || 0} employees`;
+        return `<option value="${escapeHtml(String(r.id))}">${escapeHtml(label)}</option>`;
       }).join("");
   }
 
@@ -305,14 +296,91 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    safeText("runEmployees", String(run.employees));
-    safeText("runTotalNet", peso(run.totalNet));
-    safeText("runProcessedAt", run.processedAt);
-    safeText("runProcessedBy", run.processedBy);
+    safeText("runEmployees", String(run.headcount ?? 0));
+    safeText("runTotalNet", peso(run.total_net ?? 0));
+    safeText("runProcessedAt", run.locked_at ? new Date(run.locked_at).toLocaleString() : "—");
+    safeText("runProcessedBy", run.created_by_name || "—");
     setTopActionsEnabled(true);
     if (sendEmailBtn) {
-      const ok = run.status === "Processed" || run.status === "Released";
+      const ok = run.status === "Locked" || run.status === "Released";
       sendEmailBtn.disabled = !ok;
+    }
+  }
+
+  async function loadRuns() {
+    try {
+      const data = await apiFetch("/payslips/runs");
+      runs = Array.isArray(data) ? data.filter(r => r.status === "Locked" || r.status === "Released") : [];
+      initRunSelect();
+    } catch {
+      runs = [];
+      initRunSelect();
+    }
+  }
+
+  async function loadFilterOptions() {
+    try {
+      const data = await apiFetch("/employees/filters");
+      const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+      const areaPlaces = Array.isArray(data.area_places) ? data.area_places : [];
+
+      if (assignmentSeg) {
+        assignmentSeg.innerHTML = "";
+        const allBtn = document.createElement("button");
+        allBtn.className = "seg__btn is-active";
+        allBtn.type = "button";
+        allBtn.dataset.assign = "All";
+        allBtn.setAttribute("aria-selected", "true");
+        allBtn.textContent = "All";
+        assignmentSeg.appendChild(allBtn);
+
+        assignments.forEach((label) => {
+          const btn = document.createElement("button");
+          btn.className = "seg__btn";
+          btn.type = "button";
+          btn.dataset.assign = label;
+          btn.setAttribute("aria-selected", "false");
+          btn.textContent = label;
+          assignmentSeg.appendChild(btn);
+        });
+
+        segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn[data-assign]"));
+        bindAssignmentButtons();
+      }
+
+      if (areaPlaceFilter) {
+        areaPlaceFilter.innerHTML = "";
+        const allOpt = document.createElement("option");
+        allOpt.value = "All";
+        allOpt.textContent = "All";
+        allOpt.selected = true;
+        areaPlaceFilter.appendChild(allOpt);
+        areaPlaces.forEach((label) => {
+          const opt = document.createElement("option");
+          opt.value = label;
+          opt.textContent = label;
+          areaPlaceFilter.appendChild(opt);
+        });
+      }
+    } catch {
+      // keep defaults
+    }
+  }
+
+  async function loadPayslips(runId) {
+    if (!runId) {
+      payslips = [];
+      render();
+      return;
+    }
+    try {
+      const data = await apiFetch(`/payslips?run_id=${encodeURIComponent(runId)}`);
+      payslips = Array.isArray(data) ? data.map(mapPayslipFromApi) : [];
+      render();
+    } catch (err) {
+      payslips = [];
+      render();
+      alert(err.message || "Failed to load payslips.");
     }
   }
 
@@ -458,7 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function render() {
     if (!tbody) return;
 
-    const filtered = applyFilters(PAYSLIPS);
+    const filtered = applyFilters(payslips);
     const sorted = applySorting(filtered);
     const { pageItems, total, pages } = paginate(sorted);
 
@@ -499,7 +567,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(p.empId)}</td>
         <td>${escapeHtml(p.empName)}</td>
         <td>${escapeHtml(assignmentText(p))}</td>
-        <td>${escapeHtml(`${p.periodMonth} (${p.cutoff})`)}</td>
+        <td>${escapeHtml(`${p.periodMonth} (${formatCutoffLabel(p.periodMonth, p.cutoff)})`)}</td>
         <td class="num"><strong>${escapeHtml(peso(p.netPay))}</strong></td>
         <td>${badge(p.releaseStatus)}</td>
         <td>${deliveryBadge(p.deliveryStatus)}</td>
@@ -531,7 +599,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // PREVIEW DRAWER (✅ Correctness: adjustments + cutoff dates)
   // =========================================================
   function findPayslip(id) {
-    return PAYSLIPS.find((p) => p.id === id) || null;
+    return payslips.find((p) => p.id === id) || null;
   }
 
   function set(id, value) {
@@ -580,7 +648,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!psDrawer || !psOverlay) return;
 
     if (psDrawerMeta) {
-      psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: ${p.releaseStatus}`;
+      psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${formatCutoffLabel(p.periodMonth, p.cutoff)})  •  Status: ${p.releaseStatus}`;
     }
 
     // header
@@ -597,15 +665,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // pay period
     set("psMonth", p.periodMonth || "—");
-    set("psCutoff", p.cutoff || "—");
+    set("psCutoff", p.cutoff === "11-25" ? "11–25" : p.cutoff === "26-10" ? "26–10" : "—");
 
     // ✅ cutoff dates
     const cd = cutoffDates(p.periodMonth, p.cutoff);
     set("psCutoffDates", cd.from === "—" ? "—" : `${cd.from} to ${cd.to}`);
 
     set("psPayDate", p.payDate || "—");
-    const hasBank = !!(p.accountNumber || "").trim();
-    set("psPayMethod", hasBank ? "Bank" : "Cash");
+    const payMethod = String(p.payMethod || "").toUpperCase();
+    const hasBank = payMethod === "BANK" || !!(p.accountNumber || "").trim();
+    set("psPayMethod", payMethod === "BANK" ? "Bank" : "Cash");
     const bankRow = $("psBankRow");
     const acctRow = $("psAccountRow");
     if (bankRow) bankRow.style.display = hasBank ? "" : "none";
@@ -703,7 +772,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const sb = $("psStatusBadge");
         if (sb) sb.textContent = "Released";
         if (psDrawerMeta) {
-          psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${p.cutoff})  •  Status: Released`;
+          psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  •  Period: ${p.periodMonth} (${formatCutoffLabel(p.periodMonth, p.cutoff)})  •  Status: Released`;
         }
         psReleaseBtn.disabled = true;
       };
@@ -747,16 +816,19 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // SEGMENT FILTER
   // =========================================================
-  segBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      segBtns.forEach((b) => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      assignmentFilter = btn.dataset.assign || "All";
-      setAreaFilterVisibility(assignmentFilter === "Area");
-      page = 1;
-      render();
+  function bindAssignmentButtons() {
+    segBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        segBtns.forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        assignmentFilter = btn.dataset.assign || "All";
+        setAreaFilterVisibility(assignmentFilter === "Area");
+        page = 1;
+        render();
+      });
     });
-  });
+  }
+  bindAssignmentButtons();
 
   // filters
   monthInput && monthInput.addEventListener("change", () => { page = 1; render(); });
@@ -767,7 +839,7 @@ document.addEventListener("DOMContentLoaded", () => {
   runSelect &&
     runSelect.addEventListener("change", () => {
       selectedRunId = runSelect.value || "";
-      const run = RUNS.find((r) => r.id === selectedRunId) || null;
+      const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
       setRunUI(run);
 
       selectedIdsSet.clear();
@@ -778,11 +850,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (run) {
-        if (monthInput) monthInput.value = run.month;
+        if (monthInput) monthInput.value = run.period_month || "";
       }
 
       page = 1;
-      render();
+      loadPayslips(selectedRunId);
     });
 
   // check all + bulk
@@ -848,7 +920,7 @@ document.addEventListener("DOMContentLoaded", () => {
   firstPage && firstPage.addEventListener("click", () => { page = 1; render(); });
   lastPage &&
     lastPage.addEventListener("click", () => {
-      const list = applySorting(applyFilters(PAYSLIPS));
+      const list = applySorting(applyFilters(payslips));
       const pages = Math.max(1, Math.ceil(list.length / perPage));
       page = pages;
       render();
@@ -869,7 +941,7 @@ document.addEventListener("DOMContentLoaded", () => {
       p.empId,
       p.empName,
       assignmentText(p),
-      `${p.periodMonth} (${p.cutoff})`,
+      `${p.periodMonth} (${formatCutoffLabel(p.periodMonth, p.cutoff)})`,
       Number(p.netPay || 0).toFixed(2),
       p.releaseStatus,
       p.deliveryStatus || "",
@@ -892,7 +964,7 @@ document.addEventListener("DOMContentLoaded", () => {
   exportCsvBtn &&
     exportCsvBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
-      const list = applySorting(applyFilters(PAYSLIPS));
+      const list = applySorting(applyFilters(payslips));
       exportCsv(list, `payslips_${selectedRunId}.csv`);
     });
 
@@ -907,7 +979,7 @@ document.addEventListener("DOMContentLoaded", () => {
     printBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const ids = selectedIds();
-      const list = applySorting(applyFilters(PAYSLIPS));
+      const list = applySorting(applyFilters(payslips));
       const p = ids.length ? findPayslip(ids[0]) : list[0];
       if (!p) return;
       openPayslipDrawer(p);
@@ -917,7 +989,7 @@ document.addEventListener("DOMContentLoaded", () => {
   releaseAllBtn &&
     releaseAllBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
-      const list = PAYSLIPS.filter((p) => p.runId === selectedRunId);
+      const list = payslips.filter((p) => p.runId === selectedRunId);
       list.forEach((p) => (p.releaseStatus = "Released"));
       render();
       alert("All payslips in this run marked as Released (demo).");
@@ -926,13 +998,13 @@ document.addEventListener("DOMContentLoaded", () => {
   sendEmailBtn &&
     sendEmailBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
-      const run = RUNS.find((r) => r.id === selectedRunId) || null;
-      if (!run || (run.status !== "Processed" && run.status !== "Released")) {
-        alert("Email sending is available after the run is Processed/Released.");
+      const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
+      if (!run || (run.status !== "Locked" && run.status !== "Released")) {
+        alert("Email sending is available after the run is Locked/Released.");
         return;
       }
 
-      const list = PAYSLIPS.filter((p) => p.runId === selectedRunId);
+      const list = payslips.filter((p) => p.runId === selectedRunId);
       const skipped = [];
       list.forEach((p) => {
         if (!p.email) {
@@ -958,6 +1030,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // init
   bindHeaderSorting();
-  render();
+
+  const params = new URLSearchParams(window.location.search);
+  const initialRunId = params.get("run_id") || "";
+
+  Promise.resolve()
+    .then(() => loadPayrollCalendarSettings())
+    .then(() => loadFilterOptions())
+    .then(() => loadRuns())
+    .then(() => {
+      if (initialRunId && runSelect) {
+        selectedRunId = initialRunId;
+        runSelect.value = initialRunId;
+        const run = runs.find((r) => String(r.id) === String(initialRunId)) || null;
+        setRunUI(run);
+        if (run && monthInput) monthInput.value = run.period_month || "";
+        return loadPayslips(initialRunId);
+      }
+      render();
+    })
+    .catch((err) => alert(err.message || "Failed to initialize payslips."));
 });
 

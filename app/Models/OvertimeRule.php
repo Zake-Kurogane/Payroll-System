@@ -12,6 +12,7 @@ class OvertimeRule extends Model
         'flat_rate',
         'multiplier',
         'rounding',
+        'rounding_option',
     ];
 
     protected $casts = [

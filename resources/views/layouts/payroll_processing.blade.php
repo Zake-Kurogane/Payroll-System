@@ -31,8 +31,8 @@
                             <div class="f">
                                 <label>Cutoff</label>
                                 <select id="cutoffSelect">
-                                    <option value="1-15">1–15</option>
-                                    <option value="16-end">16–End</option>
+                                    <option value="11-25">11–25</option>
+                                    <option value="26-10">26–10</option>
                                 </select>
                             </div>
 
@@ -138,10 +138,6 @@
                                     <span>Total Net</span>
                                     <strong id="sumNet">₱ 0</strong>
                                 </div>
-                                <div class="summaryLine">
-                                    <span>Variance vs Previous Cutoff</span>
-                                    <strong id="sumVariance">—</strong>
-                                </div>
                             </div>
                             <div class="muted small" style="margin-top:10px;">
                                 Tip: Lock after totals look correct. Unlock requires a reason.
@@ -178,7 +174,6 @@
                                     <th class="num">OT Hours</th>
                                     <th class="num">OT Pay</th>
                                     <th class="num">Attendance Deduction</th>
-                                    <th class="num">Other Ded</th>
                                     <th class="num">Statutory + Tax (EE)</th>
                                     <th class="num">Employer Share (ER)</th>
                                     <th class="num">Net Pay</th>

@@ -9,69 +9,40 @@ document.addEventListener("DOMContentLoaded", () => {
   initProfileDrawer();
 
   // =========================================================
-  // DEMO DATA (replace later with backend)
+  // API
   // =========================================================
-  const employees = [
-    {
-      empId: "1023", name: "Dela Cruz, Juan", dept: "Admin", type: "Regular",
-      assignType: "Tagum", areaPlace: "",
-      monthlyRate: 20000, allowances: 0,
-      bankName: "",
-      accountNumber: "",
-      gov: { sss: 500, ph: 300, pagibig: 200 },
-      hasGovIds: true,
-      cashAdvanceEligible: true,
-    },
-    {
-      empId: "1044", name: "Santos, Maria", dept: "HR", type: "Regular",
-      assignType: "Area", areaPlace: "Laak",
-      monthlyRate: 24000, allowances: 1500,
-      bankName: "BDO",
-      accountNumber: "1234567890",
-      gov: { sss: 600, ph: 350, pagibig: 200 },
-      hasGovIds: true,
-      cashAdvanceEligible: true,
-    },
-    {
-      empId: "1102", name: "Garcia, Leo", dept: "IT", type: "Contractual",
-      assignType: "Davao", areaPlace: "",
-      monthlyRate: 19000, allowances: 0,
-      bankName: "",
-      accountNumber: "",
-      gov: { sss: 0, ph: 0, pagibig: 0 },
-      hasGovIds: false,
-      cashAdvanceEligible: false,
-    },
-    {
-      empId: "1201", name: "Reyes, Ana", dept: "Operations", type: "Regular",
-      assignType: "Area", areaPlace: "Pantukan",
-      monthlyRate: 22000, allowances: 800,
-      bankName: "BPI",
-      accountNumber: "78901234",
-      gov: { sss: 550, ph: 320, pagibig: 200 },
-      hasGovIds: true,
-      cashAdvanceEligible: true,
-    },
-  ];
-
-  const attendance = [
-    { empId: "1023", date: "2026-01-02", status: "Present", assignType: "Tagum", areaPlace: "" },
-    { empId: "1023", date: "2026-01-03", status: "Absent", assignType: "Tagum", areaPlace: "" },
-
-    { empId: "1044", date: "2026-01-02", status: "Present", assignType: "Area", areaPlace: "Laak" },
-    { empId: "1044", date: "2026-01-03", status: "Leave", assignType: "Area", areaPlace: "Laak" },
-
-    { empId: "1102", date: "2026-01-03", status: "Absent", assignType: "Davao", areaPlace: "" },
-
-    { empId: "1201", date: "2026-01-18", status: "Present", assignType: "Area", areaPlace: "Pantukan" },
-  ];
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  async function apiFetch(url, options = {}) {
+    const res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-TOKEN": csrfToken,
+        ...(options.headers || {}),
+      },
+      credentials: "same-origin",
+      ...options,
+    });
+    if (!res.ok) {
+      let msg = "Request failed.";
+      try {
+        const data = await res.json();
+        msg = data.message || msg;
+      } catch {
+        // ignore
+      }
+      throw new Error(msg);
+    }
+    if (res.status === 204) return null;
+    return res.json();
+  }
 
   // =========================================================
   // ELEMENTS
   // =========================================================
   const monthInput = document.getElementById("monthInput");
   const cutoffSelect = document.getElementById("cutoffSelect");
-  const segBtns = Array.from(
+  const assignmentSeg = document.querySelector(".filters__right .seg[aria-label='Assignment filter']");
+  let segBtns = Array.from(
     document.querySelectorAll(".filters__right .seg__btn[data-assign]")
   );
   const payoutBtns = Array.from(
@@ -163,39 +134,158 @@ document.addEventListener("DOMContentLoaded", () => {
     return dt.toLocaleString();
   };
 
-  const makeRunId = () => `RUN-${Math.random().toString(16).slice(2, 8).toUpperCase()}`;
-
   const pad2 = (n) => String(n).padStart(2, "0");
 
-  const cutoffRange = (monthVal, cutoffVal) => {
-    if (!monthVal) return { start: "", end: "" };
-    const [y, m] = monthVal.split("-");
-    const lastDay = new Date(Number(y), Number(m), 0).getDate();
-    const start = cutoffVal === "1-15" ? `${y}-${m}-01` : `${y}-${m}-16`;
-    const end = cutoffVal === "1-15" ? `${y}-${m}-15` : `${y}-${m}-${pad2(lastDay)}`;
-    return { start, end };
-  };
+  const settingsVersion = "backend-v1";
 
-  const inRange = (date, start, end) => {
-    if (!date || !start || !end) return false;
-    return date >= start && date <= end;
-  };
+  let payrollCalendar = null;
 
-  const settingsVersion = "demo-v1";
-
-  function loadSettings() {
+  async function loadPayrollCalendarSettings() {
     try {
-      const raw = localStorage.getItem("payroll.settings");
-      const s = raw ? JSON.parse(raw) : {};
-      return {
-        otRate: Number(s.otRate) || 120,
-        workDays: Number(s.workDays) || 26,
-        phSplitRule: s.phSplitRule || "monthly",
-        piSplitRule: s.piSplitRule || "monthly",
-      };
+      payrollCalendar = await apiFetch("/settings/payroll-calendar");
     } catch {
-      return { otRate: 120, workDays: 26, phSplitRule: "monthly", piSplitRule: "monthly" };
+      payrollCalendar = null;
     }
+  }
+
+  function resolveCutoffDays(year, month, cutoffType) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const cal = payrollCalendar || {};
+    let from = cutoffType === "11-25" ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
+    let to = cutoffType === "11-25" ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
+    if (!Number.isFinite(from) || from <= 0) from = 1;
+    if (!Number.isFinite(to) || to <= 0) to = cutoffType === "11-25" ? 25 : lastDay;
+    return { from, to };
+  }
+
+  function formatCutoffLabel(monthVal, cutoffVal) {
+    if (!monthVal) return cutoffVal === "11-25" ? "11–25" : "26–10";
+    const [yStr, mStr] = monthVal.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const { from, to } = resolveCutoffDays(y, m, cutoffVal);
+    if (from > to) {
+      const nextMonth = String(m + 1).padStart(2, "0");
+      return `${y}-${mStr}-${String(from).padStart(2, "0")} to ${y}-${nextMonth}-${String(to).padStart(2, "0")}`;
+    }
+    return `${y}-${mStr}-${String(from).padStart(2, "0")} to ${y}-${mStr}-${String(to).padStart(2, "0")}`;
+  }
+
+  function formatCutoffDisplay(monthVal, cutoffVal) {
+    if (!monthVal) return cutoffVal;
+    const [yStr, mStr] = monthVal.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const { from, to } = resolveCutoffDays(y, m, cutoffVal);
+    const mm = String(m).padStart(2, "0");
+    const fromText = `${mm}-${String(from).padStart(2, "0")}-${yStr}`;
+    if (from > to) {
+      const nextM = m + 1;
+      const nextMm = String(nextM).padStart(2, "0");
+      const toText = `${nextMm}-${String(to).padStart(2, "0")}-${yStr}`;
+      return `${fromText} to ${toText}`;
+    }
+    const toText = `${mm}-${String(to).padStart(2, "0")}-${yStr}`;
+    return `${fromText} to ${toText}`;
+  }
+
+  function updateCutoffOptions() {
+    if (!cutoffSelect) return;
+    const optA = cutoffSelect.querySelector('option[value="11-25"]');
+    const optB = cutoffSelect.querySelector('option[value="26-10"]');
+    if (optA) optA.textContent = "11–25";
+    if (optB) optB.textContent = "26–10";
+  }
+
+  async function loadFilterOptions() {
+    try {
+      const data = await apiFetch("/employees/filters");
+      const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+      const areaPlaces = Array.isArray(data.area_places) ? data.area_places : [];
+
+      if (assignmentSeg) {
+        assignmentSeg.innerHTML = "";
+        const allBtn = document.createElement("button");
+        allBtn.className = "seg__btn is-active";
+        allBtn.type = "button";
+        allBtn.dataset.assign = "All";
+        allBtn.setAttribute("aria-selected", "true");
+        allBtn.textContent = "All";
+        assignmentSeg.appendChild(allBtn);
+
+        assignments.forEach((label) => {
+          const btn = document.createElement("button");
+          btn.className = "seg__btn";
+          btn.type = "button";
+          btn.dataset.assign = label;
+          btn.setAttribute("aria-selected", "false");
+          btn.textContent = label;
+          assignmentSeg.appendChild(btn);
+        });
+
+        segBtns = Array.from(
+          assignmentSeg.querySelectorAll(".seg__btn[data-assign]")
+        );
+        bindAssignmentButtons();
+      }
+
+      if (areaPlaceFilter) {
+        areaPlaceFilter.innerHTML = "";
+        const allOpt = document.createElement("option");
+        allOpt.value = "All";
+        allOpt.textContent = "All";
+        allOpt.selected = true;
+        areaPlaceFilter.appendChild(allOpt);
+        areaPlaces.forEach((label) => {
+          const opt = document.createElement("option");
+          opt.value = label;
+          opt.textContent = label;
+          areaPlaceFilter.appendChild(opt);
+        });
+      }
+    } catch {
+      // keep defaults
+    }
+  }
+
+  function mapRowFromApi(r) {
+    const ov = r.override || {};
+    return {
+      empId: r.emp_no || String(r.employee_id),
+      employeeId: r.employee_id,
+      name: r.name,
+      dept: r.department || "",
+      assign: r.assignment || "",
+      areaPlace: r.area_place || "",
+      dailyRate: Number(r.daily_rate || 0),
+      otHours: Number(r.ot_hours || 0),
+      otHoursComputed: Number(r.ot_hours_computed || r.ot_hours || 0),
+      otOverrideOn: !!(r.ot_override_on ?? ov.ot_override_on),
+      otOverrideHours: (r.ot_override_hours ?? ov.ot_override_hours) ?? null,
+      otPay: Number(r.ot_pay || 0),
+      attendanceDeduction: Number(r.attendance_deduction || 0),
+      sss: Number(r.sss_ee || 0),
+      ph: Number(r.philhealth_ee || 0),
+      pagibig: Number(r.pagibig_ee || 0),
+      tax: Number(r.tax || 0),
+      sssEr: Number(r.sss_er || 0),
+      phEr: Number(r.philhealth_er || 0),
+      piEr: Number(r.pagibig_er || 0),
+      erShare: Number(r.employer_share_total || 0),
+      gross: Number(r.gross || 0),
+      deductions: Number(r.deductions_total || 0),
+      net: Number(r.net_pay || 0),
+      halfBasic: Number(r.basic_pay_cutoff || 0),
+      halfAllowance: Number(r.allowance_cutoff || 0),
+      present: Number(r.present_days || 0),
+      absent: Number(r.absent_days || 0),
+      leave: Number(r.leave_days || 0),
+      payoutMethod: r.payout_method || r.pay_method || "CASH",
+      accountMasked: r.account_masked || r.bank_account_masked || "",
+      adjustments: Array.isArray(r.adjustments) ? r.adjustments : (ov.adjustments || []),
+      cashAdvance: Number(r.cash_advance || 0),
+      status: r.status || "Ready",
+    };
   }
 
   const assignmentLabel = (e) => {
@@ -204,31 +294,13 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // =========================================================
-  // RUN STATE (Clean architecture: currentRun + snapshots)
+  // RUN STATE (backend-driven)
   // =========================================================
   // status: Draft | Locked | Released
   let currentRun = null;
 
   // Runs history
-  let processedRuns = [
-    {
-      id: "RUN-DEMO1",
-      periodKey: "2026-01|1-15",
-      periodLabel: "2026-01 (1–15)",
-      assignment: "All",
-      createdBy: "ADMIN",
-      createdAt: new Date("2026-01-16T10:00:00"),
-      lockedAt: new Date("2026-01-16T11:00:00"),
-      releasedAt: null,
-      status: "Locked",
-      headcount: 2,
-      gross: 20000,
-      deductions: 1750,
-      net: 18250,
-      snapshotRows: [],
-      unlockReason: null,
-    },
-  ];
+  let processedRuns = [];
 
   // =========================================================
   // PREVIEW + OVERRIDES
@@ -236,7 +308,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let previewRows = [];
   // overrides per employee for this run (sticky even after recompute)
   // shape:
-  // { empId: { otHours, otherDed, otOverrideOn, otOverrideHours, adjustments:[{type,name,amount}], cashAdvance } }
+  // { empId: { otHours, otOverrideOn, otOverrideHours, adjustments:[{type,name,amount}], cashAdvance } }
   let overrides = {};
 
   // drawer local state
@@ -279,13 +351,17 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyRunUi() {
     if (!currentRun) return;
 
-    if (runIdEl) runIdEl.textContent = currentRun.id;
-    if (runPeriodEl) runPeriodEl.textContent = currentRun.periodLabel;
+    if (runIdEl) runIdEl.textContent = currentRun.run_code || currentRun.id;
+    if (runPeriodEl) {
+      const monthVal = currentRun.period_month || "";
+      const cutoffVal = currentRun.cutoff || "11-25";
+      runPeriodEl.textContent = formatCutoffDisplay(monthVal, cutoffVal);
+    }
     if (runStatusEl) runStatusEl.textContent = currentRun.status;
-    if (runCreatedByEl) runCreatedByEl.textContent = currentRun.createdBy || "ADMIN";
-    if (runCreatedAtEl) runCreatedAtEl.textContent = fmtDT(currentRun.createdAt);
-    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.lockedAt ? fmtDT(currentRun.lockedAt) : "—";
-    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.releasedAt ? fmtDT(currentRun.releasedAt) : "—";
+    if (runCreatedByEl) runCreatedByEl.textContent = currentRun.created_by_name || currentRun.created_by || "—";
+    if (runCreatedAtEl) runCreatedAtEl.textContent = fmtDT(currentRun.created_at);
+    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.locked_at ? fmtDT(currentRun.locked_at) : "—";
+    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.released_at ? fmtDT(currentRun.released_at) : "—";
 
     setInputsEnabled(!isLocked());
     syncRunButtons();
@@ -293,26 +369,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function computePeriodKey() {
     const monthVal = monthInput?.value || "";
-    const cutoffVal = cutoffSelect?.value || "1-15";
+    const cutoffVal = cutoffSelect?.value || "11-25";
     return `${monthVal}|${cutoffVal}`;
   }
 
   function computePeriodLabel() {
     const monthVal = monthInput?.value || "";
-    const cutoffVal = cutoffSelect?.value === "1-15" ? "1–15" : "16–End";
-    return `${monthVal} (${cutoffVal})`;
+    const cutoffVal = cutoffSelect?.value || "11-25";
+    return `${monthVal} (${formatCutoffLabel(monthVal, cutoffVal)})`;
   }
 
   function prevCutoffKey() {
     const monthVal = monthInput?.value || "";
-    const cutoffVal = cutoffSelect?.value || "1-15";
+    const cutoffVal = cutoffSelect?.value || "11-25";
 
     // simple: previous cutoff within same month if possible
-    // if current is 16-end => previous is 1-15 same month
-    // if current is 1-15 => previous is 16-end previous month (rough)
-    if (cutoffVal === "16-end") return `${monthVal}|1-15`;
+    // if current is 26-10 => previous is 11-25 same month
+    // if current is 11-25 => previous is 26-10 previous month (rough)
+    if (cutoffVal === "26-10") return `${monthVal}|11-25`;
 
-    // previous month 16-end
+    // previous month 26-10
     if (!monthVal) return "";
     const [yStr, mStr] = monthVal.split("-");
     const y = Number(yStr);
@@ -320,158 +396,57 @@ document.addEventListener("DOMContentLoaded", () => {
     let py = y, pm = m - 1;
     if (pm <= 0) { pm = 12; py = y - 1; }
     const prevMonth = `${py}-${String(pm).padStart(2, "0")}`;
-    return `${prevMonth}|16-end`;
+    return `${prevMonth}|26-10`;
   }
 
   function findPrevRunForVariance() {
     const key = prevCutoffKey();
     if (!key) return null;
     // latest run that matches prev cutoff key (Locked or Released)
-    return processedRuns.find(r => r.periodKey === key && (r.status === "Locked" || r.status === "Released")) || null;
+    return processedRuns.find(r => `${r.period_month}|${r.cutoff}` === key && (r.status === "Locked" || r.status === "Released")) || null;
   }
 
   // =========================================================
-  // ATTENDANCE SUMMARY
+  // FILTERED ROWS
   // =========================================================
-  function attendanceSummary(empId) {
-    const monthVal = monthInput?.value || "";
-    const cutoffVal = cutoffSelect?.value || "1-15";
-    const { start, end } = cutoffRange(monthVal, cutoffVal);
-
-    const rows = attendance.filter(a =>
-      a.empId === empId &&
-      inRange(a.date, start, end)
-    );
-
-    const counts = { Present: 0, Absent: 0, Leave: 0 };
-    rows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
-
-    return { rows, counts, hasAny: rows.length > 0 };
-  }
-
-  // =========================================================
-  // FILTERED EMPLOYEES
-  // =========================================================
-  function filteredEmployees() {
+  function filteredRows() {
     const q = (searchInput?.value || "").trim().toLowerCase();
     const assign = assignmentFilter || "All";
     const areaVal = areaPlaceFilter?.value || "All";
 
-    return employees.filter(e => {
-      const okAssign = assign === "All" ? true : e.assignType === assign;
-      const okArea = assign !== "Area" || areaVal === "All" || (e.areaPlace || "") === areaVal;
-      const payout = (e.accountNumber || "").trim() ? "Bank" : "Cash";
+    return previewRows.filter(r => {
+      const okAssign = assign === "All" ? true : r.assign === assign;
+      const okArea = assign !== "Area" || areaVal === "All" || (r.areaPlace || "") === areaVal;
+      const payout = (r.payoutMethod || "").toLowerCase() === "bank" ? "Bank" : "Cash";
       const okPayout = payoutFilter === "All" || payout === payoutFilter;
-      const text = `${e.empId} ${e.name} ${e.dept} ${e.assignType} ${e.areaPlace || ""}`.toLowerCase();
+      const text = `${r.empId} ${r.name} ${r.dept} ${r.assign} ${r.areaPlace || ""}`.toLowerCase();
       const okQ = !q || text.includes(q);
       return okAssign && okArea && okPayout && okQ;
     });
   }
 
   // =========================================================
-  // COMPUTE (base + apply overrides)
+  // COMPUTE (backend)
   // =========================================================
-  function computeForEmployee(e) {
-    const settings = loadSettings();
-    // settings (demo)
-    const otRate = settings.otRate; // replace later from settings page
-    const workDays = settings.workDays;
-
-    const halfBasic = Number(e.monthlyRate || 0) / 2;
-    const halfAllowance = Number(e.allowances || 0) / 2;
-    const dailyRate = workDays > 0 ? (Number(e.monthlyRate || 0) / workDays) : 0;
-
-    const att = attendanceSummary(e.empId);
-    const present = att.counts.Present || 0;
-    const absent = att.counts.Absent || 0;
-    const leave = att.counts.Leave || 0;
-
-    // base computed OT hours (demo: 0 unless set in table override)
-    const ov = overrides[e.empId] || {};
-    const computedOtHours = Number(ov.computedOtHours ?? 0);
-    const manualOtHours = Number(ov.otHours ?? 0);
-    const otherDed = Number(ov.otherDed ?? 0);
-
-    const otOverrideOn = !!ov.otOverrideOn;
-    const otOverrideHours = Number(ov.otOverrideHours ?? manualOtHours);
-
-    const finalOtHours = otOverrideOn ? otOverrideHours : (manualOtHours || computedOtHours);
-    const otPay = finalOtHours * otRate;
-
-    const adjustments = Array.isArray(ov.adjustments) ? ov.adjustments : [];
-    const earnAdj = adjustments.filter(a => a.type === "earning").reduce((a, r) => a + Number(r.amount || 0), 0);
-    const dedAdj = adjustments.filter(a => a.type === "deduction").reduce((a, r) => a + Number(r.amount || 0), 0);
-
-    const cashAdvance = Number(ov.cashAdvance ?? 0);
-
-    // placeholder attendance deductions
-    const demoLateDeduction = 20;
-    const demoUndertimeDeduction = 400;
-    const absentDeduction = demoLateDeduction + demoUndertimeDeduction;
-
-    // gov only on 2nd cutoff (demo)
-    const secondCutoff = (cutoffSelect?.value === "16-end");
-    const applyContribSecondCutoffOnly = settings.phSplitRule === "cutoff2_only" && settings.piSplitRule === "cutoff2_only";
-    const applyContrib = applyContribSecondCutoffOnly ? secondCutoff : true;
-    const sss = applyContrib ? Number(e.gov?.sss || 0) : 0;
-    const ph = applyContrib ? Number(e.gov?.ph || 0) : 0;
-    const pagibig = applyContrib ? Number(e.gov?.pagibig || 0) : 0;
-    const erShare = 0;
-
-    const gross = halfBasic + halfAllowance + otPay + earnAdj;
-    const deductions = absentDeduction + otherDed + dedAdj + cashAdvance + sss + ph + pagibig;
-    const net = gross - deductions;
-
-    let status = "Ready";
-    if (!att.hasAny) status = "Missing Attendance";
-    if (!e.monthlyRate || Number(e.monthlyRate) <= 0) status = "Missing Basic Pay";
-
-    return {
-      empId: e.empId,
-      name: e.name,
-      dept: e.dept,
-      assign: assignmentLabel(e),
-
-      halfBasic,
-      halfAllowance,
-      dailyRate,
-
-      present, absent, leave,
-
-      otRate,
-      computedOtHours,
-      manualOtHours, // base editable
-      otOverrideOn,
-      otOverrideHours,
-      finalOtHours,
-      otPay,
-
-      otherDed,
-      cashAdvance,
-      adjustments,
-
-      earnAdj,
-      dedAdj,
-
-      absentDeduction,
-      sss, ph, pagibig, erShare,
-
-      gross,
-      deductions,
-      net,
-
-      status,
-      cashAdvanceEligible: !!e.cashAdvanceEligible,
-      maxCashAdvance: Number(e.monthlyRate || 0) * 2,
-      payoutMethod: (e.accountNumber || "").trim() ? "BANK" : "CASH",
-      accountMasked: (e.accountNumber || "").trim() ? `****${String(e.accountNumber).slice(-4)}` : "",
-    };
-  }
-
-  function computePreview() {
-    const list = filteredEmployees();
-    previewRows = list.map(e => computeForEmployee(e));
-
+  async function computePreview() {
+    if (!currentRun) return;
+    const payload = await apiFetch(`/payroll-runs/${currentRun.id}/compute`, {
+      method: "POST",
+      body: JSON.stringify({
+        assignment_filter: assignmentFilter || "All",
+        area: assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null,
+      }),
+    });
+    previewRows = (payload?.rows || []).map(mapRowFromApi);
+    overrides = {};
+    previewRows.forEach(r => {
+      overrides[r.empId] = {
+        otOverrideOn: !!r.otOverrideOn,
+        otOverrideHours: r.otOverrideHours ?? r.otHours ?? 0,
+        cashAdvance: r.cashAdvance ?? 0,
+        adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
+      };
+    });
     if (stickyHint) stickyHint.textContent = isLocked()
       ? "Run is locked. Viewing snapshot."
       : "Preview computed. Review rows, then lock the run.";
@@ -492,9 +467,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderRunSummary() {
     if (!currentRun) return;
 
-    const rows = (isLocked() && Array.isArray(currentRun.snapshotRows) && currentRun.snapshotRows.length)
-      ? currentRun.snapshotRows
-      : previewRows;
+    const rows = previewRows;
 
     const s = computeSummaryFromRows(rows);
 
@@ -503,15 +476,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sumDed) sumDed.textContent = money(s.deductions);
     if (sumNet) sumNet.textContent = money(s.net);
 
-    const prev = findPrevRunForVariance();
-    if (!prev) {
-      if (sumVariance) sumVariance.textContent = "—";
-      return;
-    }
-
-    const diff = Number(s.net || 0) - Number(prev.net || 0);
-    const sign = diff > 0 ? "+" : "";
-    if (sumVariance) sumVariance.textContent = `${sign}${money(diff)} vs ${prev.periodLabel}`;
+    if (sumVariance) sumVariance.textContent = "—";
   }
 
   // =========================================================
@@ -571,16 +536,24 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   updateSortIcons();
 
-  let refreshQueued = false;
-  function schedulePreviewRefresh() {
-    if (refreshQueued) return;
-    refreshQueued = true;
-    requestAnimationFrame(() => {
-      refreshQueued = false;
-      computePreview();
-      renderTable();
-      renderRunSummary();
-    });
+  let overrideTimer = null;
+  function scheduleOverrideSave(empId) {
+    if (overrideTimer) clearTimeout(overrideTimer);
+    overrideTimer = setTimeout(async () => {
+      const ov = overrides[empId] || {};
+      try {
+        await saveOverride(empId, {
+          otOverrideOn: !!ov.otOverrideOn,
+          otOverrideHours: ov.otOverrideHours ?? 0,
+          cashAdvance: ov.cashAdvance ?? 0,
+          adjustments: ov.adjustments || [],
+        });
+        renderTable();
+        renderRunSummary();
+      } catch (err) {
+        alert(err.message || "Failed to save override.");
+      }
+    }, 400);
   }
 
   function handleTableChange(e) {
@@ -596,18 +569,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const inp = e.target;
     if (!inp || isLocked()) return;
 
-    if (inp.classList.contains("otIn")) {
-      const id = inp.dataset.id;
-      const val = Number(inp.value || 0);
-      overrides[id] = { ...(overrides[id] || {}), otHours: val };
-      schedulePreviewRefresh();
-    }
-
-    if (inp.classList.contains("dedIn")) {
-      const id = inp.dataset.id;
-      const val = Number(inp.value || 0);
-      overrides[id] = { ...(overrides[id] || {}), otherDed: val };
-      schedulePreviewRefresh();
+    if (inp.classList.contains("otIn") || inp.classList.contains("dedIn")) {
+      return;
     }
   }
 
@@ -621,18 +584,19 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!payTbody) return;
 
     const locked = isLocked();
-    const totalPages = Math.max(1, Math.ceil(previewRows.length / payPageSize));
+    const filtered = filteredRows();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / payPageSize));
     payPage = Math.min(payPage, totalPages);
     const start = (payPage - 1) * payPageSize;
 
-    let list = previewRows.slice();
+    let list = filtered.slice();
     if (sortState.key === "name") {
       const mul = sortState.dir === "asc" ? 1 : -1;
       list.sort((a, b) => normalize(a.name).localeCompare(normalize(b.name)) * mul);
     }
     list = list.slice(start, start + payPageSize);
 
-    if (resultsMeta) resultsMeta.textContent = `Showing ${previewRows.length} employee(s)`;
+    if (resultsMeta) resultsMeta.textContent = `Showing ${filteredRows().length} employee(s)`;
     if (payFooterInfo) payFooterInfo.textContent = `Page ${payPage} of ${totalPages}`;
     if (payPageInput) payPageInput.value = payPage;
     if (payPageTotal) payPageTotal.textContent = `/ ${totalPages}`;
@@ -648,8 +612,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const attText = `${r.present}/${r.absent}/${r.leave}`;
 
-      const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0);
-      const statER = Number(r.erShare || 0);
+      const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0) + Number(r.tax || 0);
+      const statER = Number(r.sssEr || 0) + Number(r.phEr || 0) + Number(r.piEr || 0);
+      const statERTotal = Number(r.erShare || 0);
 
       tr.innerHTML = `
         <td class="col-check">
@@ -664,24 +629,16 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${attText}</td>
         <td class="num">${money(r.dailyRate)}</td>
 
-        <td class="num">
-          <input class="miniIn otIn" type="number" min="0" step="0.25" value="${Number(r.otHours || 0)}" data-id="${r.empId}" ${disabled}>
-        </td>
+        <td class="num">${Number(r.otHours || 0).toFixed(2)}</td>
         <td class="num">${money(r.otPay)}</td>
 
         <td class="num">
           <details class="dd">
-            <summary>Total: ${money(r.absentDeduction)}</summary>
+            <summary>Total: ${money(r.attendanceDeduction)}</summary>
             <div class="dd__body">
-              <div>Total: ${money(r.absentDeduction)}</div>
-              <div>Late: ${money(20)}</div>
-              <div>Undertime: ${money(400)}</div>
+              <div>Total: ${money(r.attendanceDeduction)}</div>
             </div>
           </details>
-        </td>
-
-        <td class="num">
-          <input class="miniIn dedIn" type="number" min="0" step="0.01" value="${Number(r.otherDed || 0)}" data-id="${r.empId}" ${disabled}>
         </td>
 
         <td class="num">
@@ -691,15 +648,18 @@ document.addEventListener("DOMContentLoaded", () => {
               <div>SSS: ${money(r.sss)}</div>
               <div>PhilHealth: ${money(r.ph)}</div>
               <div>Pag-IBIG: ${money(r.pagibig)}</div>
+              <div>Tax: ${money(r.tax)}</div>
             </div>
           </details>
         </td>
 
         <td class="num">
           <details class="dd">
-            <summary>${money(statER)}</summary>
+            <summary>${money(statERTotal)}</summary>
             <div class="dd__body">
-              <div>${money(statER)}</div>
+              <div>SSS (ER): ${money(r.sssEr || 0)}</div>
+              <div>PhilHealth (ER): ${money(r.phEr || 0)}</div>
+              <div>Pag-IBIG (ER): ${money(r.piEr || 0)}</div>
             </div>
           </details>
         </td>
@@ -872,11 +832,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (adjStatus) adjStatus.textContent = isLocked() ? "Locked" : "Draft";
     if (adjEmpKey) adjEmpKey.value = row.empId;
 
-    // computed OT is the current row OT (base)
-    if (adjComputedOt) adjComputedOt.value = Number(row.otHours || 0);
+    // computed OT from backend (before overrides)
+    if (adjComputedOt) adjComputedOt.value = Number(row.otHoursComputed || 0);
 
     // load overrides into drawer
-    const ov = overrides[empId] || {};
+    const ov = overrides[empId] || {
+      otOverrideOn: !!row.otOverrideOn,
+      otOverrideHours: row.otOverrideHours ?? row.otHours ?? 0,
+      cashAdvance: row.cashAdvance ?? 0,
+      adjustments: Array.isArray(row.adjustments) ? row.adjustments : [],
+    };
     const overrideOn = !!ov.otOverrideOn;
     const overrideHours = Number(ov.otOverrideHours ?? row.otHours ?? 0);
 
@@ -910,11 +875,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const row = previewRows.find(r => r.empId === empId);
     if (!row) return;
 
-    const otRate = Number(row.otRate || 0);
+    const otRate = Number(row.otHours || 0) > 0 ? (Number(row.otPay || 0) / Number(row.otHours || 0)) : 0;
     const overrideOn = !!adjOverrideToggle?.checked;
 
     const typedOverrideHours = Number(adjOtHours?.value || 0);
-    const finalOtHours = overrideOn ? typedOverrideHours : Number(row.otHours || 0);
+    const finalOtHours = overrideOn ? typedOverrideHours : Number(row.otHoursComputed || row.otHours || 0);
     const finalOtAmount = finalOtHours * otRate;
 
     if (adjOtAmountPreview) adjOtAmountPreview.value = money(finalOtAmount);
@@ -930,7 +895,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const cash = Number(adjCashAdvance?.value || 0);
 
     const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + finalOtAmount + earn;
-    const dedPreview = Number(row.absentDeduction || 0) + Number(row.otherDed || 0) + ded + cash + Number(row.sss || 0) + Number(row.ph || 0) + Number(row.pagibig || 0);
+    const dedPreview = Number(row.attendanceDeduction || 0) + ded + cash + Number(row.sss || 0) + Number(row.ph || 0) + Number(row.pagibig || 0) + Number(row.tax || 0);
     const netPreview = grossPreview - dedPreview;
 
     if (sumBase) sumBase.textContent = money(Number(row.halfBasic || 0) + Number(row.halfAllowance || 0));
@@ -940,7 +905,33 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sumNetPreview) sumNetPreview.textContent = money(netPreview);
   }
 
-  function applyAdjust() {
+  async function saveOverride(empId, payload) {
+    if (!currentRun) return;
+    const row = previewRows.find(r => r.empId === empId);
+    if (!row) return;
+    const res = await apiFetch(`/payroll-runs/${currentRun.id}/overrides`, {
+      method: "POST",
+      body: JSON.stringify({
+        employee_id: row.employeeId,
+        ot_override_on: !!payload.otOverrideOn,
+        ot_override_hours: payload.otOverrideOn ? Number(payload.otOverrideHours || 0) : null,
+        cash_advance: payload.cashAdvance != null ? Number(payload.cashAdvance || 0) : null,
+        adjustments: Array.isArray(payload.adjustments) ? payload.adjustments : [],
+      }),
+    });
+
+    const mapped = mapRowFromApi(res);
+    const idx = previewRows.findIndex(r => r.empId === empId);
+    if (idx >= 0) previewRows[idx] = mapped;
+    overrides[empId] = {
+      otOverrideOn: !!mapped.otOverrideOn,
+      otOverrideHours: mapped.otOverrideHours ?? mapped.otHours ?? 0,
+      cashAdvance: mapped.cashAdvance ?? 0,
+      adjustments: Array.isArray(mapped.adjustments) ? mapped.adjustments : [],
+    };
+  }
+
+  async function applyAdjust() {
     if (isLocked()) return;
 
     const empId = adjEmpKey?.value || "";
@@ -966,10 +957,19 @@ document.addEventListener("DOMContentLoaded", () => {
       cashAdvance: cash,
     };
 
-    computePreview();
-    renderTable();
-    renderRunSummary();
-    closeDrawer();
+    try {
+      await saveOverride(empId, {
+        otOverrideOn: overrideOn,
+        otOverrideHours: overrideHours,
+        cashAdvance: cash,
+        adjustments: overrides[empId]?.adjustments || [],
+      });
+      renderTable();
+      renderRunSummary();
+      closeDrawer();
+    } catch (err) {
+      alert(err.message || "Failed to save adjustments.");
+    }
   }
 
   // drawer events
@@ -991,8 +991,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // RUN LIFECYCLE
   // =========================================================
-  function createNewRun() {
-    // If current is locked, allow new run. If current is draft with edits, confirm.
+  async function createNewRun() {
     if (currentRun && currentRun.status === "Draft") {
       const ok = confirm("Start a new run? This will reset draft overrides for the current period.");
       if (!ok) return;
@@ -1002,164 +1001,100 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows = [];
     selectedEmpIds.clear();
 
-    const now = new Date();
-    currentRun = {
-      id: makeRunId(),
-      periodKey: computePeriodKey(),
-      periodLabel: computePeriodLabel(),
-      assignment: assignmentFilter || "All",
-      createdBy: "ADMIN",
-      createdAt: now,
-      lockedAt: null,
-      releasedAt: null,
-      status: "Draft",
-      snapshotRows: [],
-      snapshotOverrides: {},
-      snapshotMeta: null,
-      unlockedAt: null,
-      unlockedBy: null,
-    };
+    const payload = await apiFetch("/payroll-runs", {
+      method: "POST",
+      body: JSON.stringify({
+        period_month: monthInput?.value || "",
+        cutoff: cutoffSelect?.value || "11-25",
+        assignment_filter: assignmentFilter || "All",
+        area: assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null,
+      }),
+    });
 
+    currentRun = payload;
     if (stickyHint) stickyHint.textContent = "New run created (Draft). Compute preview then lock.";
     applyRunUi();
 
-    computePreview();
+    await computePreview();
     renderTable();
-    renderRuns();
+    await renderRuns();
     renderRunSummary();
   }
 
-  function lockRun() {
-    if (!currentRun) createNewRun();
-    if (!currentRun) return;
+  async function lockRun() {
+    if (!currentRun) {
+      await createNewRun();
+      if (!currentRun) return;
+    }
     if (isLocked()) return;
-
-    // lock = finalize snapshot
-    const rowsSnapshot = previewRows.map(r => ({ ...r })); // immutable snapshot
-    const overridesSnapshot = JSON.parse(JSON.stringify(overrides || {}));
-    const settings = loadSettings();
-    const snapshotMeta = {
-      otRate: settings.otRate,
-      workDays: settings.workDays,
-      phSplitRule: settings.phSplitRule,
-      piSplitRule: settings.piSplitRule,
-      settingsVersion,
-    };
-
-    const s = computeSummaryFromRows(rowsSnapshot);
-    currentRun.snapshotRows = rowsSnapshot;
-    currentRun.snapshotOverrides = overridesSnapshot;
-    currentRun.snapshotMeta = snapshotMeta;
-    currentRun.lockedAt = new Date();
-    currentRun.status = "Locked";
-
-    // store in history
-    processedRuns.unshift({
-      id: currentRun.id,
-      periodKey: currentRun.periodKey,
-      periodLabel: currentRun.periodLabel,
-      assignment: currentRun.assignment,
-      createdBy: currentRun.createdBy,
-      createdAt: currentRun.createdAt,
-      lockedAt: currentRun.lockedAt,
-      releasedAt: null,
-      status: "Locked",
-      headcount: s.headcount,
-      gross: s.gross,
-      deductions: s.deductions,
-      net: s.net,
-      snapshotRows: rowsSnapshot,
-      snapshotOverrides: overridesSnapshot,
-      snapshotMeta,
-      unlockReason: null,
-      unlockedAt: null,
-      unlockedBy: null,
-    });
-
+    currentRun = await apiFetch(`/payroll-runs/${currentRun.id}/lock`, { method: "POST" });
     if (stickyHint) stickyHint.textContent = "Run locked. Inputs disabled. You can generate payslips or release.";
     applyRunUi();
-    renderRuns();
+    await renderRuns();
     renderRunSummary();
-    renderTable(); // disables row inputs via isLocked()
+    renderTable();
   }
 
-  function unlockRun() {
-    if (!currentRun) return;
-    if (!isLocked()) return;
-
+  async function unlockRun() {
+    if (!currentRun || !isLocked()) return;
     const reason = prompt("Unlock reason (required):");
     if (!reason || !reason.trim()) {
       alert("Unlock cancelled. Reason is required.");
       return;
     }
-
-    // mark latest stored run unlocked (audit)
-    const stored = processedRuns.find(r => r.id === currentRun.id);
-    if (stored) {
-      stored.status = "Unlocked (Draft)";
-      stored.unlockReason = reason.trim();
-      stored.unlockedAt = new Date();
-      stored.unlockedBy = "ADMIN";
+    const password = prompt("Enter your password to unlock this run:");
+    if (!password) {
+      alert("Unlock cancelled. Password is required.");
+      return;
     }
-
-    currentRun.status = "Draft";
-    currentRun.lockedAt = null;
-    currentRun.releasedAt = null;
-    currentRun.snapshotRows = [];
-    currentRun.snapshotOverrides = {};
-    currentRun.snapshotMeta = null;
-    currentRun.unlockedAt = new Date();
-    currentRun.unlockedBy = "ADMIN";
-
+    currentRun = await apiFetch(`/payroll-runs/${currentRun.id}/unlock`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    });
     if (stickyHint) stickyHint.textContent = "Run unlocked (Draft). You can edit and lock again.";
     applyRunUi();
-
-    computePreview();
+    await computePreview();
     renderTable();
-    renderRuns();
+    await renderRuns();
     renderRunSummary();
   }
 
-  function releaseRun() {
-    if (!currentRun) return;
-    if (currentRun.status !== "Locked") return;
-
+  async function releaseRun() {
+    if (!currentRun || currentRun.status !== "Locked") return;
     const ok = confirm("Release this run? This marks it as released (optional) and keeps it locked.");
     if (!ok) return;
-
-    currentRun.status = "Released";
-    currentRun.releasedAt = new Date();
-
-    const stored = processedRuns.find(r => r.id === currentRun.id);
-    if (stored) {
-      stored.status = "Released";
-      stored.releasedAt = currentRun.releasedAt;
-    }
-
+    currentRun = await apiFetch(`/payroll-runs/${currentRun.id}/release`, { method: "POST" });
     if (stickyHint) stickyHint.textContent = "Run released. Still locked and immutable.";
     applyRunUi();
-    renderRuns();
+    await renderRuns();
     renderRunSummary();
   }
 
-  newRunBtn && newRunBtn.addEventListener("click", createNewRun);
-  lockRunBtn && lockRunBtn.addEventListener("click", lockRun);
-  unlockRunBtn && unlockRunBtn.addEventListener("click", unlockRun);
-  releaseRunBtn && releaseRunBtn.addEventListener("click", releaseRun);
+  newRunBtn && newRunBtn.addEventListener("click", () => createNewRun().catch(err => alert(err.message || "Failed to create run.")));
+  lockRunBtn && lockRunBtn.addEventListener("click", () => lockRun().catch(err => alert(err.message || "Failed to lock run.")));
+  unlockRunBtn && unlockRunBtn.addEventListener("click", () => unlockRun().catch(err => alert(err.message || "Failed to unlock run.")));
+  releaseRunBtn && releaseRunBtn.addEventListener("click", () => releaseRun().catch(err => alert(err.message || "Failed to release run.")));
 
   // Process button = lock run (matches your UX)
   processBtn && processBtn.addEventListener("click", () => {
     const ok = confirm("Process Payroll = Lock/Finalize this run. Continue?");
     if (!ok) return;
-    lockRun();
+    lockRun().catch(err => alert(err.message || "Failed to lock run."));
   });
 
   // =========================================================
   // RUNS TABLE
   // =========================================================
-  function renderRuns() {
+  async function renderRuns() {
     if (!runsTbody) return;
     runsTbody.innerHTML = "";
+
+    try {
+      processedRuns = await apiFetch("/payroll-runs");
+    } catch (err) {
+      runsTbody.innerHTML = `<tr><td colspan="5" class="muted small">Failed to load runs.</td></tr>`;
+      return;
+    }
 
     if (!processedRuns.length) {
       runsTbody.innerHTML = `<tr><td colspan="5" class="muted small">No processed runs yet.</td></tr>`;
@@ -1167,12 +1102,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     processedRuns.forEach(r => {
+      const periodLabel = `${r.period_month} (${formatCutoffLabel(r.period_month, r.cutoff)})`;
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><strong>${r.periodLabel}</strong></td>
-        <td class="muted small">${r.assignment || "All"}</td>
-        <td class="num">${r.headcount ?? r.count ?? 0}</td>
-        <td class="num">${money(r.net ?? r.totalNet ?? 0)}</td>
+        <td><strong>${periodLabel}</strong></td>
+        <td class="muted small">${r.assignment_filter || "All"}</td>
+        <td class="num">${r.headcount ?? 0}</td>
+        <td class="num">${money(r.net ?? 0)}</td>
         <td><span class="st st--ok">${r.status}</span></td>
       `;
       runsTbody.appendChild(tr);
@@ -1182,32 +1118,41 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // UI EVENTS
   // =========================================================
-  function refreshAll() {
+  async function loadRowsForCurrent() {
+    if (!currentRun) return;
+    const rows = await apiFetch(`/payroll-runs/${currentRun.id}/rows`);
+    previewRows = (rows || []).map(mapRowFromApi);
+    overrides = {};
+    previewRows.forEach(r => {
+      overrides[r.empId] = {
+        otOverrideOn: !!r.otOverrideOn,
+        otOverrideHours: r.otOverrideHours ?? r.otHours ?? 0,
+        cashAdvance: r.cashAdvance ?? 0,
+        adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
+      };
+    });
+  }
+
+  async function refreshAll() {
     if (!currentRun) {
-      // create default draft run automatically
-      createNewRun();
+      await createNewRun();
       return;
     }
 
     if (isLocked()) {
-      // locked: do not recompute or change view state
       if (stickyHint) stickyHint.textContent = "Run is locked. Unlock to change anything.";
+      await loadRowsForCurrent();
       applyRunUi();
-      renderRuns();
+      await renderRuns();
       renderRunSummary();
       renderTable();
       return;
     }
 
-    // draft: recompute
-    currentRun.periodKey = computePeriodKey();
-    currentRun.periodLabel = computePeriodLabel();
-  currentRun.assignment = assignmentFilter || "All";
-  
+    await computePreview();
     applyRunUi();
-    computePreview();
     renderTable();
-    renderRuns();
+    await renderRuns();
     renderRunSummary();
   }
 
@@ -1219,53 +1164,55 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function populateAreaFilter(selectEl) {
     if (!selectEl) return;
-    const current = selectEl.value;
-    const places = Array.from(
-      new Set(
-        employees
-          .filter(e => e.assignType === "Area" && e.areaPlace)
-          .map(e => e.areaPlace)
-      )
-    ).sort();
-    const options = places.length ? places : ["Laak", "Pantukan", "Maragusan"];
-    selectEl.innerHTML =
-      `<option value="All" selected>All</option>` +
-      options.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (current && (current === "All" || options.includes(current))) {
-      selectEl.value = current;
+    if (!selectEl.querySelector('option[value="All"]')) {
+      const opt = document.createElement("option");
+      opt.value = "All";
+      opt.textContent = "All";
+      opt.selected = true;
+      selectEl.prepend(opt);
     }
   }
 
   if (areaPlaceFilter) {
     populateAreaFilter(areaPlaceFilter);
-    areaPlaceFilter.addEventListener("change", () => refreshAll());
+    areaPlaceFilter.addEventListener("change", () => refreshAll().catch(err => alert(err.message || "Failed to refresh.")));
   }
   setAreaFilterVisibility(assignmentFilter === "Area");
 
   // filters changes (blocked when locked via disabled attribute, but we guard anyway)
   [monthInput, cutoffSelect].forEach(el => {
-    el && el.addEventListener("change", () => refreshAll());
-  });
-
-  searchInput && searchInput.addEventListener("input", () => refreshAll());
-
-  segBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (isLocked()) return;
-      segBtns.forEach(b => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
-      segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
-      assignmentFilter = btn.dataset.assign || "All";
-      if (assignmentFilter === "Area") {
-        setAreaFilterVisibility(true);
-        if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
-      } else {
-        setAreaFilterVisibility(false);
-        if (areaPlaceFilter) areaPlaceFilter.value = "All";
-      }
-      refreshAll();
+    el && el.addEventListener("change", () => {
+      updateCutoffOptions();
+      refreshAll().catch(err => alert(err.message || "Failed to refresh."));
     });
   });
+
+  searchInput && searchInput.addEventListener("input", () => {
+    renderTable();
+    renderRunSummary();
+  });
+
+  function bindAssignmentButtons() {
+    segBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (isLocked()) return;
+        segBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+        assignmentFilter = btn.dataset.assign || "All";
+        if (assignmentFilter === "Area") {
+          setAreaFilterVisibility(true);
+          if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
+        } else {
+          setAreaFilterVisibility(false);
+          if (areaPlaceFilter) areaPlaceFilter.value = "All";
+        }
+        refreshAll().catch(err => alert(err.message || "Failed to refresh."));
+      });
+    });
+  }
+
+  bindAssignmentButtons();
 
   payoutBtns.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1274,7 +1221,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("is-active");
       payoutBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
       payoutFilter = btn.dataset.pay || "All";
-      refreshAll();
+      refreshAll().catch(err => alert(err.message || "Failed to refresh."));
     });
   });
 
@@ -1293,27 +1240,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   computeBtn && computeBtn.addEventListener("click", () => {
     if (isLocked()) return;
-    computePreview();
-    renderTable();
-    renderRunSummary();
-    if (stickyHint) stickyHint.textContent = "Preview refreshed. Check totals then lock.";
+    computePreview()
+      .then(() => {
+        renderTable();
+        renderRunSummary();
+        if (stickyHint) stickyHint.textContent = "Preview refreshed. Check totals then lock.";
+      })
+      .catch(err => alert(err.message || "Failed to compute preview."));
   });
 
   resetPreviewBtn && resetPreviewBtn.addEventListener("click", () => {
     if (isLocked()) return;
-    const ok = confirm("Reset preview edits (OT hours, other deductions, drawer overrides) for this run?");
+    const ok = confirm("Reset preview edits (OT hours and drawer overrides) for this run?");
     if (!ok) return;
     overrides = {};
-    computePreview();
-    renderTable();
-    renderRunSummary();
-    if (stickyHint) stickyHint.textContent = "Preview overrides reset.";
+    computePreview()
+      .then(() => {
+        renderTable();
+        renderRunSummary();
+        if (stickyHint) stickyHint.textContent = "Preview overrides reset.";
+      })
+      .catch(err => alert(err.message || "Failed to reset preview."));
   });
 
   payslipBtn && payslipBtn.addEventListener("click", () => {
     if (!currentRun) return;
     if (!(currentRun.status === "Locked" || currentRun.status === "Released")) return;
-    alert("Generate Payslips (demo). Next step: generate PDF per employee from currentRun.snapshotRows.");
+    apiFetch(`/payroll-runs/${currentRun.id}/payslips`, { method: "POST" })
+      .then(() => {
+        window.location.href = `/payslip?run_id=${currentRun.id}`;
+      })
+      .catch(err => alert(err.message || "Failed to generate payslips."));
   });
 
   document.addEventListener("keydown", (e) => {
@@ -1329,8 +1286,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const now = new Date();
   if (monthInput) monthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  // create initial run
-  createNewRun();
+  // init filters + calendar before first run
+  Promise.resolve()
+    .then(() => loadPayrollCalendarSettings())
+    .then(() => loadFilterOptions())
+    .then(() => updateCutoffOptions())
+    .then(() => createNewRun())
+    .catch(err => alert(err.message || "Failed to initialize payroll processing."));
 });
 
 
