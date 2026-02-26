@@ -760,7 +760,8 @@ th.sortable.is-desc .sortIcon {
     display: flex;
     gap: 10px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 .drawer__title {
     font-weight: 1000;
@@ -1210,6 +1211,31 @@ th.sortable.is-desc .sortIcon {
     font-weight: 1000;
     border: 1px solid rgba(17, 24, 39, 0.1);
     background: rgba(17, 24, 39, 0.06);
+}
+.badge--success {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.35);
+    color: #166534;
+}
+.badge--warn {
+    background: rgba(245, 158, 11, 0.14);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: #92400e;
+}
+.badge--info {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #1e40af;
+}
+.badge--muted {
+    background: rgba(107, 114, 128, 0.12);
+    border-color: rgba(107, 114, 128, 0.28);
+    color: #374151;
+}
+.badge--danger {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #991b1b;
 }
 
 /* Responsive */

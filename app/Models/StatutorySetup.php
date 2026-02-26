@@ -9,6 +9,8 @@ class StatutorySetup extends Model
     protected $fillable = [
         'sss_table',
         'sss_split_rule',
+        'sss_ee_percent',
+        'sss_er_percent',
         'ph_ee_percent',
         'ph_er_percent',
         'ph_min_cap',

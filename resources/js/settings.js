@@ -6,6 +6,7 @@ import { initTimekeeping } from "./settings/timekeeping";
 import { toast } from "./settings/toast";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
+import { broadcastSettingsUpdate } from "./shared/settingsSync";
 
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
@@ -49,8 +50,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return true;
   }
 
-  initTimekeeping(toast, apiFetch, document.getElementById("timekeepingNotice"));
-  initCashAdvance(toast, apiFetch, document.getElementById("cashAdvanceNotice"));
+  const notifySettingsUpdated = () => broadcastSettingsUpdate();
+  initTimekeeping(toast, apiFetch, document.getElementById("timekeepingNotice"), notifySettingsUpdated);
+  initCashAdvance(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
 
   // ===== Company Setup =====
   const companyName = document.getElementById("companyName");
@@ -97,6 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(companyNotice, "Company setup saved.")) {
         toast("Saved Company Setup.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Company Setup.", "error");
     }
@@ -147,6 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(calendarNotice, "Payroll calendar saved.")) {
         toast("Saved Payroll Calendar.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Payroll Calendar.", "error");
     }
@@ -185,6 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(prorationNotice, "Salary & proration rules saved.")) {
         toast("Saved Salary & Proration Rules.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Salary & Proration Rules.", "error");
     }
@@ -244,6 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!showNotice(overtimeNotice, "Overtime rules saved.")) {
           toast("Saved Overtime Rules.");
         }
+        notifySettingsUpdated();
       })
       .catch((err) => toast(err.message || "Failed to save Overtime Rules.", "error"));
   });
@@ -416,7 +422,9 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error("Saved response missing sss_table. Please refresh and try again.");
       }
       renderSssTable(saved.sss_table);
+      notifySettingsUpdated();
       toast(`Imported and saved: ${f.name}`);
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to import SSS table.", "error");
     } finally {
@@ -431,6 +439,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(() => {
         clearSssTable();
         toast("SSS table cleared.");
+        notifySettingsUpdated();
       })
       .catch((err) => toast(err.message || "Failed to clear SSS table.", "error"));
   });
@@ -451,8 +460,10 @@ document.addEventListener("DOMContentLoaded", () => {
         clearSssTable();
       }
       document.getElementById("sssSplitRule") && (document.getElementById("sssSplitRule").value = row.sss_split_rule ?? "monthly");
-      document.getElementById("phEePercent") && (document.getElementById("phEePercent").value = row.ph_ee_percent ?? 2.5);
-      document.getElementById("phErPercent") && (document.getElementById("phErPercent").value = row.ph_er_percent ?? 2.5);
+      document.getElementById("sssEePercent") && (document.getElementById("sssEePercent").value = row.sss_ee_percent ?? 5);
+      document.getElementById("sssErPercent") && (document.getElementById("sssErPercent").value = row.sss_er_percent ?? 10);
+      document.getElementById("phEePercent") && (document.getElementById("phEePercent").value = row.ph_ee_percent ?? 5);
+      document.getElementById("phErPercent") && (document.getElementById("phErPercent").value = row.ph_er_percent ?? 10);
       document.getElementById("phMinCap") && (document.getElementById("phMinCap").value = row.ph_min_cap ?? 0);
       document.getElementById("phMaxCap") && (document.getElementById("phMaxCap").value = row.ph_max_cap ?? 0);
       document.getElementById("phSplitRule") && (document.getElementById("phSplitRule").value = row.ph_split_rule ?? "monthly");
@@ -460,7 +471,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("piEeThreshold") && (document.getElementById("piEeThreshold").value = row.pi_ee_threshold ?? 1500);
       document.getElementById("piEePercent") && (document.getElementById("piEePercent").value = row.pi_ee_percent ?? 2);
       document.getElementById("piErPercent") && (document.getElementById("piErPercent").value = row.pi_er_percent ?? 2);
-      document.getElementById("piCap") && (document.getElementById("piCap").value = row.pi_cap ?? 5000);
+      document.getElementById("piCap") && (document.getElementById("piCap").value = row.pi_cap ?? 10000);
       document.getElementById("piSplitRule") && (document.getElementById("piSplitRule").value = row.pi_split_rule ?? "monthly");
     } catch (err) {
       toast(err.message || "Failed to load Statutory Setup.", "error");
@@ -473,6 +484,8 @@ document.addEventListener("DOMContentLoaded", () => {
         method: "POST",
         body: JSON.stringify({
           sss_split_rule: document.getElementById("sssSplitRule")?.value || "monthly",
+          sss_ee_percent: Number(document.getElementById("sssEePercent")?.value || 0),
+          sss_er_percent: Number(document.getElementById("sssErPercent")?.value || 0),
           ph_ee_percent: Number(document.getElementById("phEePercent")?.value || 0),
           ph_er_percent: Number(document.getElementById("phErPercent")?.value || 0),
           ph_min_cap: Number(document.getElementById("phMinCap")?.value || 0),
@@ -489,6 +502,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(document.getElementById("statutoryNotice"), "Statutory setup saved.")) {
         toast("Saved Statutory Setup.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Statutory Setup.", "error");
     }
@@ -702,7 +716,8 @@ document.addEventListener("DOMContentLoaded", () => {
       .then(() => {
         clearWtTable();
         wtTableSourceName = "";
-        toast("Withholding tax table cleared.");
+      toast("Withholding tax table cleared.");
+      notifySettingsUpdated();
       })
       .catch((err) => toast(err.message || "Failed to clear Withholding Tax table.", "error"));
   });
@@ -791,6 +806,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(withholdingNotice, "Withholding tax policy saved.")) {
         toast("Saved Withholding Tax Policy.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Withholding Tax Policy.", "error");
     }
@@ -816,6 +832,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!showNotice(withholdingNotice, "Withholding tax setup saved.")) {
         toast("Saved Withholding Tax Setup.");
       }
+      notifySettingsUpdated();
     } catch (err) {
       toast(err.message || "Failed to save Withholding Tax Setup.", "error");
     }
@@ -831,5 +848,5 @@ document.addEventListener("DOMContentLoaded", () => {
   loadCompanySetup();
   loadPayrollCalendar();
   loadOvertimeRules();
-  initAttendanceCodes(toast, apiFetch, document.getElementById("attendanceNotice"));
+  initAttendanceCodes(toast, apiFetch, document.getElementById("attendanceNotice"), notifySettingsUpdated);
 });

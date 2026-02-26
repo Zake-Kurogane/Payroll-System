@@ -253,6 +253,8 @@
 @endsection
 
 @section('body_end')
+    <div class="toast" id="toast" aria-live="polite" aria-atomic="true"></div>
+
     <!-- DRAWER OVERLAY -->
     <div class="overlay" id="drawerOverlay" hidden></div>
 
@@ -359,6 +361,24 @@
             </button>
         </div>
     </aside>
+
+    <!-- PASSWORD MODAL -->
+    <div class="overlay" id="pwOverlay" hidden></div>
+    <div class="pwModal" id="pwModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="pwTitle">
+        <div class="pwModal__head">
+            <div class="pwModal__title" id="pwTitle">Enter Password</div>
+        </div>
+        <div class="pwModal__body">
+            <div class="field">
+                <label for="pwInput">Password</label>
+                <input id="pwInput" type="password" autocomplete="current-password" />
+            </div>
+        </div>
+        <div class="pwModal__foot">
+            <button class="btn" type="button" id="pwCancel">Cancel</button>
+            <button class="btn btn--maroon" type="button" id="pwSubmit">Unlock</button>
+        </div>
+    </div>
 @endsection
 
 

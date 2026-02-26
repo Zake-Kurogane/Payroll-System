@@ -1,7 +1,7 @@
 import { esc } from "./utils";
 import { createDrawer } from "./drawer";
 
-export function initCashAdvance(toast, apiFetch, noticeEl) {
+export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   const caTbody = document.getElementById("caTbody");
   const newCaBtn = document.getElementById("newCaBtn");
 
@@ -192,6 +192,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl) {
       if (!showNotice("Cash advance added.")) {
         toast("Cash advance added.");
       }
+      if (typeof onChange === "function") onChange();
     } catch (err) {
       toast(err.message || "Failed to add cash advance.", "error");
     }
@@ -220,6 +221,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl) {
           if (!showNotice("Cash advance closed.")) {
             toast("Cash advance closed.");
           }
+          if (typeof onChange === "function") onChange();
         })
         .catch((err) => toast(err.message || "Failed to close cash advance.", "error"));
     }
@@ -341,6 +343,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl) {
       if (!showNotice("Cash advance policy saved.")) {
         toast("Saved Cash Advance Policy.");
       }
+      if (typeof onChange === "function") onChange();
     } catch (err) {
       toast(err.message || "Failed to save Cash Advance Policy.", "error");
     }

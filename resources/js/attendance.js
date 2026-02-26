@@ -1,12 +1,17 @@
 import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
+import { initSettingsSync } from "./shared/settingsSync";
+import { broadcastAttendanceUpdate } from "./shared/dataSync";
 
 // resources/js/attendance.js
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
+  initSettingsSync();
+
+  const notifyAttendanceUpdated = () => broadcastAttendanceUpdate();
 
   // =========================================================
   // DATA: Employees (from DB)
@@ -862,6 +867,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .then(async () => {
               await loadRecords();
               render();
+              notifyAttendanceUpdated();
             })
             .catch(err => alert(err.message || "Failed to delete attendance."));
         }
@@ -951,6 +957,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await Promise.all(ids.map(id => apiFetch(`/attendance/records/${id}`, { method: "DELETE" })));
       await loadRecords();
       render();
+      notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to delete selected records.");
     }
@@ -976,6 +983,7 @@ document.addEventListener("DOMContentLoaded", () => {
         })
       ));
       await loadRecords();
+      notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to update status.");
     }
@@ -1158,6 +1166,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadRecords();
       closeDrawer();
       render();
+      notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to save attendance.");
     }
@@ -1463,6 +1472,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (importFile) importFile.value = "";
       setImportUISelected(null);
       await refreshActiveCutoffAndLoad();
+      notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Import failed.");
     }
@@ -1492,6 +1502,7 @@ document.addEventListener("DOMContentLoaded", () => {
       closePreview();
       render();
       alert("Imported attendance saved.");
+      notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to import attendance.");
     }

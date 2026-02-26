@@ -1,11 +1,15 @@
 ﻿import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
+import { initSettingsSync } from "./shared/settingsSync";
+import { broadcastEmployeeUpdate } from "./shared/dataSync";
 
 document.addEventListener("DOMContentLoaded", async () => {
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
+  initSettingsSync();
+  const notifyEmployeeUpdated = () => broadcastEmployeeUpdate();
 
   // ===== Constants =====
   let areaPlaces = Array.isArray(window.__areaPlaces) ? window.__areaPlaces : [];
@@ -925,8 +929,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       });
 
+      selectedIds.clear();
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      }
+
       render();
       showToast("Assignment updated.");
+      notifyEmployeeUpdated();
     } catch (err) {
       alert(err.message || "Failed to apply assignment.");
     }
@@ -1180,6 +1191,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       selectedIds.delete(selectedEmpId);
       closeDrawer();
       render();
+      notifyEmployeeUpdated();
     } catch (err) {
       alert(err.message || "Failed to delete employee.");
     }
@@ -1239,6 +1251,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       showToast(successMsg);
       await loadEmployees();
       render();
+      notifyEmployeeUpdated();
     } catch (err) {
       alert(err.message || "Failed to save employee.");
     }

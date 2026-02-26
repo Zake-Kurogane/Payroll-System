@@ -2,11 +2,45 @@
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
+import { initSettingsSync } from "./shared/settingsSync";
+import { initDataSync, getAttendanceUpdatedAt, getEmployeesUpdatedAt } from "./shared/dataSync";
 
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
+  initSettingsSync();
+  let autoRefreshTimer = null;
+  let autoRefreshRunning = false;
+  function scheduleAutoRefresh(reason) {
+    if (!currentRun || isLocked()) return;
+    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+    if (stickyHint && reason) stickyHint.textContent = reason;
+    autoRefreshTimer = setTimeout(async () => {
+      if (autoRefreshRunning) return;
+      autoRefreshRunning = true;
+      try {
+        await refreshAll();
+      } catch {
+        if (stickyHint) stickyHint.textContent = "Failed to refresh preview automatically.";
+      } finally {
+        autoRefreshRunning = false;
+      }
+    }, 250);
+  }
+
+  initDataSync({
+    onAttendance: () => scheduleAutoRefresh("Attendance updated. Refreshing preview..."),
+    onEmployees: () => scheduleAutoRefresh("Employee data updated. Refreshing preview..."),
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (!currentRun || isLocked()) return;
+    if (needsAutoRefresh(currentRun.id)) {
+      scheduleAutoRefresh("Detected updates. Refreshing preview...");
+    }
+  });
 
   // =========================================================
   // API
@@ -63,6 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const processBtn = document.getElementById("processBtn");
   const payslipBtn = document.getElementById("payslipBtn");
   const stickyHint = document.getElementById("stickyHint");
+  const toastEl = document.getElementById("toast");
 
   const runsTbody = document.getElementById("runsTbody");
 
@@ -72,6 +107,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeDrawerBtn = document.getElementById("closeDrawerBtn");
   const cancelBtn = document.getElementById("cancelBtn");
   const applyAdjBtn = document.getElementById("applyAdjBtn");
+  const pwOverlay = document.getElementById("pwOverlay");
+  const pwModal = document.getElementById("pwModal");
+  const pwTitle = document.getElementById("pwTitle");
+  const pwInput = document.getElementById("pwInput");
+  const pwSubmit = document.getElementById("pwSubmit");
+  const pwCancel = document.getElementById("pwCancel");
 
   const adjEmpName = document.getElementById("adjEmpName");
   const adjEmpId = document.getElementById("adjEmpId");
@@ -139,6 +180,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const settingsVersion = "backend-v1";
 
   let payrollCalendar = null;
+
+  const LAST_COMPUTE_PREFIX = "payroll_run_compute_";
+
+  function getLastComputeAt(runId) {
+    if (!runId) return 0;
+    try {
+      return Number(localStorage.getItem(`${LAST_COMPUTE_PREFIX}${runId}`) || 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  function setLastComputeAt(runId) {
+    if (!runId) return;
+    try {
+      localStorage.setItem(`${LAST_COMPUTE_PREFIX}${runId}`, String(Date.now()));
+    } catch {
+      // ignore
+    }
+  }
+
+  function needsAutoRefresh(runId) {
+    const dataStamp = Math.max(getAttendanceUpdatedAt(), getEmployeesUpdatedAt());
+    if (!dataStamp) return false;
+    const lastCompute = getLastComputeAt(runId);
+    return dataStamp > lastCompute;
+  }
 
   async function loadPayrollCalendarSettings() {
     try {
@@ -317,8 +385,62 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // RUN GUARDS
   // =========================================================
+  function askPassword(title = "Enter Password") {
+    if (!pwOverlay || !pwModal || !pwInput || !pwSubmit || !pwCancel) {
+      const fallback = prompt(title);
+      return Promise.resolve(fallback || "");
+    }
+
+    return new Promise((resolve) => {
+      if (pwTitle) pwTitle.textContent = title;
+      pwInput.value = "";
+
+      const cleanup = () => {
+        pwModal.classList.remove("is-open");
+        pwModal.setAttribute("aria-hidden", "true");
+        pwOverlay.setAttribute("hidden", "");
+        pwSubmit.removeEventListener("click", onSubmit);
+        pwCancel.removeEventListener("click", onCancel);
+        pwOverlay.removeEventListener("click", onCancel);
+        document.removeEventListener("keydown", onKey);
+      };
+
+      const onSubmit = () => {
+        const val = pwInput.value || "";
+        cleanup();
+        resolve(val);
+      };
+      const onCancel = () => {
+        cleanup();
+        resolve("");
+      };
+      const onKey = (e) => {
+        if (e.key === "Escape") return onCancel();
+        if (e.key === "Enter") return onSubmit();
+      };
+
+      pwOverlay.removeAttribute("hidden");
+      pwModal.classList.add("is-open");
+      pwModal.setAttribute("aria-hidden", "false");
+      setTimeout(() => pwInput.focus(), 0);
+
+      pwSubmit.addEventListener("click", onSubmit);
+      pwCancel.addEventListener("click", onCancel);
+      pwOverlay.addEventListener("click", onCancel);
+      document.addEventListener("keydown", onKey);
+    });
+  }
   function isLocked() {
     return currentRun && (currentRun.status === "Locked" || currentRun.status === "Released");
+  }
+
+  function showToast(message) {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.classList.add("is-show");
+    setTimeout(() => {
+      toastEl.classList.remove("is-show");
+    }, 1800);
   }
 
   function setInputsEnabled(enabled) {
@@ -447,6 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
         adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
       };
     });
+    setLastComputeAt(currentRun.id);
     if (stickyHint) stickyHint.textContent = isLocked()
       ? "Run is locked. Viewing snapshot."
       : "Preview computed. Review rows, then lock the run.";
@@ -1021,6 +1144,50 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRunSummary();
   }
 
+  async function loadLatestDraftForSelection() {
+    const monthVal = monthInput?.value || "";
+    const cutoffVal = cutoffSelect?.value || "11-25";
+    const assign = assignmentFilter || "All";
+
+    try {
+      const runs = await apiFetch("/payroll-runs");
+      const match = (runs || []).find(r =>
+        r.status === "Draft" &&
+        r.period_month === monthVal &&
+        r.cutoff === cutoffVal &&
+        (r.assignment_filter || "All") === assign
+      );
+
+      currentRun = match || null;
+      previewRows = [];
+      overrides = {};
+      selectedEmpIds.clear();
+
+      if (!currentRun) {
+        if (stickyHint) stickyHint.textContent = "No draft run found. Click New Run to start.";
+        applyRunUi();
+        renderTable();
+        renderRunSummary();
+        return;
+      }
+
+      applyRunUi();
+      if (!isLocked()) {
+        if (stickyHint) stickyHint.textContent = "Loading latest attendance and rates...";
+        await computePreview();
+      } else {
+        await loadRowsForCurrent();
+      }
+      renderTable();
+      renderRunSummary();
+    } catch (err) {
+      currentRun = null;
+      if (stickyHint) stickyHint.textContent = "Failed to load existing drafts. Click New Run to start.";
+      renderTable();
+      renderRunSummary();
+    }
+  }
+
   async function lockRun() {
     if (!currentRun) {
       await createNewRun();
@@ -1042,7 +1209,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Unlock cancelled. Reason is required.");
       return;
     }
-    const password = prompt("Enter your password to unlock this run:");
+    const password = await askPassword("Enter your password to unlock this run:");
     if (!password) {
       alert("Unlock cancelled. Password is required.");
       return;
@@ -1102,10 +1269,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     processedRuns.forEach(r => {
-      const periodLabel = `${r.period_month} (${formatCutoffLabel(r.period_month, r.cutoff)})`;
+      const periodLabel = `${r.run_code || r.id} ${r.period_month} (${r.cutoff || formatCutoffLabel(r.period_month, r.cutoff)})`;
+      const canUnlock = r.status === "Locked" || r.status === "Released";
+      const periodCell = canUnlock
+        ? `<button class="linkRun" type="button" data-action="unlock" data-id="${r.id}" title="Unlock and edit">${periodLabel}</button>`
+        : `<strong>${periodLabel}</strong>`;
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td><strong>${periodLabel}</strong></td>
+        <td>${periodCell}</td>
         <td class="muted small">${r.assignment_filter || "All"}</td>
         <td class="num">${r.headcount ?? 0}</td>
         <td class="num">${money(r.net ?? 0)}</td>
@@ -1114,6 +1285,46 @@ document.addEventListener("DOMContentLoaded", () => {
       runsTbody.appendChild(tr);
     });
   }
+
+  runsTbody && runsTbody.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-action='unlock']");
+    if (!btn) return;
+    const id = btn.getAttribute("data-id");
+    const run = processedRuns.find(r => String(r.id) === String(id));
+    if (!run) return;
+    if (!(run.status === "Locked" || run.status === "Released")) return;
+
+    const password = await askPassword("Enter your password to unlock this run:");
+    if (!password) return;
+
+    try {
+      currentRun = await apiFetch(`/payroll-runs/${run.id}/unlock`, {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      });
+
+      if (monthInput) monthInput.value = currentRun.period_month || "";
+      if (cutoffSelect) cutoffSelect.value = currentRun.cutoff || "11-25";
+
+      assignmentFilter = currentRun.assignment_filter || "All";
+      segBtns.forEach(b => {
+        const isActive = (b.dataset.assign || "All") === assignmentFilter;
+        b.classList.toggle("is-active", isActive);
+        b.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      setAreaFilterVisibility(assignmentFilter === "Area");
+
+      if (stickyHint) stickyHint.textContent = "Run unlocked (Draft). You can edit and lock again.";
+
+      applyRunUi();
+      await computePreview();
+      renderTable();
+      renderRunSummary();
+      await renderRuns();
+    } catch (err) {
+      alert(err.message || "Failed to unlock run.");
+    }
+  });
 
   // =========================================================
   // UI EVENTS
@@ -1135,7 +1346,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function refreshAll() {
     if (!currentRun) {
-      await createNewRun();
+      await loadLatestDraftForSelection();
       return;
     }
 
@@ -1267,8 +1478,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!currentRun) return;
     if (!(currentRun.status === "Locked" || currentRun.status === "Released")) return;
     apiFetch(`/payroll-runs/${currentRun.id}/payslips`, { method: "POST" })
-      .then(() => {
-        window.location.href = `/payslip?run_id=${currentRun.id}`;
+      .then((data) => {
+        showToast(data?.message || "Payslips generated for the locked payroll run.");
       })
       .catch(err => alert(err.message || "Failed to generate payslips."));
   });
@@ -1291,7 +1502,8 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(() => loadPayrollCalendarSettings())
     .then(() => loadFilterOptions())
     .then(() => updateCutoffOptions())
-    .then(() => createNewRun())
+    .then(() => loadLatestDraftForSelection())
+    .then(() => renderRuns())
     .catch(err => alert(err.message || "Failed to initialize payroll processing."));
 });
 

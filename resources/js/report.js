@@ -2,11 +2,13 @@
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
+import { initSettingsSync } from "./shared/settingsSync";
 
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
+  initSettingsSync();
 
   // =========================================================
   // HELPERS

@@ -138,6 +138,8 @@ class SettingsController extends Controller
             'pi_cap' => ['sometimes', 'numeric', 'min:0'],
             'pi_split_rule' => ['sometimes', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
             'sss_split_rule' => ['sometimes', Rule::in(['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'])],
+            'sss_ee_percent' => ['sometimes', 'numeric', 'min:0'],
+            'sss_er_percent' => ['sometimes', 'numeric', 'min:0'],
         ]);
 
         $row = StatutorySetup::query()->first();

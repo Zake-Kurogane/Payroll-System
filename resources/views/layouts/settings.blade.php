@@ -15,7 +15,7 @@
         <div class="headline">
             <div>
                 <h1>System Settings</h1>
-                <p class="muted">Helper text: Actual computation happens in backend based on these settings.
+                <p class="muted">Helper text: Above 10,000 uses the cap (2% of 10,000 = 200 each, total 400).
                 </p>
             </div>
         </div>
@@ -566,6 +566,14 @@
 
                     <div class="cardDivider"></div>
                     <div class="grid2">
+                        <div class="field">
+                            <label>Employee share %</label>
+                            <input type="number" id="sssEePercent" value="5" min="0" step="0.01" />
+                        </div>
+                        <div class="field">
+                            <label>Employer share %</label>
+                            <input type="number" id="sssErPercent" value="10" min="0" step="0.01" />
+                        </div>
                         <div class="field field--full">
                             <label>Split rule</label>
                             <select id="sssSplitRule">
@@ -595,11 +603,11 @@
                     <div class="grid2">
                         <div class="field">
                             <label>Employee share %</label>
-                            <input type="number" id="phEePercent" value="2.5" min="0" step="0.01" />
+                            <input type="number" id="phEePercent" value="5" min="0" step="0.01" />
                         </div>
                         <div class="field">
                             <label>Employer share %</label>
-                            <input type="number" id="phErPercent" value="2.5" min="0" step="0.01" />
+                            <input type="number" id="phErPercent" value="10" min="0" step="0.01" />
                         </div>
 
                         <div class="field">
@@ -626,14 +634,14 @@
                 <div class="card">
                     <div class="card__head">
                         <div>
-                            <div class="card__title">Pag-IBIG</div>
-                            <div class="muted small">Rate bands + cap</div>
+                            <div class="card__title">Pag-IBIG Contribution Table</div>
+                            <div class="muted small">Monthly salary range rules</div>
                         </div>
                     </div>
 
                     <div class="grid2">
                         <div class="field">
-                            <label>Employee % (≤ threshold)</label>
+                            <label>Employee % (<= 1,500)</label>
                             <input type="number" id="piEePercentLow" value="1" min="0" step="0.01" />
                         </div>
                         <div class="field">
@@ -642,7 +650,7 @@
                         </div>
 
                         <div class="field">
-                            <label>Employee % (above threshold)</label>
+                            <label>Employee % (1,501 - 10,000)</label>
                             <input type="number" id="piEePercent" value="2" min="0" step="0.01" />
                         </div>
                         <div class="field">
@@ -651,8 +659,8 @@
                         </div>
 
                         <div class="field">
-                            <label>Monthly cap</label>
-                            <input type="number" id="piCap" value="5000" min="0" step="0.01" />
+                            <label>Monthly cap (above 10,000)</label>
+                            <input type="number" id="piCap" value="10000" min="0" step="0.01" />
                         </div>
 
                         <div class="field">
@@ -667,7 +675,7 @@
                     </div>
 
                     <div class="hint" style="margin-top:10px;">
-                        Actual computation happens in backend based on these settings.
+                        Above 10,000 uses the cap (2% of 10,000 = 200 each, total 400).
                     </div>
                 </div>
             </div>

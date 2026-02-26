@@ -61,9 +61,9 @@ class PayrollCalculator
     {
         $records = $attendance->get($emp->id, collect());
         $summary = $this->attendanceSummary($records, $start, $end, $this->workdaysRule());
-        $workdaysInMonth = $this->countWorkdaysInMonth($start->format('Y-m'), $this->workdaysRule());
-        $dailyRate = $workdaysInMonth > 0 ? (float) $emp->basic_pay / $workdaysInMonth : 0.0;
-        $allowanceDaily = $workdaysInMonth > 0 ? (float) $emp->allowance / $workdaysInMonth : 0.0;
+        $workdaysInMonth = 26;
+        $dailyRate = (float) $emp->basic_pay / $workdaysInMonth;
+        $allowanceDaily = (float) $emp->allowance / $workdaysInMonth;
 
         if (($proration->salary_mode ?? 'prorate_workdays') === 'fixed_50_50') {
             $basicCutoff = (float) $emp->basic_pay / 2;
@@ -409,7 +409,12 @@ class PayrollCalculator
         $ee = 0.0;
         $er = 0.0;
 
-        if (is_array($table) && !empty($table['rows'])) {
+        $eeRate = (float) ($statutory->sss_ee_percent ?? 0);
+        $erRate = (float) ($statutory->sss_er_percent ?? 0);
+        if ($eeRate > 0 || $erRate > 0) {
+            $ee = $basicPay * ($eeRate / 100);
+            $er = $basicPay * ($erRate / 100);
+        } elseif (is_array($table) && !empty($table['rows'])) {
             $mapped = $this->mapSssTable($table);
             foreach ($mapped as $row) {
                 if ($basicPay >= $row['from'] && ($row['to'] === null || $basicPay <= $row['to'])) {

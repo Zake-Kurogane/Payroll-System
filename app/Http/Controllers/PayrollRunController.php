@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Employee;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
+use App\Models\Payslip;
+use App\Models\PayslipAdjustment;
 use App\Services\Payroll\PayrollCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -303,6 +307,7 @@ class PayrollRunController extends Controller
         $run->status = 'Locked';
         $run->locked_at = now();
         $run->save();
+        $this->generatePayslipsForRun($run);
         return response()->json($run);
     }
 
@@ -334,5 +339,80 @@ class PayrollRunController extends Controller
         $run->released_at = now();
         $run->save();
         return response()->json($run);
+    }
+
+    private function generatePayslipsForRun(PayrollRun $run): void
+    {
+        $rows = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $overrides = PayrollRunRowOverride::query()
+            ->where('payroll_run_id', $run->id)
+            ->get()
+            ->keyBy('employee_id');
+
+        DB::transaction(function () use ($rows, $overrides, $run) {
+            foreach ($rows as $row) {
+                $emp = Employee::query()->find($row->employee_id);
+                $baseNo = 'PS-' . ($run->run_code ?: ('RUN-' . $run->id)) . '-' . ($emp?->emp_no ?: $row->employee_id);
+                $payslip = Payslip::query()
+                    ->where('payroll_run_id', $run->id)
+                    ->where('employee_id', $row->employee_id)
+                    ->first();
+
+                if (!$payslip) {
+                    $payslipNo = $this->uniquePayslipNo($baseNo);
+                    $payslip = Payslip::create([
+                        'payroll_run_id' => $run->id,
+                        'employee_id' => $row->employee_id,
+                        'payslip_no' => $payslipNo,
+                        'generated_at' => now(),
+                        'release_status' => 'Draft',
+                        'delivery_status' => 'Not Sent',
+                    ]);
+                } elseif (!$payslip->generated_at) {
+                    $payslip->generated_at = now();
+                    $payslip->save();
+                }
+
+                $override = $overrides->get($row->employee_id);
+                $adjustments = $override?->adjustments ?? [];
+                if (is_string($adjustments)) {
+                    $adjustments = json_decode($adjustments, true) ?: [];
+                }
+
+                PayslipAdjustment::query()->where('payslip_id', $payslip->id)->delete();
+                $adjRows = [];
+                foreach ($adjustments as $adj) {
+                    $adjRows[] = [
+                        'payslip_id' => $payslip->id,
+                        'type' => ($adj['type'] ?? 'earning') === 'deduction' ? 'deduction' : 'earning',
+                        'name' => (string) ($adj['name'] ?? 'Adjustment'),
+                        'amount' => (float) ($adj['amount'] ?? 0),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+                if ($adjRows) {
+                    PayslipAdjustment::query()->insert($adjRows);
+                }
+            }
+        });
+    }
+
+    private function uniquePayslipNo(string $base): string
+    {
+        $candidate = $base;
+        $i = 1;
+        while (Payslip::query()->where('payslip_no', $candidate)->exists()) {
+            $candidate = $base . '-' . $i;
+            $i++;
+        }
+        return $candidate;
     }
 }

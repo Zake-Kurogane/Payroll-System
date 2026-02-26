@@ -1,4 +1,4 @@
-export function initTimekeeping(toast, apiFetch, noticeEl) {
+export function initTimekeeping(toast, apiFetch, noticeEl, onChange) {
   const lateRuleType = document.getElementById("lateRuleType");
   const latePenaltyPerMinute = document.getElementById("latePenaltyPerMinute");
   const lateHint = document.getElementById("lateHint");
@@ -121,6 +121,7 @@ export function initTimekeeping(toast, apiFetch, noticeEl) {
       if (!showNotice("Timekeeping rules saved.")) {
         toast("Saved Timekeeping Rules.");
       }
+      if (typeof onChange === "function") onChange();
     } catch (err) {
       toast(err.message || "Failed to save Timekeeping Rules.", "error");
     }

@@ -70,6 +70,7 @@ class PayslipController extends Controller
                 'id' => $p->id,
                 'payslip_no' => $p->payslip_no,
                 'payroll_run_id' => $run->id,
+                'run_code' => $run->run_code,
                 'period_month' => $run->period_month,
                 'cutoff' => $run->cutoff,
                 'release_status' => $p->release_status,
