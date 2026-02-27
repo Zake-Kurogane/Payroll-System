@@ -200,6 +200,8 @@ class AttendanceController extends Controller
             $isSunday = $date->isSunday();
             $row = 2;
             foreach ($employees as $e) {
+                $assignType = $e->assignment_type ?? '';
+                $defaultStatus = ($isSunday && in_array($assignType, ['Tagum', 'Davao'], true)) ? 'OFF' : '';
                 $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
                 $sheet->fromArray([
                     $e->emp_no,
@@ -207,7 +209,7 @@ class AttendanceController extends Controller
                     $e->department ?? '',
                     $e->assignment_type ?? '',
                     $e->area_place ?? '',
-                    $isSunday ? 'OFF' : '',
+                    $defaultStatus,
                     '',
                     '',
                     '',
@@ -497,6 +499,9 @@ class AttendanceController extends Controller
 
     private function employeesForFilters(string $assignment, ?string $area)
     {
+        if (is_string($area) && trim(strtolower($area)) === 'all') {
+            $area = null;
+        }
         $q = Employee::query();
 
         // Exclude inactive/resigned employees based on either employment_status label or legacy status field

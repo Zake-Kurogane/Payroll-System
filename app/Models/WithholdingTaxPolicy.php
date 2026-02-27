@@ -20,4 +20,13 @@ class WithholdingTaxPolicy extends Model
         'wt_table_source',
         'wt_table_imported_at',
     ];
+
+    protected $casts = [
+        'enabled' => 'boolean',
+        'basis_sss' => 'boolean',
+        'basis_ph' => 'boolean',
+        'basis_pi' => 'boolean',
+        'fixed_amount' => 'float',
+        'percent' => 'float',
+    ];
 }

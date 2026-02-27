@@ -325,6 +325,55 @@ document.addEventListener("DOMContentLoaded", () => {
     return { header, rows };
   }
 
+  function normalizeHeaderLabel(label) {
+    return String(label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function normalizeSssHeaders(header) {
+    const map = {
+      rangeofcompensation: "range_of_compensation",
+      range: "range_of_compensation",
+      compensation: "range_of_compensation",
+      salaryrange: "range_of_compensation",
+      msc: "msc",
+      monthlysalarycredit: "msc",
+      salarycredit: "msc",
+      monthlysalary: "msc",
+      mscregularsss: "msc",
+      ee: "ss_ee",
+      employee: "ss_ee",
+      employeeshare: "ss_ee",
+      sssee: "ss_ee",
+      employeeshareee: "ss_ee",
+      ssseecontribution: "ss_ee",
+      eeshare: "ss_ee",
+      employeesss: "ss_ee",
+      regularee: "ss_ee",
+      er: "ss_er",
+      employer: "ss_er",
+      employershare: "ss_er",
+      ssser: "ss_er",
+      employershareer: "ss_er",
+      sssercontribution: "ss_er",
+      ershare: "ss_er",
+      employersss: "ss_er",
+      regularer: "ss_er",
+      ec: "ec",
+      employercompensation: "ec",
+      employercomp: "ec",
+      employercontributionec: "ec",
+      total: "total",
+      totalcontribution: "total",
+      totalcontributions: "total",
+      totalss: "total",
+      totalsscontribution: "total",
+    };
+    return header.map((h) => {
+      const key = normalizeHeaderLabel(h);
+      return map[key] || h;
+    });
+  }
+
   async function parseTabularFile(file) {
     const name = file?.name || "Import";
     const ext = name.split(".").pop()?.toLowerCase();
@@ -413,6 +462,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!f) return;
     try {
       const payload = await parseTabularFile(f);
+      payload.header = normalizeSssHeaders(payload.header || []);
       await apiFetch("/settings/statutory-setup", {
         method: "POST",
         body: JSON.stringify({ sss_table: payload }),

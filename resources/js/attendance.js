@@ -100,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
         statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
     }
     if (bulkStatusSelectInline) {
-      bulkStatusSelectInline.innerHTML = `<option value="">Set statusâ€¦</option>` +
+      bulkStatusSelectInline.innerHTML = `<option value="">Set status...</option>` +
         statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
     }
     if (f_status) {
@@ -1192,7 +1192,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const month = cutoffMonthInput?.value || "";
     const cutoff = cutoffSelect?.value || "";
     const assignment = assignmentFilter || "All";
-    const area = assignment === "Area" ? (areaPlaceFilter?.value || "") : "";
+    let area = assignment === "Area" ? (areaPlaceFilter?.value || "") : "";
+    if (area === "All") area = "";
     return { month, cutoff, assignment, area };
   }
 

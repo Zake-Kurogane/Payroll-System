@@ -642,7 +642,8 @@
                     <div class="grid2">
                         <div class="field">
                             <label>Employee % (<= 1,500)</label>
-                            <input type="number" id="piEePercentLow" value="1" min="0" step="0.01" />
+                                    <input type="number" id="piEePercentLow" value="1" min="0"
+                                        step="0.01" />
                         </div>
                         <div class="field">
                             <label>Salary threshold</label>

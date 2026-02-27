@@ -552,11 +552,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   async function computePreview() {
     if (!currentRun) return;
+    const areaVal = assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null;
+    const area = areaVal === "All" ? null : areaVal;
     const payload = await apiFetch(`/payroll-runs/${currentRun.id}/compute`, {
       method: "POST",
       body: JSON.stringify({
         assignment_filter: assignmentFilter || "All",
-        area: assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null,
+        area,
       }),
     });
     previewRows = (payload?.rows || []).map(mapRowFromApi);
@@ -730,7 +732,8 @@ document.addEventListener("DOMContentLoaded", () => {
     payTbody.innerHTML = "";
 
     list.forEach(r => {
-      const tr = document.createElement("tr");
+        const tr = document.createElement("tr");
+        const monthlyBase = Number(r.dailyRate || 0) * 26;
       const disabled = locked ? "disabled" : "";
 
       const attText = `${r.present}/${r.absent}/${r.leave}`;
@@ -747,7 +750,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="nameCell">
           <div class="nm">${r.name}</div>
           <div class="muted small">${r.dept} • ${r.assign}</div>
-          <div class="muted tiny">Base: ${money(r.halfBasic)} • Allow: ${money(r.halfAllowance)} • Payout: ${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}</div>
+          <div class="muted tiny">Base (cutoff): ${money(r.halfBasic)} • Base (monthly): ${money(monthlyBase)} • Allow (cutoff): ${money(r.halfAllowance)} • Payout: ${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}</div>
         </td>
         <td>${attText}</td>
         <td class="num">${money(r.dailyRate)}</td>
@@ -1124,13 +1127,15 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows = [];
     selectedEmpIds.clear();
 
+    const areaVal = assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null;
+    const area = areaVal === "All" ? null : areaVal;
     const payload = await apiFetch("/payroll-runs", {
       method: "POST",
       body: JSON.stringify({
         period_month: monthInput?.value || "",
         cutoff: cutoffSelect?.value || "11-25",
         assignment_filter: assignmentFilter || "All",
-        area: assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null,
+        area,
       }),
     });
 
@@ -1451,7 +1456,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   computeBtn && computeBtn.addEventListener("click", () => {
     if (isLocked()) return;
-    computePreview()
+    const runPromise = currentRun ? Promise.resolve() : createNewRun();
+    runPromise
+      .then(() => computePreview())
       .then(() => {
         renderTable();
         renderRunSummary();

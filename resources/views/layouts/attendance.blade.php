@@ -171,7 +171,7 @@
                             Selected</button>
 
                         <select id="bulkStatusSelectInline" class="bulkSelect" aria-label="Bulk status">
-                            <option value="">Set status…</option>
+                            <option value="">Set status...</option>
                         </select>
 
                         <button class="btn btn--maroon" type="button" id="bulkApplyInline" disabled>Apply</button>

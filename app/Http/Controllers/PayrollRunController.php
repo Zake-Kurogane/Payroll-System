@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Assignment;
 use App\Models\Employee;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
@@ -54,10 +55,13 @@ class PayrollRunController extends Controller
 
     public function store(Request $request)
     {
+        $assignmentLabels = Assignment::where('is_active', true)->pluck('label')->all();
+        $allowedAssignments = array_values(array_unique(array_merge(['All'], $assignmentLabels)));
+
         $validated = $request->validate([
             'period_month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'cutoff' => ['required', Rule::in(['11-25', '26-10'])],
-            'assignment_filter' => ['required', Rule::in(['All', 'Tagum', 'Davao', 'Area'])],
+            'assignment_filter' => ['required', Rule::in($allowedAssignments)],
             'area' => ['nullable', 'string'],
         ]);
 
@@ -82,8 +86,11 @@ class PayrollRunController extends Controller
             return response()->json(['message' => 'Run is locked or released.'], 409);
         }
 
+        $assignmentLabels = Assignment::where('is_active', true)->pluck('label')->all();
+        $allowedAssignments = array_values(array_unique(array_merge(['All'], $assignmentLabels)));
+
         $validated = $request->validate([
-            'assignment_filter' => ['required', Rule::in(['All', 'Tagum', 'Davao', 'Area'])],
+            'assignment_filter' => ['required', Rule::in($allowedAssignments)],
             'area' => ['nullable', 'string'],
         ]);
 

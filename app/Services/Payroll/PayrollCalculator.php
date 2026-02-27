@@ -67,11 +67,11 @@ class PayrollCalculator
 
         if (($proration->salary_mode ?? 'prorate_workdays') === 'fixed_50_50') {
             $basicCutoff = (float) $emp->basic_pay / 2;
-            $allowanceCutoff = (float) $emp->allowance / 2;
         } else {
             $basicCutoff = $dailyRate * $summary['paid_days'];
-            $allowanceCutoff = $allowanceDaily * $summary['paid_days'];
         }
+        // Allowance is evenly distributed across both cutoffs
+        $allowanceCutoff = (float) $emp->allowance / 2;
 
         $computedOtHours = (float) $summary['ot_hours'];
         $computedOtHours = $this->roundOtHours($computedOtHours, (string) ($overtime->rounding ?? $overtime->rounding_option ?? 'none'));
@@ -197,6 +197,9 @@ class PayrollCalculator
 
     private function employeesForFilters(string $assignment, ?string $area): Collection
     {
+        if (is_string($area) && trim(strtolower($area)) === 'all') {
+            $area = null;
+        }
         $q = Employee::query();
         $q->where(function ($qq) {
             $qq->whereHas('employmentStatus', function ($qs) {
@@ -409,23 +412,37 @@ class PayrollCalculator
         $ee = 0.0;
         $er = 0.0;
 
-        $eeRate = (float) ($statutory->sss_ee_percent ?? 0);
-        $erRate = (float) ($statutory->sss_er_percent ?? 0);
-        if ($eeRate > 0 || $erRate > 0) {
-            $ee = $basicPay * ($eeRate / 100);
-            $er = $basicPay * ($erRate / 100);
-        } elseif (is_array($table) && !empty($table['rows'])) {
+        // If an SSS table is uploaded, use it. Otherwise fall back to percent.
+        $usedTable = false;
+        if (is_array($table) && !empty($table['rows'])) {
             $mapped = $this->mapSssTable($table);
             foreach ($mapped as $row) {
                 if ($basicPay >= $row['from'] && ($row['to'] === null || $basicPay <= $row['to'])) {
                     $ee = (float) ($row['ee'] ?? 0);
                     $er = (float) ($row['er'] ?? 0);
+                    $usedTable = true;
                     break;
                 }
             }
         }
 
-        $splitRule = (string) ($statutory->sss_split_rule ?? 'monthly');
+        $eeRate = (float) ($statutory->sss_ee_percent ?? 0);
+        $erRate = (float) ($statutory->sss_er_percent ?? 0);
+        if ((!$usedTable || ($ee == 0.0 && $er == 0.0)) && ($eeRate > 0 || $erRate > 0)) {
+            // Fallback to percent if table is missing or has no match.
+            $ee = $basicPay * ($eeRate / 100);
+            $er = $basicPay * ($erRate / 100);
+        } else {
+            // If table provided only one side, fill missing side using percent.
+            if ($ee == 0.0 && $eeRate > 0) {
+                $ee = $basicPay * ($eeRate / 100);
+            }
+            if ($er == 0.0 && $erRate > 0) {
+                $er = $basicPay * ($erRate / 100);
+            }
+        }
+
+        $splitRule = $this->normalizeSplitRule($statutory->sss_split_rule ?? 'monthly');
         $split = $this->applySplitRule($ee, $er, $splitRule, $cutoff);
         return [
             'ee' => $split['ee'],
@@ -443,10 +460,31 @@ class PayrollCalculator
         $fromIdx = $this->findHeaderIndex($header, ['from', 'rangefrom', 'compfrom', 'salaryfrom', 'min']);
         $toIdx = $this->findHeaderIndex($header, ['to', 'rangeto', 'compto', 'salaryto', 'max', 'upto']);
         $rangeIdx = $this->findHeaderIndex($header, ['rangeofcompensation', 'range', 'compensation', 'salaryrange']);
-        $eeIdx = $this->findHeaderIndex($header, ['ee', 'employee', 'employeeshare', 'sssee', 'employeeshareee']);
-        $erIdx = $this->findHeaderIndex($header, ['er', 'employer', 'employershare', 'ssser', 'employershareer']);
+        $mscIdx = $this->findHeaderIndex($header, ['msc', 'monthlysalarycredit', 'salarycredit', 'monthlysalary', 'mscregularsss']);
+        $eeIdx = $this->findHeaderIndex($header, [
+            'ee',
+            'employee',
+            'employeeshare',
+            'sssee',
+            'employeeshareee',
+            'ssseecontribution',
+            'eeshare',
+            'employeesss',
+            'regularee',
+        ]);
+        $erIdx = $this->findHeaderIndex($header, [
+            'er',
+            'employer',
+            'employershare',
+            'ssser',
+            'employershareer',
+            'sssercontribution',
+            'ershare',
+            'employersss',
+            'regularer',
+        ]);
         $ecIdx = $this->findHeaderIndex($header, ['ec', 'employercompensation', 'employercomp', 'employercontributionec']);
-        $totalIdx = $this->findHeaderIndex($header, ['total', 'totalcontribution', 'totalcontributions']);
+        $totalIdx = $this->findHeaderIndex($header, ['total', 'totalcontribution', 'totalcontributions', 'totalss', 'totalsscontribution']);
 
         $out = [];
         foreach ($rows as $r) {
@@ -454,6 +492,10 @@ class PayrollCalculator
             [$from, $to] = $this->parseRange($rangeText);
             if ($from === null) $from = $this->parseNumber($r[$fromIdx] ?? null);
             if ($to === null) $to = $this->parseNumber($r[$toIdx] ?? null);
+            if ($from === null && $mscIdx >= 0) {
+                $from = $this->parseNumber($r[$mscIdx] ?? null);
+                if ($to === null) $to = $from;
+            }
             $ee = $this->parseNumber($r[$eeIdx] ?? null);
             $er = $this->parseNumber($r[$erIdx] ?? null);
             $ec = $this->parseNumber($r[$ecIdx] ?? null);
@@ -469,6 +511,9 @@ class PayrollCalculator
                 } elseif ($ee === null && $er === null) {
                     $ee = $total;
                     $er = 0.0;
+                } elseif ($ee !== null && $er !== null && $er < $ee) {
+                    // If total is provided and ER looks too small, derive ER from total.
+                    $er = max(0.0, $total - $ee);
                 }
             }
             if ($from === null || $ee === null) continue;
@@ -493,7 +538,7 @@ class PayrollCalculator
         }
         $ee = $base * ((float) ($statutory->ph_ee_percent ?? 0) / 100);
         $er = $base * ((float) ($statutory->ph_er_percent ?? 0) / 100);
-        $split = $this->applySplitRule($ee, $er, (string) ($statutory->ph_split_rule ?? 'monthly'), $cutoff);
+        $split = $this->applySplitRule($ee, $er, $this->normalizeSplitRule($statutory->ph_split_rule ?? 'monthly'), $cutoff);
         return [
             'ee' => $split['ee'],
             'er' => $split['er'],
@@ -517,7 +562,7 @@ class PayrollCalculator
         $ee = $base * ($eeRate / 100);
         $er = $base * ($erRate / 100);
 
-        $split = $this->applySplitRule($ee, $er, (string) ($statutory->pi_split_rule ?? 'monthly'), $cutoff);
+        $split = $this->applySplitRule($ee, $er, $this->normalizeSplitRule($statutory->pi_split_rule ?? 'monthly'), $cutoff);
         return [
             'ee' => $split['ee'],
             'er' => $split['er'],
@@ -529,12 +574,13 @@ class PayrollCalculator
     private function computeWithholdingTax(WithholdingTaxPolicy $policy, Collection $brackets, float $taxable, string $cutoff): float
     {
         if (!$policy->enabled) return 0.0;
+        $splitRule = $this->normalizeSplitRule($policy->split_rule ?? 'monthly');
         if ($policy->method === 'manual_fixed') {
-            return $this->applySplitRuleSingle((float) $policy->fixed_amount, (string) ($policy->split_rule ?? 'monthly'), $cutoff);
+            return $this->applySplitRuleSingle((float) $policy->fixed_amount, $splitRule, $cutoff);
         }
         if ($policy->method === 'manual_percent') {
             $amount = $taxable * ((float) $policy->percent / 100);
-            return $this->applySplitRuleSingle($amount, (string) ($policy->split_rule ?? 'monthly'), $cutoff);
+            return $this->applySplitRuleSingle($amount, $splitRule, $cutoff);
         }
 
         $periodsPerMonth = $this->periodsPerMonth((string) $policy->pay_frequency);
@@ -563,7 +609,7 @@ class PayrollCalculator
         }
 
         if ($timing === 'monthly') {
-            $amount = $this->applySplitRuleSingle($amount, (string) ($policy->split_rule ?? 'monthly'), $cutoff);
+            $amount = $this->applySplitRuleSingle($amount, $splitRule, $cutoff);
         }
 
         return $amount;
@@ -572,10 +618,10 @@ class PayrollCalculator
     private function applySplitRule(float $ee, float $er, string $rule, string $cutoff): array
     {
         $isFirst = $cutoff === '11-25';
-        if ($rule === 'cutoff1_only') {
+        if ($rule === 'cutoff1_only' || $rule === 'monthly') {
             return ['ee' => $isFirst ? $ee : 0.0, 'er' => $isFirst ? $er : 0.0];
         }
-        if ($rule === 'cutoff2_only' || $rule === 'monthly') {
+        if ($rule === 'cutoff2_only') {
             return ['ee' => $isFirst ? 0.0 : $ee, 'er' => $isFirst ? 0.0 : $er];
         }
         if ($rule === 'split_cutoffs') {
@@ -587,10 +633,17 @@ class PayrollCalculator
     private function applySplitRuleSingle(float $amount, string $rule, string $cutoff): float
     {
         $isFirst = $cutoff === '11-25';
-        if ($rule === 'cutoff1_only') return $isFirst ? $amount : 0.0;
-        if ($rule === 'cutoff2_only' || $rule === 'monthly') return $isFirst ? 0.0 : $amount;
+        if ($rule === 'cutoff1_only' || $rule === 'monthly') return $isFirst ? $amount : 0.0;
+        if ($rule === 'cutoff2_only') return $isFirst ? 0.0 : $amount;
         if ($rule === 'split_cutoffs') return $amount / 2;
         return $amount;
+    }
+
+    private function normalizeSplitRule(?string $rule): string
+    {
+        $r = trim((string) $rule);
+        $allowed = ['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'];
+        return in_array($r, $allowed, true) ? $r : 'monthly';
     }
 
     private function periodsPerMonth(string $freq): int
@@ -632,8 +685,11 @@ class PayrollCalculator
     private function parseNumber($raw): ?float
     {
         if ($raw === null) return null;
-        $cleaned = preg_replace('/[₱,%\s]/', '', (string) $raw);
-        $cleaned = str_replace(',', '', $cleaned);
+        $cleaned = (string) $raw;
+        $cleaned = str_ireplace(["PHP"], "", $cleaned);
+        // Strip commas/whitespace and keep only digits, dot, minus.
+        $cleaned = str_replace([",", " "], "", $cleaned);
+        $cleaned = preg_replace('/[^0-9.\-]/', '', $cleaned);
         if ($cleaned === '') return null;
         return is_numeric($cleaned) ? (float) $cleaned : null;
     }
@@ -659,3 +715,5 @@ class PayrollCalculator
         return trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''));
     }
 }
+
+

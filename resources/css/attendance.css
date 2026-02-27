@@ -786,6 +786,10 @@ tbody tr:hover {
     width: 140px;
 }
 
+.table input[type="checkbox"] {
+    accent-color: var(--maroon);
+}
+
 /* Compact attendance table widths */
 .table:not(.table--preview) th:nth-child(2),
 .table:not(.table--preview) td:nth-child(2) { width: 90px; }  /* Date */
