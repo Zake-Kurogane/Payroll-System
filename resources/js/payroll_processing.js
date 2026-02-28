@@ -465,7 +465,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function syncRunButtons() {
     const locked = isLocked();
     if (lockRunBtn) lockRunBtn.disabled = locked; // can't lock again if locked/released
-    if (unlockRunBtn) unlockRunBtn.disabled = !locked; // unlock only if locked/released
+    if (unlockRunBtn) unlockRunBtn.disabled = !(currentRun && currentRun.status === "Locked"); // released runs stay locked
     if (releaseRunBtn) releaseRunBtn.disabled = !(currentRun && currentRun.status === "Locked");
     if (payslipBtn) payslipBtn.disabled = !(currentRun && (currentRun.status === "Locked" || currentRun.status === "Released"));
   }
@@ -737,6 +737,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const disabled = locked ? "disabled" : "";
 
       const attText = `${r.present}/${r.absent}/${r.leave}`;
+      const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" • ");
+      const payoutLine = `${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}`;
 
       const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0) + Number(r.tax || 0);
       const statER = Number(r.sssEr || 0) + Number(r.phEr || 0) + Number(r.piEr || 0);
@@ -749,8 +751,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${r.empId}</td>
         <td class="nameCell">
           <div class="nm">${r.name}</div>
-          <div class="muted small">${r.dept} • ${r.assign}</div>
-          <div class="muted tiny">Base (cutoff): ${money(r.halfBasic)} • Base (monthly): ${money(monthlyBase)} • Allow (cutoff): ${money(r.halfAllowance)} • Payout: ${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}</div>
+          ${deptLine ? `<div class="muted small subinfo">${deptLine}</div>` : ""}
+          <div class="muted tiny subinfo">Basic Pay: ${money(monthlyBase)}</div>
+          <div class="muted tiny subinfo">Allow (cutoff): ${money(r.halfAllowance)}</div>
+          <div class="muted tiny subinfo">Payout: ${payoutLine}</div>
         </td>
         <td>${attText}</td>
         <td class="num">${money(r.dailyRate)}</td>
@@ -790,7 +794,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </details>
         </td>
 
-        <td class="num"><strong>${money(r.net)}</strong></td>
+        <td class="num netPayCell"><strong>${money(r.net)}</strong></td>
         <td class="col-actions">
           <button class="iconbtn adjBtn" type="button" data-id="${r.empId}" ${disabled} title="Adjust">⚙</button>
         </td>
@@ -1275,7 +1279,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     processedRuns.forEach(r => {
       const periodLabel = `${r.run_code || r.id} ${r.period_month} (${r.cutoff || formatCutoffLabel(r.period_month, r.cutoff)})`;
-      const canUnlock = r.status === "Locked" || r.status === "Released";
+      const canUnlock = r.status === "Locked";
       const periodCell = canUnlock
         ? `<button class="linkRun" type="button" data-action="unlock" data-id="${r.id}" title="Unlock and edit">${periodLabel}</button>`
         : `<strong>${periodLabel}</strong>`;
@@ -1297,7 +1301,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const id = btn.getAttribute("data-id");
     const run = processedRuns.find(r => String(r.id) === String(id));
     if (!run) return;
-    if (!(run.status === "Locked" || run.status === "Released")) return;
+    if (run.status !== "Locked") return;
 
     const password = await askPassword("Enter your password to unlock this run:");
     if (!password) return;

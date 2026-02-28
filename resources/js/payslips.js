@@ -67,11 +67,14 @@ document.addEventListener("DOMContentLoaded", () => {
       payslipNo: p.payslip_no || "",
       generatedDate: p.generated_at ? String(p.generated_at).slice(0, 10) : "",
       payDate: p.pay_date || "-",
+      email: p.employee_email || "",
       bankName: p.bank_name || "",
       accountNumber: p.bank_account_number || "",
       payMethod: p.pay_method || "CASH",
       basicPay: Number(p.basic_pay_cutoff || 0),
       allowancePay: Number(p.allowance_cutoff || 0),
+      dailyRate: Number(p.daily_rate || 0),
+      paidDays: Number(p.paid_days || 0),
       otHours,
       otRate,
       otPay,
@@ -91,7 +94,6 @@ document.addEventListener("DOMContentLoaded", () => {
       deductionsTotal: Number(p.deductions_total || 0),
       notes: "-",
       deliveryStatus: p.delivery_status || "Not Sent",
-      email: "",
     };
   }
 
@@ -134,6 +136,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  let companySetup = null;
+  async function loadCompanySetup() {
+    try {
+      companySetup = await apiFetch("/settings/company-setup");
+    } catch {
+      companySetup = null;
+    }
+  }
+
   function resolveCutoffDays(year, month, cutoffType) {
     const lastDay = new Date(year, month, 0).getDate();
     const cal = payrollCalendar || {};
@@ -146,6 +157,31 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!Number.isFinite(from) || from <= 0) from = 1;
     if (!Number.isFinite(to) || to <= 0) to = cutoffType === "11-25" ? 25 : lastDay;
     return { from, to };
+  }
+
+  function resolvePayDate(periodMonth, cutoffType) {
+    if (!periodMonth) return "-";
+    const [yStr, mStr] = periodMonth.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    if (!y || !m) return "-";
+    const cal = payrollCalendar || {};
+    const payOnPrev = !!cal.pay_on_prev_workday_if_sunday;
+    const isFirst = cutoffType === "11-25";
+    const payDay = isFirst ? (cal.pay_date_a ?? 15) : (cal.pay_date_b ?? "EOM");
+    let date;
+    if (String(payDay).toUpperCase() === "EOM") {
+      date = new Date(y, m, 0);
+    } else {
+      const dayNum = Number(payDay) || 1;
+      date = new Date(y, m - 1, dayNum);
+    }
+    if (payOnPrev && date.getDay() === 0) {
+      date.setDate(date.getDate() - 1);
+    }
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${mm}-${dd}-${date.getFullYear()}`;
   }
 
   function formatCutoffLabel(monthVal, cutoffVal) {
@@ -312,6 +348,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const ok = run.status === "Locked" || run.status === "Released";
       sendEmailBtn.disabled = !ok;
     }
+    if (releaseAllBtn) {
+      releaseAllBtn.disabled = run.status !== "Locked";
+    }
   }
 
   async function loadRuns() {
@@ -320,7 +359,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const monthVal = monthInput?.value || "";
       runs = Array.isArray(data)
         ? data.filter((r) =>
-            r.status === "Locked" &&
+            (r.status === "Locked" || r.status === "Released") &&
             (!monthVal || r.period_month === monthVal)
           )
         : [];
@@ -592,7 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(p.empName)}</td>
         <td>${escapeHtml(assignmentText(p))}</td>
         <td>${escapeHtml(`${p.periodMonth} (${p.cutoff || formatCutoffLabel(p.periodMonth, p.cutoff)})`)}</td>
-        <td class="num"><strong>${escapeHtml(peso(p.netPay))}</strong></td>
+        <td class="num netPayCell"><strong>${escapeHtml(peso(p.netPay))}</strong></td>
         <td>${badge(p.releaseStatus)}</td>
         <td>${deliveryBadge(p.deliveryStatus)}</td>
         <td class="col-actions">
@@ -688,6 +727,19 @@ document.addEventListener("DOMContentLoaded", () => {
   function openPayslipDrawer(p) {
     if (!psDrawer || !psOverlay) return;
 
+    if (companySetup) {
+      const name = companySetup.company_name || "-";
+      const addr = companySetup.company_address || "";
+      const contact = companySetup.company_contact || "";
+      const email = companySetup.company_email || "";
+      const parts = [addr, contact, email].filter((v) => String(v || "").trim());
+      const sub = parts.length ? parts.join(" • ") : "-";
+      const companyNameEl = $("psCompanyName");
+      const companySubEl = $("psCompanySub");
+      if (companyNameEl) companyNameEl.textContent = name;
+      if (companySubEl) companySubEl.textContent = sub;
+    }
+
     if (psDrawerMeta) {
       const runLabel = p.runCode ? `${p.runCode} ` : "";
       const cutoffLabel = p.cutoff || formatCutoffLabel(p.periodMonth, p.cutoff);
@@ -711,11 +763,7 @@ document.addEventListener("DOMContentLoaded", () => {
     set("psMonth", p.periodMonth || "-");
     set("psCutoff", p.cutoff === "11-25" ? "11-25" : p.cutoff === "26-10" ? "26-10" : "-");
 
-    // - cutoff dates
-    const cd = cutoffDates(p.periodMonth, p.cutoff);
-    set("psCutoffDates", cd.from === "-" ? "-" : `${cd.from} to ${cd.to}`);
-
-    set("psPayDate", p.payDate || "-");
+    set("psPayDate", resolvePayDate(p.periodMonth, p.cutoff));
     const payMethod = String(p.payMethod || "").toUpperCase();
     const hasBank = payMethod === "BANK" || !!(p.accountNumber || "").trim();
     set("psPayMethod", payMethod === "BANK" ? "Bank" : "Cash");
@@ -730,6 +778,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (statusBadge) statusBadge.textContent = p.releaseStatus || "Draft";
 
     // earnings base
+    setMoney("psDailyRate", p.dailyRate);
+    set("psDailyDays", Number(p.paidDays || 0).toFixed(2));
     setMoney("psBasicPay", p.basicPay);
     setMoney("psAllowancePay", p.allowancePay);
 
@@ -764,17 +814,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setMoney("psCashAdv", cashAdv);
     setMoney("psOtherDedTotal", otherDed);
 
-    // employer share
-    const sssEr = Number(p.sssEr || 0);
-    const phEr = Number(p.philhealthEr || 0);
-    const piEr = Number(p.pagibigEr || 0);
-    const erTotal = sssEr + phEr + piEr;
-
-    setMoney("psSssEr", sssEr);
-    setMoney("psPhEr", phEr);
-    setMoney("psPiEr", piEr);
-    setMoney("psErTotal", erTotal);
-
     // - totals (computed to ensure correctness)
     const totalEarnAdj = sumAmounts(earnAdj);
     const totalDedAdj = sumAmounts(dedAdj);
@@ -808,19 +847,36 @@ document.addEventListener("DOMContentLoaded", () => {
     if (psDownloadBtn) psDownloadBtn.onclick = () => alert("PDF download: connect to backend PDF generation later.");
 
     if (psReleaseBtn) {
-      psReleaseBtn.disabled = p.releaseStatus === "Released";
-      psReleaseBtn.onclick = () => {
-        p.releaseStatus = "Released";
-        render();
-
-        const sb = $("psStatusBadge");
-        if (sb) sb.textContent = "Released";
-        if (psDrawerMeta) {
-          const runLabel = p.runCode ? `${p.runCode} ` : "";
-          const cutoffLabel = p.cutoff || formatCutoffLabel(p.periodMonth, p.cutoff);
-          psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  -  Run: ${runLabel}${p.periodMonth} (${cutoffLabel})  -  Status: Released`;
+      const run = runs.find((r) => String(r.id) === String(p.runId)) || null;
+      const canRelease = run && (run.status === "Locked" || run.status === "Released");
+      psReleaseBtn.disabled = p.releaseStatus === "Released" || !canRelease;
+      psReleaseBtn.onclick = async () => {
+        if (!canRelease) {
+          alert("Run must be Locked or Released to release payslips.");
+          return;
         }
-        psReleaseBtn.disabled = true;
+        try {
+          await apiFetch("/payslips/release", {
+            method: "POST",
+            body: JSON.stringify({
+              run_id: Number(p.runId),
+              payslip_ids: [Number(p.id)],
+            }),
+          });
+          p.releaseStatus = "Released";
+          render();
+
+          const sb = $("psStatusBadge");
+          if (sb) sb.textContent = "Released";
+          if (psDrawerMeta) {
+            const runLabel = p.runCode ? `${p.runCode} ` : "";
+            const cutoffLabel = p.cutoff || formatCutoffLabel(p.periodMonth, p.cutoff);
+            psDrawerMeta.textContent = `Employee: ${p.empName} (${p.empId})  -  Run: ${runLabel}${p.periodMonth} (${cutoffLabel})  -  Status: Released`;
+          }
+          psReleaseBtn.disabled = true;
+        } catch (err) {
+          alert(err.message || "Failed to release payslip.");
+        }
       };
     }
   }
@@ -938,14 +994,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
   bulkReleaseBtn &&
-    bulkReleaseBtn.addEventListener("click", () => {
+    bulkReleaseBtn.addEventListener("click", async () => {
       const ids = selectedIds();
       if (!ids.length) return;
-      ids.forEach((id) => {
-        const p = findPayslip(id);
-        if (p) p.releaseStatus = "Released";
-      });
-      render();
+      const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
+      if (!run || (run.status !== "Locked" && run.status !== "Released")) {
+        alert("Run must be Locked or Released to release payslips.");
+        return;
+      }
+      try {
+        await apiFetch("/payslips/release", {
+          method: "POST",
+          body: JSON.stringify({
+            run_id: Number(selectedRunId),
+            payslip_ids: ids.map((id) => Number(id)),
+          }),
+        });
+        ids.forEach((id) => {
+          const p = findPayslip(id);
+          if (p) p.releaseStatus = "Released";
+        });
+        render();
+      } catch (err) {
+        alert(err.message || "Failed to release selected payslips.");
+      }
     });
 
   bulkPdfBtn &&
@@ -959,10 +1031,9 @@ document.addEventListener("DOMContentLoaded", () => {
     bulkPrintBtn.addEventListener("click", () => {
       const ids = selectedIds();
       if (!ids.length) return alert("Select at least 1 payslip.");
-      const p = findPayslip(ids[0]);
-      if (!p) return;
-      openPayslipDrawer(p);
-      setTimeout(() => window.print(), 50);
+      const url = `/payslips/print?run_id=${encodeURIComponent(selectedRunId)}&ids=${encodeURIComponent(ids.join(","))}&autoprint=1`;
+      const w = window.open(url, "_blank");
+      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
     });
 
   // pagination
@@ -1020,35 +1091,70 @@ document.addEventListener("DOMContentLoaded", () => {
   exportCsvBtn &&
     exportCsvBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
-      const list = applySorting(applyFilters(payslips));
-      exportCsv(list, `payslips_${selectedRunId}.csv`);
+      const ids = selectedIds();
+      const useCsv = confirm("Download CSV instead of XLSX?");
+      const format = useCsv ? "csv" : "xlsx";
+      const qs = new URLSearchParams({
+        run_id: selectedRunId,
+        format,
+      });
+      if (ids.length) qs.set("ids", ids.join(","));
+      window.location.href = `/payslips/export?${qs.toString()}`;
     });
 
   exportPdfBtn &&
     exportPdfBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const ids = selectedIds();
-      alert(ids.length ? "Export PDF (Selected): connect backend later." : "Export PDF (All): connect backend later.");
+      const qs = new URLSearchParams({
+        run_id: selectedRunId,
+        autoprint: "1",
+      });
+      if (ids.length) qs.set("ids", ids.join(","));
+      const url = `/payslips/print?${qs.toString()}`;
+      const w = window.open(url, "_blank");
+      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
     });
 
   printBtn &&
     printBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const ids = selectedIds();
-      const list = applySorting(applyFilters(payslips));
-      const p = ids.length ? findPayslip(ids[0]) : list[0];
-      if (!p) return;
-      openPayslipDrawer(p);
-      setTimeout(() => window.print(), 50);
+      const qs = new URLSearchParams({
+        run_id: selectedRunId,
+        autoprint: "1",
+      });
+      if (ids.length) qs.set("ids", ids.join(","));
+      const url = `/payslips/print?${qs.toString()}`;
+      const w = window.open(url, "_blank");
+      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
     });
 
   releaseAllBtn &&
-    releaseAllBtn.addEventListener("click", () => {
+    releaseAllBtn.addEventListener("click", async () => {
       if (!selectedRunId) return;
-      const list = payslips.filter((p) => p.runId === selectedRunId);
-      list.forEach((p) => (p.releaseStatus = "Released"));
-      render();
-      alert("All payslips in this run marked as Released (demo).");
+      const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
+      if (!run || run.status !== "Locked") {
+        alert("Run must be Locked to release all payslips.");
+        return;
+      }
+      const ok = confirm("Release all payslips for this run? This will lock the run as Released and cannot be undone.");
+      if (!ok) return;
+      try {
+        const res = await apiFetch(`/payslips/runs/${encodeURIComponent(selectedRunId)}/release-all`, {
+          method: "POST",
+        });
+        const list = payslips.filter((p) => p.runId === selectedRunId);
+        list.forEach((p) => (p.releaseStatus = "Released"));
+        run.status = res?.status || "Released";
+        run.released_at = res?.released_at || new Date().toISOString();
+        render();
+        initRunSelect();
+        setRunUI(run);
+        alert("All payslips released. Run is now Released and cannot be unlocked.");
+      } catch (err) {
+        alert(err.message || "Failed to release all payslips.");
+      }
     });
 
   sendEmailBtn &&
@@ -1059,29 +1165,31 @@ document.addEventListener("DOMContentLoaded", () => {
         alert("Email sending is available after the run is Locked/Released.");
         return;
       }
-
-      const list = payslips.filter((p) => p.runId === selectedRunId);
-      const skipped = [];
-      list.forEach((p) => {
-        if (!p.email) {
-          skipped.push(p.empId);
-          return;
-        }
-        p.deliveryStatus = "Queued";
-      });
-      render();
-
-      if (skipped.length) {
-        alert(`Skipped: no email (${skipped.length})`);
-      }
-
-      setTimeout(() => {
-        list.forEach((p) => {
-          if (p.email) p.deliveryStatus = "Sent";
-        });
-        render();
-        alert("Payslips queued and sent (demo).");
-      }, 600);
+      const ids = selectedIds();
+      const payload = { run_id: Number(selectedRunId) };
+      apiFetch("/payslips/send-email", {
+        method: "POST",
+        body: JSON.stringify({
+          ...payload,
+          ...(ids.length ? { ids: ids.join(",") } : {}),
+        }),
+      })
+        .then((res) => {
+          const skipped = Array.isArray(res?.skipped) ? res.skipped : [];
+          const scoped = ids.length
+            ? payslips.filter((p) => ids.includes(p.id))
+            : payslips.filter((p) => p.runId === selectedRunId);
+          scoped.forEach((p) => {
+            if (!skipped.includes(p.empId)) p.deliveryStatus = "Sent";
+          });
+          render();
+          if (skipped.length) {
+            alert(`Sent: ${res?.sent || 0}. Skipped (no email): ${skipped.length}`);
+          } else {
+            alert(`Sent: ${res?.sent || 0}.`);
+          }
+        })
+        .catch((err) => alert(err.message || "Failed to send emails."));
     });
 
   // init
@@ -1092,6 +1200,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   Promise.resolve()
     .then(() => loadPayrollCalendarSettings())
+    .then(() => loadCompanySetup())
     .then(() => loadFilterOptions())
     .then(() => loadRuns())
     .then(() => {

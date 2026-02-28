@@ -558,12 +558,15 @@ thead th {
 tbody td {
     padding: 12px 10px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 13px;
     vertical-align: middle;
 }
 tbody tr:hover {
     background: rgba(156, 29, 60, 0.04);
+}
+.netPayCell strong {
+    font-weight: 700;
 }
 .col-check {
     width: 44px;
@@ -940,6 +943,8 @@ th.sortable.is-desc .sortIcon {
 .paystub .psTable th {
     background: #f7e8ed;
     font-weight: 700;
+    position: static;
+    top: auto;
 }
 .paystub .psTable .num {
     text-align: right;

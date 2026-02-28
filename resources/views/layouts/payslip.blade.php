@@ -210,8 +210,8 @@
             <div class="payslipPaper paystub" id="psPaper">
                 <div class="psHead">
                     <div class="psHeadLeft">
-                        <div class="psCompany">Aura Fortune 5G Traders Corporation</div>
-                        <div class="psCompanySub">Company Address / Contact</div>
+                        <div class="psCompany" id="psCompanyName">-</div>
+                        <div class="psCompanySub" id="psCompanySub">-</div>
                     </div>
                     <div class="psHeadCenter">PAYSLIP</div>
                     <div class="psHeadRight">
@@ -235,9 +235,6 @@
                         <div class="psInfoTitle">PAY PERIOD</div>
                         <div class="psInfoRow"><span>Payroll Month</span><strong id="psMonth">-</strong></div>
                         <div class="psInfoRow"><span>Cutoff</span><strong id="psCutoff">-</strong></div>
-                        <!-- - Added cutoff date range -->
-                        <div class="psInfoRow"><span>Cutoff Dates</span><strong id="psCutoffDates">-</strong></div>
-
                         <div class="psInfoRow"><span>Pay Date</span><strong id="psPayDate">-</strong></div>
                         <div class="psInfoRow"><span>Pay Method</span><strong id="psPayMethod">-</strong></div>
                         <div class="psInfoRow" id="psBankRow"><span>Bank</span><strong id="psBank">-</strong></div>
@@ -259,9 +256,9 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td>Basic Pay (cutoff portion)</td>
-                            <td class="num">-</td>
-                            <td class="num">-</td>
+                            <td>Daily Rate</td>
+                            <td class="num" id="psDailyRate">&#8369; 0.00</td>
+                            <td class="num" id="psDailyDays">0.00</td>
                             <td class="num" id="psBasicPay">&#8369; 0.00</td>
                         </tr>
                         <tr>
@@ -348,34 +345,6 @@
                         <td colspan="2">TOTAL DEDUCTIONS</td>
                         <td class="num" id="psDedTotal" colspan="2">&#8369; 0.00</td>
                     </tr>
-                    </tbody>
-                </table>
-
-                <div class="psSectionTitle">EMPLOYER SHARE</div>
-                <table class="psTable">
-                    <thead>
-                        <tr>
-                            <th>Description</th>
-                            <th class="num">Current</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>SSS (ER)</td>
-                            <td class="num" id="psSssEr">&#8369; 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>PhilHealth (ER)</td>
-                            <td class="num" id="psPhEr">&#8369; 0.00</td>
-                        </tr>
-                        <tr>
-                            <td>Pag-IBIG (ER)</td>
-                            <td class="num" id="psPiEr">&#8369; 0.00</td>
-                        </tr>
-                        <tr class="psTotalRow">
-                            <td>Total Employer Share</td>
-                            <td class="num" id="psErTotal">&#8369; 0.00</td>
-                        </tr>
                     </tbody>
                 </table>
 

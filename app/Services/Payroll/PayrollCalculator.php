@@ -104,9 +104,15 @@ class PayrollCalculator
             else $earnAdj += $amt;
         }
 
-        $sss = $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff);
-        $philhealth = $this->computePhilHealth($statutory, (float) $emp->basic_pay, $cutoff);
-        $pagibig = $this->computePagibig($statutory, (float) $emp->basic_pay, $cutoff);
+        $sss = $this->hasGovId($emp->sss)
+            ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff)
+            : ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
+        $philhealth = $this->hasGovId($emp->philhealth)
+            ? $this->computePhilHealth($statutory, (float) $emp->basic_pay, $cutoff)
+            : ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
+        $pagibig = $this->hasGovId($emp->pagibig)
+            ? $this->computePagibig($statutory, (float) $emp->basic_pay, $cutoff)
+            : ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
 
         $gross = $basicCutoff + $allowanceCutoff + $otPay + $earnAdj;
 
@@ -459,7 +465,18 @@ class PayrollCalculator
 
         $fromIdx = $this->findHeaderIndex($header, ['from', 'rangefrom', 'compfrom', 'salaryfrom', 'min']);
         $toIdx = $this->findHeaderIndex($header, ['to', 'rangeto', 'compto', 'salaryto', 'max', 'upto']);
-        $rangeIdx = $this->findHeaderIndex($header, ['rangeofcompensation', 'range', 'compensation', 'salaryrange']);
+        $rangeIdx = $this->findHeaderIndex($header, [
+            'rangeofcompensation',
+            'rangeofcomp',
+            'rangeofcompe',
+            'range',
+            'compensation',
+            'compensationrange',
+            'salaryrange',
+            'ofcompensation',
+            'ofcomp',
+            'ofcompe',
+        ]);
         $mscIdx = $this->findHeaderIndex($header, ['msc', 'monthlysalarycredit', 'salarycredit', 'monthlysalary', 'mscregularsss']);
         $eeIdx = $this->findHeaderIndex($header, [
             'ee',
@@ -471,6 +488,11 @@ class PayrollCalculator
             'eeshare',
             'employeesss',
             'regularee',
+            // Support normalized "ss_ee" headers coming from the UI import.
+            'ssee',
+            'sseeshare',
+            // Common exports with explicit totals.
+            'eetotal',
         ]);
         $erIdx = $this->findHeaderIndex($header, [
             'er',
@@ -482,9 +504,25 @@ class PayrollCalculator
             'ershare',
             'employersss',
             'regularer',
+            // Support normalized "ss_er" headers coming from the UI import.
+            'sser',
+            'ssershare',
+            // Common exports with explicit totals.
+            'ertotal',
         ]);
         $ecIdx = $this->findHeaderIndex($header, ['ec', 'employercompensation', 'employercomp', 'employercontributionec']);
         $totalIdx = $this->findHeaderIndex($header, ['total', 'totalcontribution', 'totalcontributions', 'totalss', 'totalsscontribution']);
+
+        if ($rangeIdx < 0) {
+            foreach ($header as $i => $h) {
+                if (str_contains($h, 'range') || str_contains($h, 'comp')) {
+                    $rangeIdx = $i;
+                    break;
+                }
+            }
+        }
+        $erHeader = $erIdx >= 0 ? $header[$erIdx] : null;
+        $erIsTotal = in_array($erHeader, ['ertotal', 'totaler', 'ercontributiontotal'], true);
 
         $out = [];
         foreach ($rows as $r) {
@@ -496,11 +534,15 @@ class PayrollCalculator
                 $from = $this->parseNumber($r[$mscIdx] ?? null);
                 if ($to === null) $to = $from;
             }
+            if ($from === null && $rangeIdx < 0 && $fromIdx < 0 && $toIdx < 0) {
+                $rangeText = (string) ($r[0] ?? '');
+                [$from, $to] = $this->parseRange($rangeText);
+            }
             $ee = $this->parseNumber($r[$eeIdx] ?? null);
             $er = $this->parseNumber($r[$erIdx] ?? null);
             $ec = $this->parseNumber($r[$ecIdx] ?? null);
             $total = $this->parseNumber($r[$totalIdx] ?? null);
-            if ($ec !== null) {
+            if ($ec !== null && !$erIsTotal) {
                 $er = ($er ?? 0) + $ec;
             }
             if ($total !== null) {
@@ -641,7 +683,21 @@ class PayrollCalculator
 
     private function normalizeSplitRule(?string $rule): string
     {
-        $r = trim((string) $rule);
+        $r = strtolower(trim((string) $rule));
+        $aliases = [
+            'split' => 'split_cutoffs',
+            'splitboth' => 'split_cutoffs',
+            'split_both' => 'split_cutoffs',
+            'splitbothcutoffs' => 'split_cutoffs',
+            'split_both_cutoffs' => 'split_cutoffs',
+            'cutoff1' => 'cutoff1_only',
+            'cutoff2' => 'cutoff2_only',
+            'first' => 'cutoff1_only',
+            'second' => 'cutoff2_only',
+        ];
+        if (array_key_exists($r, $aliases)) {
+            $r = $aliases[$r];
+        }
         $allowed = ['monthly', 'split_cutoffs', 'cutoff1_only', 'cutoff2_only'];
         return in_array($r, $allowed, true) ? $r : 'monthly';
     }
@@ -713,6 +769,14 @@ class PayrollCalculator
     private function employeeName(Employee $emp): string
     {
         return trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''));
+    }
+
+    private function hasGovId(?string $value): bool
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') return false;
+        $digits = preg_replace('/\D+/', '', $raw);
+        return $digits !== '';
     }
 }
 

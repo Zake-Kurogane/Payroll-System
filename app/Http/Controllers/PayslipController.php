@@ -2,14 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceRecord;
 use App\Models\Employee;
+use App\Models\CompanySetup;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
 use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
+use App\Models\PayrollCalendarSetting;
+use App\Services\Payroll\PayrollCalculator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Writer\Csv;
 
 class PayslipController extends Controller
 {
@@ -40,81 +49,197 @@ class PayslipController extends Controller
         return response()->json($runs);
     }
 
-    public function index(Request $request)
+    public function index(Request $request, PayrollCalculator $calculator)
     {
         $validated = $request->validate([
             'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
         ]);
 
         $run = PayrollRun::query()->findOrFail($validated['run_id']);
-
         $payslips = Payslip::query()
             ->with(['employee', 'adjustments'])
             ->where('payroll_run_id', $run->id)
             ->orderBy('id')
             ->get();
-
-        $rows = PayrollRunRow::query()
-            ->where('payroll_run_id', $run->id)
-            ->get()
-            ->keyBy('employee_id');
-
-        $payload = $payslips->map(function (Payslip $p) use ($rows, $run) {
-            $emp = $p->employee;
-            $row = $rows->get($p->employee_id);
-            $name = $emp
-                ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
-                : '';
-
-            return [
-                'id' => $p->id,
-                'payslip_no' => $p->payslip_no,
-                'payroll_run_id' => $run->id,
-                'run_code' => $run->run_code,
-                'period_month' => $run->period_month,
-                'cutoff' => $run->cutoff,
-                'release_status' => $p->release_status,
-                'delivery_status' => $p->delivery_status,
-                'generated_at' => $p->generated_at,
-                'employee_id' => $p->employee_id,
-                'emp_no' => $emp?->emp_no,
-                'emp_name' => $name,
-                'department' => $emp?->department,
-                'position' => $emp?->position,
-                'employment_type' => $emp?->employment_type,
-                'assignment_type' => $emp?->assignment_type,
-                'area_place' => $emp?->area_place,
-                'pay_method' => $row?->pay_method ?? ($emp?->payout_method ?: 'CASH'),
-                'bank_name' => $emp?->bank_name,
-                'bank_account_number' => $emp?->bank_account_number,
-                'basic_pay_cutoff' => (float) ($row?->basic_pay_cutoff ?? 0),
-                'allowance_cutoff' => (float) ($row?->allowance_cutoff ?? 0),
-                'ot_hours' => (float) ($row?->ot_hours ?? 0),
-                'ot_pay' => (float) ($row?->ot_pay ?? 0),
-                'gross' => (float) ($row?->gross ?? 0),
-                'attendance_deduction' => (float) ($row?->attendance_deduction ?? 0),
-                'sss_ee' => (float) ($row?->sss_ee ?? 0),
-                'philhealth_ee' => (float) ($row?->philhealth_ee ?? 0),
-                'pagibig_ee' => (float) ($row?->pagibig_ee ?? 0),
-                'tax' => (float) ($row?->tax ?? 0),
-                'cash_advance' => (float) ($row?->cash_advance ?? 0),
-                'deductions_total' => (float) ($row?->deductions_total ?? 0),
-                'net_pay' => (float) ($row?->net_pay ?? 0),
-                'sss_er' => (float) ($row?->sss_er ?? 0),
-                'philhealth_er' => (float) ($row?->philhealth_er ?? 0),
-                'pagibig_er' => (float) ($row?->pagibig_er ?? 0),
-                'employer_share_total' => (float) ($row?->employer_share_total ?? 0),
-                'adjustments' => $p->adjustments->map(function (PayslipAdjustment $a) {
-                    return [
-                        'type' => $a->type,
-                        'name' => $a->name,
-                        'amount' => (float) $a->amount,
-                    ];
-                })->values(),
-            ];
-        });
+        $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
 
         return response()->json($payload);
+    }
+
+    public function printView(Request $request, PayrollCalculator $calculator)
+    {
+        $validated = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
+            'ids' => ['nullable', 'string'],
+            'autoprint' => ['nullable', 'boolean'],
+        ]);
+
+        $run = PayrollRun::query()->findOrFail($validated['run_id']);
+        $query = Payslip::query()
+            ->with(['employee', 'adjustments'])
+            ->where('payroll_run_id', $run->id)
+            ->orderBy('id');
+        if (!empty($validated['ids'])) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $validated['ids']))));
+            if ($ids) {
+                $query->whereIn('id', $ids);
+            }
+        }
+        $payslips = $query->get();
+        $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
+        $company = CompanySetup::query()->first();
+
+        $pages = array_chunk($payload, 4);
+        return view('print.payslips', [
+            'company' => $company,
+            'run' => $run,
+            'pages' => $pages,
+            'autoprint' => (bool) ($validated['autoprint'] ?? false),
+            'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
+        ]);
+    }
+
+    public function export(Request $request, PayrollCalculator $calculator)
+    {
+        $validated = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
+            'ids' => ['nullable', 'string'],
+            'format' => ['nullable', 'in:xlsx,csv'],
+        ]);
+
+        $run = PayrollRun::query()->findOrFail($validated['run_id']);
+        $query = Payslip::query()
+            ->with(['employee', 'adjustments'])
+            ->where('payroll_run_id', $run->id)
+            ->orderBy('id');
+        if (!empty($validated['ids'])) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $validated['ids']))));
+            if ($ids) {
+                $query->whereIn('id', $ids);
+            }
+        }
+        $payslips = $query->get();
+        $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $headers = [
+            'Emp ID',
+            'Employee',
+            'Assignment',
+            'Pay Period',
+            'Daily Rate',
+            'Paid Days',
+            'Basic Pay (cutoff)',
+            'Allowance (cutoff)',
+            'OT Hours',
+            'OT Pay',
+            'Attendance Deduction',
+            'SSS (EE)',
+            'PhilHealth (EE)',
+            'Pag-IBIG (EE)',
+            'Tax',
+            'Cash Advance',
+            'Total Deductions',
+            'Net Pay',
+            'Release Status',
+            'Delivery Status',
+        ];
+        $sheet->fromArray($headers, null, 'A1');
+
+        $rowIdx = 2;
+        foreach ($payload as $p) {
+            $sheet->fromArray([
+                $p['emp_no'] ?? $p['employee_id'],
+                $p['emp_name'],
+                trim(($p['assignment_type'] ?? '') . ($p['area_place'] ? ' - ' . $p['area_place'] : '')),
+                $p['period_month'] . ' (' . ($p['cutoff'] ?? '-') . ')',
+                $p['daily_rate'],
+                $p['paid_days'],
+                $p['basic_pay_cutoff'],
+                $p['allowance_cutoff'],
+                $p['ot_hours'],
+                $p['ot_pay'],
+                $p['attendance_deduction'],
+                $p['sss_ee'],
+                $p['philhealth_ee'],
+                $p['pagibig_ee'],
+                $p['tax'],
+                $p['cash_advance'],
+                $p['deductions_total'],
+                $p['net_pay'],
+                $p['release_status'],
+                $p['delivery_status'],
+            ], null, 'A' . $rowIdx);
+            $rowIdx++;
+        }
+
+        $format = $validated['format'] ?? 'xlsx';
+        $filename = 'payslips_' . $run->id . '.' . $format;
+        if ($format === 'csv') {
+            $writer = new Csv($spreadsheet);
+            $writer->setUseBOM(true);
+            $writer->setDelimiter(',');
+            $writer->setEnclosure('"');
+            $writer->setSheetIndex(0);
+            return response()->streamDownload(function () use ($writer) {
+                $writer->save('php://output');
+            }, $filename, [
+                'Content-Type' => 'text/csv',
+            ]);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function sendEmail(Request $request, PayrollCalculator $calculator)
+    {
+        $validated = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
+            'ids' => ['nullable', 'string'],
+        ]);
+
+        $run = PayrollRun::query()->findOrFail($validated['run_id']);
+        if (!in_array($run->status, ['Locked', 'Released'], true)) {
+            return response()->json(['message' => 'Run must be locked or released before sending emails.'], 409);
+        }
+
+        $query = Payslip::query()
+            ->with(['employee', 'adjustments'])
+            ->where('payroll_run_id', $run->id)
+            ->orderBy('id');
+        if (!empty($validated['ids'])) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $validated['ids']))));
+            if ($ids) {
+                $query->whereIn('id', $ids);
+            }
+        }
+        $payslips = $query->get();
+        $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
+        $company = CompanySetup::query()->first();
+
+        $sent = 0;
+        $skipped = [];
+        foreach ($payload as $p) {
+            $email = $p['employee_email'] ?? null;
+            if (!$email) {
+                $skipped[] = $p['emp_no'] ?? $p['employee_id'];
+                continue;
+            }
+            Mail::to($email)->send(new \App\Mail\PayslipMail($p, $company, $run));
+            $sent++;
+            Payslip::query()->where('id', $p['id'])->update(['delivery_status' => 'Sent']);
+        }
+
+        return response()->json([
+            'sent' => $sent,
+            'skipped' => $skipped,
+        ]);
     }
 
     public function generate(PayrollRun $run)
@@ -188,6 +313,53 @@ class PayslipController extends Controller
         ]);
     }
 
+    public function releaseSelected(Request $request)
+    {
+        $validated = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
+            'payslip_ids' => ['required', 'array', 'min:1'],
+            'payslip_ids.*' => ['required', 'integer', 'exists:payslips,id'],
+        ]);
+
+        $run = PayrollRun::query()->findOrFail($validated['run_id']);
+        if (!in_array($run->status, ['Locked', 'Released'], true)) {
+            return response()->json(['message' => 'Run must be locked or released before releasing payslips.'], 409);
+        }
+
+        $released = Payslip::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('id', $validated['payslip_ids'])
+            ->update(['release_status' => 'Released']);
+
+        return response()->json([
+            'released' => $released,
+        ]);
+    }
+
+    public function releaseAll(PayrollRun $run)
+    {
+        if (!in_array($run->status, ['Locked', 'Released'], true)) {
+            return response()->json(['message' => 'Run must be locked or released before releasing payslips.'], 409);
+        }
+
+        DB::transaction(function () use ($run) {
+            if ($run->status !== 'Released') {
+                $run->status = 'Released';
+                $run->released_at = now();
+                $run->save();
+            }
+            Payslip::query()
+                ->where('payroll_run_id', $run->id)
+                ->update(['release_status' => 'Released']);
+        });
+
+        return response()->json([
+            'run_id' => $run->id,
+            'status' => $run->status,
+            'released_at' => $run->released_at,
+        ]);
+    }
+
     private function uniquePayslipNo(string $base): string
     {
         $candidate = $base;
@@ -197,5 +369,143 @@ class PayslipController extends Controller
             $i++;
         }
         return $candidate;
+    }
+
+    private function buildPayslipPayload(PayrollRun $run, $payslips, PayrollCalculator $calculator): array
+    {
+        [$start, $end] = $calculator->cutoffRangePublic($run->period_month, $run->cutoff);
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
+        $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
+
+        $rows = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->get()
+            ->keyBy('employee_id');
+
+        $empIds = $payslips->pluck('employee_id')->filter()->values();
+        $attendance = AttendanceRecord::query()
+            ->whereIn('employee_id', $empIds)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()
+            ->groupBy('employee_id');
+
+        return $payslips->map(function (Payslip $p) use ($rows, $run, $attendance, $start, $end, $workMonSat) {
+            $emp = $p->employee;
+            $row = $rows->get($p->employee_id);
+            $name = $emp
+                ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
+                : '';
+
+            $dailyRate = $emp && $emp->basic_pay ? ((float) $emp->basic_pay / 26) : 0.0;
+            $paidDays = 0.0;
+            if ($emp) {
+                $records = $attendance->get($emp->id, collect());
+                $paidDays = $this->paidDaysInRange($records, $start, $end, $workMonSat);
+            }
+
+            return [
+                'id' => $p->id,
+                'payslip_no' => $p->payslip_no,
+                'payroll_run_id' => $run->id,
+                'run_code' => $run->run_code,
+                'period_month' => $run->period_month,
+                'cutoff' => $run->cutoff,
+                'release_status' => $p->release_status,
+                'delivery_status' => $p->delivery_status,
+                'generated_at' => $p->generated_at,
+                'employee_id' => $p->employee_id,
+                'employee_email' => $emp?->email,
+                'emp_no' => $emp?->emp_no,
+                'emp_name' => $name,
+                'department' => $emp?->department,
+                'position' => $emp?->position,
+                'employment_type' => $emp?->employment_type,
+                'assignment_type' => $emp?->assignment_type,
+                'area_place' => $emp?->area_place,
+                'pay_method' => $row?->pay_method ?? ($emp?->payout_method ?: 'CASH'),
+                'bank_name' => $emp?->bank_name,
+                'bank_account_number' => $emp?->bank_account_number,
+                'daily_rate' => (float) $dailyRate,
+                'paid_days' => (float) $paidDays,
+                'basic_pay_cutoff' => (float) ($row?->basic_pay_cutoff ?? 0),
+                'allowance_cutoff' => (float) ($row?->allowance_cutoff ?? 0),
+                'ot_hours' => (float) ($row?->ot_hours ?? 0),
+                'ot_pay' => (float) ($row?->ot_pay ?? 0),
+                'gross' => (float) ($row?->gross ?? 0),
+                'attendance_deduction' => (float) ($row?->attendance_deduction ?? 0),
+                'sss_ee' => (float) ($row?->sss_ee ?? 0),
+                'philhealth_ee' => (float) ($row?->philhealth_ee ?? 0),
+                'pagibig_ee' => (float) ($row?->pagibig_ee ?? 0),
+                'tax' => (float) ($row?->tax ?? 0),
+                'cash_advance' => (float) ($row?->cash_advance ?? 0),
+                'deductions_total' => (float) ($row?->deductions_total ?? 0),
+                'net_pay' => (float) ($row?->net_pay ?? 0),
+                'sss_er' => (float) ($row?->sss_er ?? 0),
+                'philhealth_er' => (float) ($row?->philhealth_er ?? 0),
+                'pagibig_er' => (float) ($row?->pagibig_er ?? 0),
+                'employer_share_total' => (float) ($row?->employer_share_total ?? 0),
+                'adjustments' => $p->adjustments->map(function (PayslipAdjustment $a) {
+                    return [
+                        'type' => $a->type,
+                        'name' => $a->name,
+                        'amount' => (float) $a->amount,
+                    ];
+                })->values(),
+            ];
+        })->values()->all();
+    }
+
+    private function resolvePayDate(string $periodMonth, string $cutoff): string
+    {
+        if (!$periodMonth) return '-';
+        [$y, $m] = array_map('intval', explode('-', $periodMonth));
+        if (!$y || !$m) return '-';
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
+        $payOnPrev = (bool) ($calendar->pay_on_prev_workday_if_sunday ?? false);
+        $isFirst = $cutoff === '11-25';
+        $payDay = $isFirst ? ($calendar->pay_date_a ?? 15) : ($calendar->pay_date_b ?? 'EOM');
+        if (strtoupper((string) $payDay) === 'EOM') {
+            $date = Carbon::create($y, $m, 1)->endOfMonth();
+        } else {
+            $date = Carbon::create($y, $m, (int) $payDay);
+        }
+        if ($payOnPrev && $date->isSunday()) {
+            $date = $date->subDay();
+        }
+        return $date->format('m-d-Y');
+    }
+
+    private function paidDaysInRange($records, Carbon $start, Carbon $end, bool $workMonSat): float
+    {
+        $map = collect($records)->keyBy(fn ($r) => $r->date?->format('Y-m-d'));
+        $paidDays = 0.0;
+        $d = $start->copy();
+        while ($d->lte($end)) {
+            $dow = (int) $d->dayOfWeekIso; // 1=Mon ... 7=Sun
+            $isWorkday = $workMonSat ? $dow <= 6 : $dow <= 5;
+            if ($isWorkday) {
+                $key = $d->format('Y-m-d');
+                $rec = $map->get($key);
+                $status = $rec?->status ?? null;
+                $paidDays += $this->paidDayFraction($status);
+            }
+            $d->addDay();
+        }
+        return $paidDays;
+    }
+
+    private function paidDayFraction(?string $status): float
+    {
+        if ($status === null) return 0.0;
+        $paid = [
+            'Present',
+            'Late',
+            'Paid Leave',
+            'Holiday',
+            'Day Off',
+        ];
+        if (in_array($status, $paid, true)) return 1.0;
+        if ($status === 'Half-day') return 0.5;
+        return 0.0;
     }
 }

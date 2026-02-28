@@ -714,7 +714,7 @@ thead th {
 tbody td {
     padding: 12px 10px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 13px;
     vertical-align: middle;
 }
@@ -733,6 +733,12 @@ tbody tr:hover {
 
 .nameCell .nm {
     font-weight: 1000;
+}
+.nameCell .subinfo {
+    font-weight: 500;
+}
+.netPayCell strong {
+    font-weight: 700;
 }
 
 .tableFooter {

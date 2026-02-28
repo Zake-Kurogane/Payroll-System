@@ -323,6 +323,9 @@ class PayrollRunController extends Controller
         if ($run->status === 'Draft') {
             return response()->json(['message' => 'Run already in Draft.'], 409);
         }
+        if ($run->status === 'Released') {
+            return response()->json(['message' => 'Released runs cannot be unlocked.'], 409);
+        }
         $validated = $request->validate([
             'password' => ['required', 'string'],
         ]);

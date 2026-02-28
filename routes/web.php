@@ -55,6 +55,11 @@ Route::middleware('auth')->group(function () {
     Route::view('/payslip', 'layouts.payslip')->name('payslip');
     Route::get('/payslips/runs', [PayslipController::class, 'runs'])->name('payslips.runs');
     Route::get('/payslips', [PayslipController::class, 'index'])->name('payslips.index');
+    Route::get('/payslips/print', [PayslipController::class, 'printView'])->name('payslips.print');
+    Route::get('/payslips/export', [PayslipController::class, 'export'])->name('payslips.export');
+    Route::post('/payslips/send-email', [PayslipController::class, 'sendEmail'])->name('payslips.send_email');
+    Route::post('/payslips/release', [PayslipController::class, 'releaseSelected'])->name('payslips.release');
+    Route::post('/payslips/runs/{run}/release-all', [PayslipController::class, 'releaseAll'])->name('payslips.release_all');
     Route::view('/report', 'layouts.reports')->name('report');
     Route::view('/settings', 'layouts.settings')->name('settings');
     Route::get('/settings/company-setup', [SettingsController::class, 'getCompanySetup'])->name('settings.company_setup.get');
