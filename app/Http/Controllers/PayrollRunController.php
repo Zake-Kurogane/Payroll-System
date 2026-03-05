@@ -20,16 +20,22 @@ class PayrollRunController extends Controller
 {
     public function index()
     {
+        $stats = PayrollRunRow::query()
+            ->selectRaw('payroll_run_id, COUNT(*) as headcount, SUM(gross) as gross, SUM(deductions_total) as deductions, SUM(net_pay) as net')
+            ->groupBy('payroll_run_id')
+            ->get()
+            ->keyBy('payroll_run_id');
+
         $runs = PayrollRun::query()
             ->with(['createdBy'])
             ->orderByDesc('id')
             ->get()
-            ->map(function (PayrollRun $run) {
-                $rows = PayrollRunRow::query()->where('payroll_run_id', $run->id);
-                $headcount = $rows->count();
-                $gross = (float) $rows->sum('gross');
-                $deductions = (float) $rows->sum('deductions_total');
-                $net = (float) $rows->sum('net_pay');
+            ->map(function (PayrollRun $run) use ($stats) {
+                $rowStats = $stats->get($run->id);
+                $headcount = (int) ($rowStats->headcount ?? 0);
+                $gross = (float) ($rowStats->gross ?? 0);
+                $deductions = (float) ($rowStats->deductions ?? 0);
+                $net = (float) ($rowStats->net ?? 0);
 
                 return [
                     'id' => $run->id,
@@ -361,19 +367,30 @@ class PayrollRunController extends Controller
             return;
         }
 
+        $empMap = Employee::query()
+            ->whereIn('id', $rows->pluck('employee_id')->filter()->values())
+            ->get()
+            ->keyBy('id');
+
+        $existing = Payslip::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('employee_id', $rows->pluck('employee_id')->filter()->values())
+            ->get()
+            ->keyBy('employee_id');
+
         $overrides = PayrollRunRowOverride::query()
             ->where('payroll_run_id', $run->id)
             ->get()
             ->keyBy('employee_id');
 
-        DB::transaction(function () use ($rows, $overrides, $run) {
+        $payslipIds = [];
+        $adjRows = [];
+
+        DB::transaction(function () use ($rows, $overrides, $run, $empMap, $existing, &$payslipIds, &$adjRows) {
             foreach ($rows as $row) {
-                $emp = Employee::query()->find($row->employee_id);
+                $emp = $empMap->get($row->employee_id);
                 $baseNo = 'PS-' . ($run->run_code ?: ('RUN-' . $run->id)) . '-' . ($emp?->emp_no ?: $row->employee_id);
-                $payslip = Payslip::query()
-                    ->where('payroll_run_id', $run->id)
-                    ->where('employee_id', $row->employee_id)
-                    ->first();
+                $payslip = $existing->get($row->employee_id);
 
                 if (!$payslip) {
                     $payslipNo = $this->uniquePayslipNo($baseNo);
@@ -385,10 +402,13 @@ class PayrollRunController extends Controller
                         'release_status' => 'Draft',
                         'delivery_status' => 'Not Sent',
                     ]);
+                    $existing->put($row->employee_id, $payslip);
                 } elseif (!$payslip->generated_at) {
                     $payslip->generated_at = now();
                     $payslip->save();
                 }
+
+                $payslipIds[] = $payslip->id;
 
                 $override = $overrides->get($row->employee_id);
                 $adjustments = $override?->adjustments ?? [];
@@ -396,8 +416,6 @@ class PayrollRunController extends Controller
                     $adjustments = json_decode($adjustments, true) ?: [];
                 }
 
-                PayslipAdjustment::query()->where('payslip_id', $payslip->id)->delete();
-                $adjRows = [];
                 foreach ($adjustments as $adj) {
                     $adjRows[] = [
                         'payslip_id' => $payslip->id,
@@ -408,9 +426,13 @@ class PayrollRunController extends Controller
                         'updated_at' => now(),
                     ];
                 }
-                if ($adjRows) {
-                    PayslipAdjustment::query()->insert($adjRows);
-                }
+            }
+
+            if ($payslipIds) {
+                PayslipAdjustment::query()->whereIn('payslip_id', $payslipIds)->delete();
+            }
+            if ($adjRows) {
+                PayslipAdjustment::query()->insert($adjRows);
             }
         });
     }

@@ -874,6 +874,11 @@
                         </div>
 
                         <div class="field">
+                            <label>Max payback term (months) <span class="hint">Maximum months allowed to pay back a cash advance</span></label>
+                            <input type="number" id="caMaxPaybackMonths" value="6" min="1" />
+                        </div>
+
+                        <div class="field">
                             <label>Deduction timing</label>
                             <select id="caDeductTiming">
                                 <option value="cutoff1">1st cutoff only</option>

@@ -24,12 +24,18 @@ class PayslipController extends Controller
 {
     public function runs()
     {
+        $stats = PayrollRunRow::query()
+            ->selectRaw('payroll_run_id, COUNT(*) as headcount, SUM(net_pay) as total_net')
+            ->groupBy('payroll_run_id')
+            ->get()
+            ->keyBy('payroll_run_id');
+
         $runs = PayrollRun::query()
             ->with(['createdBy'])
             ->orderByDesc('id')
             ->get()
-            ->map(function (PayrollRun $run) {
-                $rows = PayrollRunRow::query()->where('payroll_run_id', $run->id);
+            ->map(function (PayrollRun $run) use ($stats) {
+                $rowStats = $stats->get($run->id);
                 return [
                     'id' => $run->id,
                     'run_code' => $run->run_code,
@@ -41,8 +47,8 @@ class PayslipController extends Controller
                     'created_at' => $run->created_at,
                     'locked_at' => $run->locked_at,
                     'released_at' => $run->released_at,
-                    'headcount' => $rows->count(),
-                    'total_net' => (float) $rows->sum('net_pay'),
+                    'headcount' => (int) ($rowStats->headcount ?? 0),
+                    'total_net' => (float) ($rowStats->total_net ?? 0),
                 ];
             });
 
@@ -152,7 +158,11 @@ class PayslipController extends Controller
             $sheet->fromArray([
                 $p['emp_no'] ?? $p['employee_id'],
                 $p['emp_name'],
-                trim(($p['assignment_type'] ?? '') . ($p['area_place'] ? ' - ' . $p['area_place'] : '')),
+                trim(
+                    ($p['assignment_type'] ?? '') .
+                    ($p['area_place'] ? ' - ' . $p['area_place'] : '') .
+                    ($p['external_area'] ? ' [Ext: ' . $p['external_area'] . ']' : '')
+                ),
                 $p['period_month'] . ' (' . ($p['cutoff'] ?? '-') . ')',
                 $p['daily_rate'],
                 $p['paid_days'],
@@ -252,20 +262,31 @@ class PayslipController extends Controller
             ->where('payroll_run_id', $run->id)
             ->get();
 
+        $empMap = Employee::query()
+            ->whereIn('id', $rows->pluck('employee_id')->filter()->values())
+            ->get()
+            ->keyBy('id');
+
+        $existing = Payslip::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('employee_id', $rows->pluck('employee_id')->filter()->values())
+            ->get()
+            ->keyBy('employee_id');
+
         $overrides = PayrollRunRowOverride::query()
             ->where('payroll_run_id', $run->id)
             ->get()
             ->keyBy('employee_id');
 
         $createdCount = 0;
+        $payslipIds = [];
+        $adjRows = [];
 
-        DB::transaction(function () use ($rows, $overrides, $run, &$createdCount) {
+        DB::transaction(function () use ($rows, $overrides, $run, $empMap, $existing, &$createdCount, &$payslipIds, &$adjRows) {
             foreach ($rows as $row) {
-                $emp = Employee::query()->find($row->employee_id);
+                $emp = $empMap->get($row->employee_id);
                 $baseNo = 'PS-' . ($run->run_code ?: ('RUN-' . $run->id)) . '-' . ($emp?->emp_no ?: $row->employee_id);
-                $payslip = Payslip::query()->where('payroll_run_id', $run->id)
-                    ->where('employee_id', $row->employee_id)
-                    ->first();
+                $payslip = $existing->get($row->employee_id);
 
                 if (!$payslip) {
                     $payslipNo = $this->uniquePayslipNo($baseNo);
@@ -278,10 +299,13 @@ class PayslipController extends Controller
                         'delivery_status' => 'Not Sent',
                     ]);
                     $createdCount++;
+                    $existing->put($row->employee_id, $payslip);
                 } elseif (!$payslip->generated_at) {
                     $payslip->generated_at = now();
                     $payslip->save();
                 }
+
+                $payslipIds[] = $payslip->id;
 
                 $override = $overrides->get($row->employee_id);
                 $adjustments = $override?->adjustments ?? [];
@@ -289,8 +313,6 @@ class PayslipController extends Controller
                     $adjustments = json_decode($adjustments, true) ?: [];
                 }
 
-                PayslipAdjustment::query()->where('payslip_id', $payslip->id)->delete();
-                $adjRows = [];
                 foreach ($adjustments as $adj) {
                     $adjRows[] = [
                         'payslip_id' => $payslip->id,
@@ -301,9 +323,13 @@ class PayslipController extends Controller
                         'updated_at' => now(),
                     ];
                 }
-                if ($adjRows) {
-                    PayslipAdjustment::query()->insert($adjRows);
-                }
+            }
+
+            if ($payslipIds) {
+                PayslipAdjustment::query()->whereIn('payslip_id', $payslipIds)->delete();
+            }
+            if ($adjRows) {
+                PayslipAdjustment::query()->insert($adjRows);
             }
         });
 
@@ -422,6 +448,7 @@ class PayslipController extends Controller
                 'employment_type' => $emp?->employment_type,
                 'assignment_type' => $emp?->assignment_type,
                 'area_place' => $emp?->area_place,
+                'external_area' => $emp?->external_area,
                 'pay_method' => $row?->pay_method ?? ($emp?->payout_method ?: 'CASH'),
                 'bank_name' => $emp?->bank_name,
                 'bank_account_number' => $emp?->bank_account_number,

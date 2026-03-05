@@ -27,8 +27,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/employees/heartbeat', [EmployeeController::class, 'heartbeat'])->name('employees.heartbeat');
     Route::get('/employees/filters', [EmployeeController::class, 'filters'])->name('employees.filters');
     Route::get('/employees/suggest', [EmployeeController::class, 'suggest'])->name('employees.suggest');
+    Route::get('/employees/pl-balances', [EmployeeController::class, 'paidLeaveBalances'])->name('employees.plBalances');
     Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
     Route::post('/employees/bulk-assign', [EmployeeController::class, 'bulkAssign'])->name('employees.bulkAssign');
+    Route::get('/employees/{emp_no}/area-history', [EmployeeController::class, 'areaHistory'])->name('employees.areaHistory');
+    Route::get('/employees/{emp_no}/pl-balance', [EmployeeController::class, 'paidLeaveBalance'])->name('employees.plBalance');
     Route::put('/employees/{emp_no}', [EmployeeController::class, 'update'])->name('employees.update');
     Route::delete('/employees/{emp_no}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
 
@@ -36,6 +39,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/employee-records', [EmployeeController::class, 'page'])->name('employee.records');
     Route::view('/attendance', 'layouts.attendance')->name('attendance');
 
+    Route::get('/attendance/area', [AttendanceController::class, 'resolveArea'])->name('attendance.area');
     Route::get('/attendance/template', [AttendanceController::class, 'downloadTemplate'])->name('attendance.template');
     Route::post('/attendance/import', [AttendanceController::class, 'importExcel'])->name('attendance.import');
     Route::get('/attendance/records', [AttendanceController::class, 'index'])->name('attendance.records');

@@ -670,6 +670,16 @@ h1 {
     justify-content: center;
     text-align: center;
 }
+.stat--click {
+    cursor: pointer;
+    appearance: none;
+    background: var(--maroon);
+    color: inherit;
+}
+.stat--click:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
+}
 .stat__value {
     font-weight: 1000;
     font-size: 28px;
@@ -766,7 +776,7 @@ thead th {
 tbody td {
     padding: 8px 8px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 12px;
     vertical-align: middle;
     white-space: normal;
@@ -792,23 +802,41 @@ tbody tr:hover {
 
 /* Compact attendance table widths */
 .table:not(.table--preview) th:nth-child(2),
-.table:not(.table--preview) td:nth-child(2) { width: 90px; }  /* Date */
+.table:not(.table--preview) td:nth-child(2) {
+    width: 90px;
+} /* Date */
 .table:not(.table--preview) th:nth-child(3),
-.table:not(.table--preview) td:nth-child(3) { width: 80px; }  /* Emp ID */
+.table:not(.table--preview) td:nth-child(3) {
+    width: 80px;
+} /* Emp ID */
 .table:not(.table--preview) th:nth-child(4),
-.table:not(.table--preview) td:nth-child(4) { width: 180px; } /* Name */
+.table:not(.table--preview) td:nth-child(4) {
+    width: 180px;
+} /* Name */
 .table:not(.table--preview) th:nth-child(5),
-.table:not(.table--preview) td:nth-child(5) { width: 130px; } /* Department */
+.table:not(.table--preview) td:nth-child(5) {
+    width: 130px;
+} /* Department */
 .table:not(.table--preview) th:nth-child(6),
-.table:not(.table--preview) td:nth-child(6) { width: 110px; } /* Assignment */
+.table:not(.table--preview) td:nth-child(6) {
+    width: 110px;
+} /* Assignment */
 .table:not(.table--preview) th:nth-child(7),
-.table:not(.table--preview) td:nth-child(7) { width: 110px; } /* Area */
+.table:not(.table--preview) td:nth-child(7) {
+    width: 110px;
+} /* Area */
 .table:not(.table--preview) th:nth-child(8),
-.table:not(.table--preview) td:nth-child(8) { width: 120px; } /* Clock In/Out */
+.table:not(.table--preview) td:nth-child(8) {
+    width: 120px;
+} /* Clock In/Out */
 .table:not(.table--preview) th:nth-child(9),
-.table:not(.table--preview) td:nth-child(9) { width: 60px; }  /* OT */
+.table:not(.table--preview) td:nth-child(9) {
+    width: 60px;
+} /* OT */
 .table:not(.table--preview) th:nth-child(10),
-.table:not(.table--preview) td:nth-child(10) { width: 90px; } /* Status */
+.table:not(.table--preview) td:nth-child(10) {
+    width: 90px;
+} /* Status */
 
 .tableFooter {
     display: flex;
@@ -1215,21 +1243,63 @@ tbody tr:hover {
     vertical-align: middle;
 }
 .tablewrap--preview .table--preview th:nth-child(1),
-.tablewrap--preview .table--preview td:nth-child(1) { width: 110px; } /* Date */
+.tablewrap--preview .table--preview td:nth-child(1) {
+    width: 110px;
+} /* Date */
 .tablewrap--preview .table--preview th:nth-child(2),
-.tablewrap--preview .table--preview td:nth-child(2) { width: 110px; } /* Time In */
+.tablewrap--preview .table--preview td:nth-child(2) {
+    width: 110px;
+} /* Time In */
 .tablewrap--preview .table--preview th:nth-child(3),
-.tablewrap--preview .table--preview td:nth-child(3) { width: 110px; } /* Time Out */
+.tablewrap--preview .table--preview td:nth-child(3) {
+    width: 110px;
+} /* Time Out */
 .tablewrap--preview .table--preview th:nth-child(4),
-.tablewrap--preview .table--preview td:nth-child(4) { width: 80px; }  /* OT */
+.tablewrap--preview .table--preview td:nth-child(4) {
+    width: 80px;
+} /* OT */
 .tablewrap--preview .table--preview th:nth-child(5),
-.tablewrap--preview .table--preview td:nth-child(5) { width: 90px; }  /* Total */
+.tablewrap--preview .table--preview td:nth-child(5) {
+    width: 90px;
+} /* Total */
 .tablewrap--preview .table--preview th:last-child,
 .tablewrap--preview .table--preview td:last-child {
     padding-right: 26px;
 }
 .tablewrap--preview .table--preview tbody td:last-child {
     border-right: 1px solid rgba(17, 24, 39, 0.08);
+}
+.kpiPreviewGroup td {
+    background: var(--maroon);
+    color: #fff;
+    font-weight: 900;
+    letter-spacing: 0.3px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.kpiPreviewGroup td:first-child {
+    border-radius: 10px 0 0 10px;
+}
+.kpiPreviewGroup td:last-child {
+    border-radius: 0 10px 10px 0;
+}
+
+.kpiPreviewDrawerBody {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 14px 16px 6px;
+}
+.kpiPreviewDrawerBody .tablewrap--preview {
+    flex: 1;
+    max-height: none;
+    height: 100%;
+}
+.kpiPreviewTablewrap {
+    overflow-y: auto;
+    height: 100%;
+    max-height: none !important;
 }
 
 /* Employee drawer: let the table grow to reduce footer gap */
@@ -1441,4 +1511,3 @@ th.sortable.is-desc .sortIcon {
     cursor: pointer;
     font: inherit;
 }
-

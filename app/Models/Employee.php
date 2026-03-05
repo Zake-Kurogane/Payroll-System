@@ -26,6 +26,7 @@ class Employee extends Model
         'date_hired',
         'assignment_type',
         'area_place',
+        'external_area',
         'basic_pay',
         'allowance',
         'bank_name',
@@ -63,5 +64,20 @@ class Employee extends Model
     public function payslips(): HasMany
     {
         return $this->hasMany(Payslip::class);
+    }
+
+    public function areaHistories(): HasMany
+    {
+        return $this->hasMany(EmployeeAreaHistory::class)->orderByDesc('effective_date');
+    }
+
+    public function resolveAreaForDate(string $date): ?string
+    {
+        $history = $this->areaHistories()
+            ->where('effective_date', '<=', $date)
+            ->orderByDesc('effective_date')
+            ->orderByDesc('id')
+            ->first();
+        return $history?->area_place ?? $this->area_place;
     }
 }

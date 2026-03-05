@@ -76,6 +76,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       assignmentType: emp.assignment_type || "",
       areaPlace: emp.area_place || "",
+      externalArea: emp.external_area || "",
       birthday: emp.birthday || "",
       hired: emp.date_hired || "",
       mobile: emp.mobile || "",
@@ -110,6 +111,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       date_hired: data.hired || null,
       assignment_type: data.assignmentType || null,
       area_place: data.areaPlace || null,
+      external_area: data.externalArea || null,
       basic_pay: data.rate || 0,
       allowance: data.allowance || 0,
       bank_name: data.bankName || null,
@@ -230,6 +232,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_assignmentType = F("f_assignmentType");
   const f_areaPlace = F("f_areaPlace");
   const areaPlaceWrap = document.getElementById("areaPlaceWrap");
+  const f_externalArea = F("f_externalArea");
+  const externalAreaWrap = document.getElementById("externalAreaWrap");
+  const historyDrawer = document.getElementById("historyDrawer");
+  const historyDrawerOverlay = document.getElementById("historyDrawerOverlay");
+  const closeHistoryDrawerBtn = document.getElementById("closeHistoryDrawerBtn");
+  const historyDrawerTitleEl = document.getElementById("historyDrawerTitle");
+  const historyDrawerSubEl = document.getElementById("historyDrawerSubtitle");
+  const historyDrawerExternalEl = document.getElementById("historyDrawerExternal");
+  const areaHistoryList = document.getElementById("areaHistoryList");
+
+  const plInfoWrap = document.getElementById("plInfoWrap");
+  const f_plCount = document.getElementById("f_plCount");
+  const f_plBadge = document.getElementById("f_plBadge");
 
   const f_sss = F("f_sss");
   const f_ph = F("f_ph");
@@ -242,7 +257,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_payoutMethod = F("f_payoutMethod");
 
   const f_caEligible = F("f_caEligible");
-  const f_caMax = F("f_caMax");
 
   // state
   let selectedEmpId = null;
@@ -269,6 +283,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     drawer.setAttribute("aria-hidden", "true");
     if (drawerOverlay) drawerOverlay.setAttribute("hidden", "");
     selectedEmpId = null;
+  }
+
+  function openHistoryDrawer(emp) {
+    if (!historyDrawer) return;
+    if (historyDrawerTitleEl) historyDrawerTitleEl.textContent = "Area Assignment History";
+    if (historyDrawerSubEl) historyDrawerSubEl.textContent = `${fullName(emp)} — ${emp.empId}`;
+    if (historyDrawerExternalEl) {
+      const ext = emp.externalArea || "";
+      historyDrawerExternalEl.textContent = ext ? `External — ${ext}` : "";
+      historyDrawerExternalEl.style.display = ext ? "" : "none";
+    }
+    historyDrawer.classList.add("is-open");
+    historyDrawer.setAttribute("aria-hidden", "false");
+    if (historyDrawerOverlay) historyDrawerOverlay.removeAttribute("hidden");
+  }
+
+  function closeHistoryDrawer() {
+    if (!historyDrawer) return;
+    historyDrawer.classList.remove("is-open");
+    historyDrawer.setAttribute("aria-hidden", "true");
+    if (historyDrawerOverlay) historyDrawerOverlay.setAttribute("hidden", "");
   }
 
   function showToast(message) {
@@ -335,7 +370,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     empForm?.reset();
     if (f_assignmentType) f_assignmentType.value = "Davao";
     if (f_areaPlace) f_areaPlace.value = "";
+    if (f_externalArea) f_externalArea.value = "";
     if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
+    if (plInfoWrap) plInfoWrap.style.display = "none";
     syncAssignmentUI();
     syncCashAdvanceFields();
     syncSalaryFields();
@@ -370,6 +407,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
+    if (f_externalArea) f_externalArea.value = emp.externalArea || "";
 
     f_sss && (f_sss.value = formatSSS(emp.sss || ""));
     f_ph && (f_ph.value = formatPhilHealth(emp.ph || ""));
@@ -409,6 +447,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       assignmentType: f_assignmentType?.value?.trim(),
       areaPlace: f_areaPlace?.value?.trim(),
+      externalArea: f_externalArea?.value?.trim(),
 
       sss: onlyDigits(f_sss?.value),
       ph: onlyDigits(f_ph?.value),
@@ -449,7 +488,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   function assignmentText(emp) {
     const t = (emp.assignmentType || "").trim();
     if (!t) return "-";
-    if (t === "Area") return `Area (${(emp.areaPlace || "").trim() || "-"})`;
+    if (t === "Area") {
+      const place = (emp.areaPlace || "").trim() || "-";
+      const isRegular = String(emp.type || "").toLowerCase() === "regular";
+      const ext = isRegular && (emp.externalArea || "").trim()
+        ? ` — Ext: ${emp.externalArea.trim()}` : "";
+      return `Area (${place})${ext}`;
+    }
     return t;
   }
   function govShort(emp) {
@@ -460,11 +505,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (emp.tin) parts.push("TIN");
     return parts.length ? parts.join(", ") : "-";
   }
-  function computeCashAdvance(empType, basicPay) {
+  function computeCashAdvance(empType) {
     const isRegular = String(empType || "").toLowerCase() === "regular";
-    if (!isRegular) return { eligible: "Not eligible", max: "-" };
-    const max = Number(basicPay || 0) * 2;
-    return { eligible: "Eligible", max: moneyText(max) };
+    return { eligible: isRegular ? "Eligible" : "Not eligible" };
   }
 
   function exportEmployeesToXlsx(list, filename) {
@@ -494,8 +537,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       "Total Salary",
       "Assignment Type",
       "Area Place",
+      "External Area",
       "Cash Advance Eligible",
-      "Cash Advance Max",
       "SSS",
       "PhilHealth",
       "Pag-IBIG",
@@ -506,7 +549,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       "Payout Method",
     ];
     const rows = list.map(emp => {
-      const ca = computeCashAdvance(emp.type, emp.rate);
+      const ca = computeCashAdvance(emp.type);
       return [
         emp.empId,
         emp.status || "",
@@ -527,8 +570,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         salaryTotal(emp),
         emp.assignmentType || "",
         emp.areaPlace || "",
+        emp.externalArea || "",
         ca.eligible || "",
-        ca.max || "",
         emp.sss || "",
         emp.ph || "",
         emp.pagibig || "",
@@ -572,7 +615,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     populateAreaPlaces(f_areaPlace);
 
     const type = f_assignmentType.value;
-    if (type === "Area") {
+    const isArea = type === "Area";
+    if (isArea) {
       f_areaPlace.disabled = false;
       if (areaPlaceWrap) areaPlaceWrap.style.display = "";
     } else {
@@ -580,13 +624,98 @@ document.addEventListener("DOMContentLoaded", async () => {
       f_areaPlace.disabled = true;
       if (areaPlaceWrap) areaPlaceWrap.style.display = "none";
     }
+    syncExternalAreaUI();
+  }
+
+  function syncExternalAreaUI() {
+    if (!f_assignmentType) return;
+    const isArea = f_assignmentType.value === "Area";
+    const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
+    const show = isArea && isRegular;
+    if (f_externalArea) {
+      if (show) {
+        populateAreaPlaces(f_externalArea);
+        f_externalArea.disabled = false;
+      } else {
+        f_externalArea.value = "";
+        f_externalArea.disabled = true;
+      }
+    }
+    if (externalAreaWrap) externalAreaWrap.style.display = show ? "" : "none";
+  }
+
+  async function fetchAndShowPLBalance(empNo) {
+    if (plInfoWrap) plInfoWrap.style.display = "none";
+    try {
+      const data = await apiFetch(`/employees/${encodeURIComponent(empNo)}/pl-balance`);
+      if (!data.applicable) return;
+      if (f_plCount) f_plCount.textContent = `${data.remaining}/${data.total}`;
+      if (f_plBadge) {
+        f_plBadge.textContent = `${data.year} PL ${data.remaining}/${data.total}`;
+        f_plBadge.classList.toggle("pl-pill--low", data.remaining <= 0);
+      }
+      if (plInfoWrap) plInfoWrap.style.display = "";
+    } catch { /* silent */ }
+  }
+
+  function toLocalDateStr(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function fmtShortDate(isoStr) {
+    const [y, m, d] = isoStr.split("-");
+    return `${m}-${d}-${y.slice(2)}`;
+  }
+
+  function dayBefore(isoStr) {
+    const d = new Date(isoStr + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    return toLocalDateStr(d);
+  }
+
+  async function loadAreaHistory(empNo) {
+    if (!areaHistoryList) return;
+    areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Loading...</td></tr>';
+    try {
+      const rows = await apiFetch(`/employees/${encodeURIComponent(empNo)}/area-history`);
+      if (!rows.length) {
+        areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">No history yet.</td></tr>';
+        return;
+      }
+
+      // Sort ASC to compute date ranges
+      const asc = [...rows].sort((a, b) => a.effective_date.localeCompare(b.effective_date));
+      const todayStr = toLocalDateStr(new Date());
+
+      // Each entry's period: from its effective_date to the day before the next change (or today)
+      const ranges = asc.map((entry, i) => {
+        const start = entry.effective_date;
+        const end = i < asc.length - 1 ? dayBefore(asc[i + 1].effective_date) : todayStr;
+        const period = start === end
+          ? fmtShortDate(start)
+          : `${fmtShortDate(start)} to ${fmtShortDate(end)}`;
+        return { period, area: entry.area_place };
+      });
+
+      ranges.reverse(); // most recent first
+      areaHistoryList.innerHTML = ranges.map(r =>
+        `<tr>
+          <td>${r.period}</td>
+          <td style="font-weight:600;">${r.area}</td>
+        </tr>`
+      ).join('');
+    } catch {
+      areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Failed to load history.</td></tr>';
+    }
   }
 
   function syncCashAdvanceFields() {
-    if (!f_caEligible || !f_caMax) return;
-    const ca = computeCashAdvance(f_type?.value || "", Number(f_rate?.value || 0));
+    if (!f_caEligible) return;
+    const ca = computeCashAdvance(f_type?.value || "");
     f_caEligible.value = ca.eligible;
-    f_caMax.value = ca.max;
   }
 
   function syncSalaryFields() {
@@ -638,6 +767,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (t === "Area") {
         const ap = (emp.areaPlace || "").trim();
         if (!ap) missing.push("Area Place");
+        const isRegular = String(emp.type || "").toLowerCase() === "regular";
+        if (isRegular && !(emp.externalArea || "").trim()) missing.push("External Area");
       }
     }
 
@@ -810,6 +941,12 @@ document.addEventListener("DOMContentLoaded", async () => {
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
             </svg>
           </button>
+          ${emp.assignmentType === "Area" ? `<button class="iconbtn" type="button" data-action="history" data-id="${emp.empId}" title="Area History" aria-label="Area History">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 7v5l3 3"></path>
+            </svg>
+          </button>` : ""}
           <button class="iconbtn" type="button" data-action="delete" data-id="${emp.empId}" title="Delete" aria-label="Delete">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M3 6h18"></path>
@@ -849,6 +986,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function shouldSkipAutoRefresh() {
     if (document.hidden) return true;
     if (drawer?.classList.contains("is-open")) return true;
+    if (historyDrawer?.classList.contains("is-open")) return true;
     const active = document.activeElement;
     if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return true;
     if (selectedIds.size > 0) return true;
@@ -1072,6 +1210,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       selectedEmpId = id;
       fillForm(emp);
       openDrawer("Edit Employee", `${fullName(emp)} - ${emp.empId}`);
+      if (String(emp.type || "").toLowerCase() === "regular" && ["Tagum", "Davao"].includes(emp.assignmentType)) {
+        fetchAndShowPLBalance(emp.empId);
+      }
+    }
+    if (action === "history") {
+      if (areaHistoryList) areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Loading...</td></tr>';
+      openHistoryDrawer(emp);
+      loadAreaHistory(emp.empId);
     }
     if (action === "delete") {
       if (!confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) return;
@@ -1111,13 +1257,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
   cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
+  closeHistoryDrawerBtn && closeHistoryDrawerBtn.addEventListener("click", closeHistoryDrawer);
+  historyDrawerOverlay && historyDrawerOverlay.addEventListener("click", closeHistoryDrawer);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closeDrawer();
+    closeHistoryDrawer();
   });
 
   // live cash advance preview
-  f_type && f_type.addEventListener("change", syncCashAdvanceFields);
+  f_type && f_type.addEventListener("change", () => {
+    syncCashAdvanceFields();
+    syncExternalAreaUI();
+  });
   f_rate && f_rate.addEventListener("input", () => {
     syncCashAdvanceFields();
     syncSalaryFields();

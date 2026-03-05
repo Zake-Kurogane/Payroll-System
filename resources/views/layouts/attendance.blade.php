@@ -25,10 +25,7 @@
 
                 <div class="f">
                     <label>Cutoff</label>
-                    <select id="cutoffSelect">
-                        <option value="11-25">11–25</option>
-                        <option value="26-10">26–10</option>
-                    </select>
+                    <select id="cutoffSelect"></select>
                 </div>
 
                 <div class="cutoffInfo">
@@ -85,8 +82,8 @@
 
             <div class="muted small importNote">
                 Tip: Use codes like <strong>P</strong>, <strong>L</strong>, <strong>A</strong>,
-                <strong>UL</strong>, <strong>PL</strong>, <strong>HD</strong>, <strong>OFF</strong>,
-                <strong>HOL</strong>, <strong>LOA</strong>.
+                <strong>UL</strong>, <strong>RNR</strong>, <strong>PL</strong>, <strong>HD</strong>,
+                <strong>OFF</strong>, <strong>HOL</strong>, <strong>LOA</strong>.
                 Codes are mapped automatically.
             </div>
         </section>
@@ -113,16 +110,7 @@
             </div>
 
             <div class="filterbar__right">
-                <div class="seg" role="tablist" aria-label="Assignment filter">
-                    <button class="seg__btn is-active" type="button" data-assign="All" role="tab"
-                        aria-selected="true">All</button>
-                    <button class="seg__btn" type="button" data-assign="Tagum" role="tab"
-                        aria-selected="false">Tagum</button>
-                    <button class="seg__btn" type="button" data-assign="Davao" role="tab"
-                        aria-selected="false">Davao</button>
-                    <button class="seg__btn" type="button" data-assign="Area" role="tab"
-                        aria-selected="false">Area</button>
-                </div>
+                <div class="seg" id="assignmentSeg" role="tablist" aria-label="Assignment filter"></div>
                 <div class="f f--area" id="areaPlaceFilterWrap" hidden style="display:none;">
                     <label>Area Place</label>
                     <select id="areaPlaceFilter">
@@ -134,10 +122,10 @@
 
         <!-- STATS -->
         <section class="stats">
-            <article class="stat">
+            <button class="stat stat--click" id="statTotalBtn" type="button" aria-label="Preview total records">
                 <div class="stat__value" id="statTotal">0</div>
                 <div class="stat__label">TOTAL RECORDS</div>
-            </article>
+            </button>
             <article class="stat">
                 <div class="stat__value" id="statPresent">0</div>
                 <div class="stat__label">PRESENT</div>
@@ -281,22 +269,21 @@
                     <label>Assignment Type</label>
                     <select id="f_assignType" required disabled>
                         <option value="">—</option>
-                        <option>Tagum</option>
-                        <option>Davao</option>
-                        <option>Area</option>
                     </select>
                     <small class="err" id="errAssignType"></small>
                 </div>
             </div>
 
+            <div id="plBalanceWrap" style="display:none;margin-top:-4px;margin-bottom:4px;">
+                <small id="plBalanceInfo" style="font-weight:500;"></small>
+            </div>
+
             <div class="field" id="areaWrap" hidden>
                 <label>Area Place</label>
-                <select id="f_areaPlace" disabled>
+                <select id="f_areaPlace">
                     <option value="">—</option>
-                    <option>Laak</option>
-                    <option>Pantukan</option>
-                    <option>Maragusan</option>
                 </select>
+                <small id="areaPlaceHint" style="display:none;color:var(--muted,#888);">Resolving area...</small>
                 <small class="err" id="errAreaPlace"></small>
             </div>
 
@@ -327,7 +314,7 @@
             <button class="iconx" type="button" id="closePreviewBtn" aria-label="Close preview">✕</button>
         </div>
 
-        <div class="drawer__body">
+        <div class="drawer__body kpiPreviewDrawerBody">
             <div class="previewSummary">
                 <div class="sumCard">
                     <div class="sumVal" id="sumRows">0</div>
@@ -377,7 +364,7 @@
                 </div>
             </div>
 
-            <div class="tablewrap tablewrap--preview">
+            <div class="tablewrap tablewrap--preview kpiPreviewTablewrap">
                 <table class="table table--preview" aria-label="Preview import table">
                     <thead>
                         <tr>
@@ -406,6 +393,37 @@
         </div>
     </aside>
 
+    <!-- KPI QUICK PREVIEW -->
+    <div class="overlay" id="kpiPreviewOverlay" hidden></div>
+    <aside class="drawer drawer--wide" id="kpiPreviewDrawer" aria-hidden="true">
+        <div class="drawer__head">
+            <div>
+                <div class="drawer__title" id="kpiPreviewTitle">Total Records Preview</div>
+                <div class="drawer__sub muted small">Assignment, name, department, and in/out only.</div>
+            </div>
+            <button class="iconx" type="button" id="closeKpiPreviewBtn" aria-label="Close preview">✕</button>
+        </div>
+        <div class="drawer__body kpiPreviewDrawerBody">
+            <div class="tablewrap tablewrap--preview kpiPreviewTablewrap">
+                <table class="table table--preview" aria-label="Total records preview table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Assignment</th>
+                            <th>Name</th>
+                            <th>Department</th>
+                            <th>In/Out</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kpiPreviewTbody"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="drawer__foot">
+            <button class="btn" type="button" id="closeKpiPreviewFooter">Close</button>
+        </div>
+    </aside>
+
     <!-- EMPLOYEE DETAILS OVERLAY -->
     <div class="overlay" id="empOverlay" hidden></div>
 
@@ -427,10 +445,7 @@
                 </div>
                 <div class="f">
                     <label>Cut-off</label>
-                    <select id="empCutoffSelect">
-                        <option value="11-25">11–25</option>
-                        <option value="26-10">26–10</option>
-                    </select>
+                    <select id="empCutoffSelect"></select>
                 </div>
                 <div class="cutoffInfo cutoffInfo--mini" id="empCutoffInfo" aria-live="polite">
                     <div class="tiny muted">Range</div>
@@ -458,6 +473,7 @@
                     <thead>
                         <tr>
                             <th>Date</th>
+                            <th>Area</th>
                             <th>Time In</th>
                             <th>Time Out</th>
                             <th class="num">OT Hours</th>

@@ -93,7 +93,8 @@
                             @endforeach
                         </select>
 
-                        <select class="bulkSelect" id="bulkAreaPlaceSelect" aria-label="Set area place" style="display:none">
+                        <select class="bulkSelect" id="bulkAreaPlaceSelect" aria-label="Set area place"
+                            style="display:none">
                             <option value="">Set area place...</option>
                         </select>
 
@@ -117,7 +118,8 @@
                             <th class="col-check">
                                 <input type="checkbox" id="selectAll" aria-label="Select all" />
                             </th>
-                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon" aria-hidden="true"></span>
+                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
+                                    aria-hidden="true"></span>
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
@@ -146,7 +148,17 @@
                                 <td>
                                     @php
                                         $assign = $emp->assignment_type ?: '';
-                                        $assignText = $assign === 'Area' ? "Area ({$emp->area_place})" : $assign;
+                                        $isRegularArea =
+                                            $assign === 'Area' &&
+                                            strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
+                                        if ($assign === 'Area') {
+                                            $assignText = "Area ({$emp->area_place})";
+                                            if ($isRegularArea && $emp->external_area) {
+                                                $assignText .= " — Ext: {$emp->external_area}";
+                                            }
+                                        } else {
+                                            $assignText = $assign;
+                                        }
                                     @endphp
                                     {{ $assignText ?: '-' }}
                                 </td>
@@ -167,6 +179,12 @@
                                         }
                                         if ($assignType === 'Area' && trim((string) ($emp->area_place ?? '')) === '') {
                                             $missing[] = 'Area Place';
+                                        }
+                                        $isRegularArea =
+                                            $assignType === 'Area' &&
+                                            strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
+                                        if ($isRegularArea && trim((string) ($emp->external_area ?? '')) === '') {
+                                            $missing[] = 'External Area';
                                         }
                                         $govRequired = ['sss', 'philhealth', 'pagibig', 'tin'];
                                         $missingGov = array_filter(
@@ -198,6 +216,16 @@
                                             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
                                         </svg>
                                     </button>
+                                    @if ($emp->assignment_type === 'Area')
+                                        <button class="iconbtn" type="button" data-action="history"
+                                            data-id="{{ $emp->emp_no }}" title="Area History"
+                                            aria-label="Area History">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <circle cx="12" cy="12" r="9"></circle>
+                                                <path d="M12 7v5l3 3"></path>
+                                            </svg>
+                                        </button>
+                                    @endif
                                     <button class="iconbtn" type="button" data-action="delete"
                                         data-id="{{ $emp->emp_no }}" title="Delete" aria-label="Delete">
                                         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -228,10 +256,10 @@
                 <div class="tableFooter__right">
                     <label class="rowsLbl" for="rowsPerPage">Rows:</label>
                     <select class="rowsSelect" id="rowsPerPage">
-                            <option value="10" @selected((int) request('rows', 20) === 10)>10</option>
-                            <option value="20" @selected((int) request('rows', 20) === 20)>20</option>
-                            <option value="50" @selected((int) request('rows', 20) === 50)>50</option>
-                            <option value="100" @selected((int) request('rows', 20) === 100)>100</option>
+                        <option value="10" @selected((int) request('rows', 20) === 10)>10</option>
+                        <option value="20" @selected((int) request('rows', 20) === 20)>20</option>
+                        <option value="50" @selected((int) request('rows', 20) === 50)>50</option>
+                        <option value="100" @selected((int) request('rows', 20) === 100)>100</option>
                     </select>
                     <div class="pager">
                         @php
@@ -299,8 +327,8 @@
                     <div class="grid2">
                         <div class="field">
                             <label>Employee ID *</label>
-                            <input type="number" id="f_empId" required placeholder="e.g. 1044"
-                                inputmode="numeric" pattern="\\d{4}" min="0" max="9999" />
+                            <input type="number" id="f_empId" required placeholder="e.g. 1044" inputmode="numeric"
+                                pattern="\\d{4}" min="0" max="9999" />
                         </div>
 
                         <div class="field">
@@ -337,8 +365,8 @@
                     <div class="grid2">
                         <div class="field">
                             <label>Mobile No.</label>
-                            <input type="text" id="f_mobile" placeholder="09xx-xxx-xxxx"
-                                inputmode="numeric" pattern="^[0-9]{4}-[0-9]{3}-[0-9]{4}$" />
+                            <input type="text" id="f_mobile" placeholder="09xx-xxx-xxxx" inputmode="numeric"
+                                pattern="^[0-9]{4}-[0-9]{3}-[0-9]{4}$" />
                         </div>
                         <div class="field">
                             <label>Email</label>
@@ -391,12 +419,55 @@
                             </select>
                         </div>
 
+                        <div id="plInfoWrap" class="plField" style="display:none;">
+                            <div class="plField__label">PL ALLOWANCE</div>
+                            <div class="plField__pill">
+                                <span id="f_plCount"></span> <span class="plField__unit">days</span>
+                            </div>
+                            <div id="f_plBadge" class="plField__pillMeta"></div>
+                        </div>
+
                     </div>
 
                     <div class="sectionTitle">Compensation</div>
                     <div class="grid2">
                         <div class="field">
                             <label>Basic Pay (monthly) *</label>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                             <input type="number" id="f_rate" required placeholder="e.g. 20000" min="0" />
                         </div>
 
@@ -431,6 +502,16 @@
                                 @endforeach
                             </select>
                         </div>
+
+                        <div class="field" id="externalAreaWrap" style="display:none;">
+                            <label>External Area <span class="hint">(fixed deduction attribution)</span></label>
+                            <select id="f_externalArea" name="externalArea" disabled>
+                                <option value="">-- Select external area --</option>
+                                @foreach ($areaPlaces as $ap)
+                                    <option value="{{ $ap }}">{{ $ap }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                     </div>
 
                     <div class="sectionTitle">Cash Advance</div>
@@ -439,33 +520,29 @@
                             <label>Cash Advance Eligibility</label>
                             <input type="text" id="f_caEligible" readonly />
                         </div>
-                        <div class="field">
-                            <label>Max Cash Advance (2 months salary)</label>
-                            <input type="text" id="f_caMax" readonly />
-                        </div>
                     </div>
 
                     <div class="sectionTitle">Government IDs</div>
                     <div class="grid2">
                         <div class="field">
                             <label>SSS No.</label>
-                            <input type="text" id="f_sss" placeholder="00-0000000-0"
-                                inputmode="numeric" pattern="^[0-9]{2}-[0-9]{7}-[0-9]{1}$" />
+                            <input type="text" id="f_sss" placeholder="00-0000000-0" inputmode="numeric"
+                                pattern="^[0-9]{2}-[0-9]{7}-[0-9]{1}$" />
                         </div>
                         <div class="field">
                             <label>PhilHealth No.</label>
-                            <input type="text" id="f_ph" placeholder="00-000000000-0"
-                                inputmode="numeric" pattern="^[0-9]{2}-[0-9]{9}-[0-9]{1}$" />
+                            <input type="text" id="f_ph" placeholder="00-000000000-0" inputmode="numeric"
+                                pattern="^[0-9]{2}-[0-9]{9}-[0-9]{1}$" />
                         </div>
                         <div class="field">
                             <label>Pag-IBIG No.</label>
-                            <input type="text" id="f_pagibig" placeholder="0000-0000-0000"
-                                inputmode="numeric" pattern="^[0-9]{4}-[0-9]{4}-[0-9]{4}$" />
+                            <input type="text" id="f_pagibig" placeholder="0000-0000-0000" inputmode="numeric"
+                                pattern="^[0-9]{4}-[0-9]{4}-[0-9]{4}$" />
                         </div>
                         <div class="field">
                             <label>TIN</label>
-                            <input type="text" id="f_tin" placeholder="000-000-000-000"
-                                inputmode="numeric" pattern="^[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}$" />
+                            <input type="text" id="f_tin" placeholder="000-000-000-000" inputmode="numeric"
+                                pattern="^[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}$" />
                         </div>
                     </div>
 
@@ -501,6 +578,63 @@
             </div>
         </aside>
 
+        <!-- AREA HISTORY DRAWER -->
+        <aside class="drawer" id="historyDrawer" aria-hidden="true">
+            <div class="drawer__overlay" id="historyDrawerOverlay"></div>
+            <div class="drawer__panel drawer__panel--narrow" role="dialog" aria-modal="true"
+                aria-labelledby="historyDrawerTitle">
+                <div class="drawer__head">
+                    <div>
+                        <div class="drawer__title" id="historyDrawerTitle">Area Assignment History</div>
+                        <div class="muted small" id="historyDrawerSubtitle"></div>
+                    </div>
+                    <button class="iconbtn" id="closeHistoryDrawerBtn" type="button" aria-label="Close">✕</button>
+                </div>
+                <div class="form">
+                    <div id="historyDrawerExternal" class="muted small" style="margin-bottom:10px;display:none;"></div>
+                    <div class="tablewrap tablewrap--preview">
+                        <table class="table table--preview" aria-label="Area assignment history table">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th>Area</th>
+                                </tr>
+                            </thead>
+                            <tbody id="areaHistoryList">
+                                <tr>
+                                    <td colspan="2" class="muted small">No history yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
     </section>
+
+    <style>
+        .drawer__panel--narrow {
+            width: min(360px, 92vw);
+        }
+
+        #empTable th:last-child,
+        #empTable td:last-child {
+            width: 130px;
+        }
+
+        #historyDrawer .form {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: 0;
+        }
+
+        #historyDrawer .tablewrap {
+            flex: 1;
+            overflow-y: auto;
+        }
+    </style>
 
 @endsection

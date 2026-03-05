@@ -24,6 +24,7 @@ class AttendanceController extends Controller
         'Absent',
         'Leave',
         'Unpaid Leave',
+        'RNR',
         'Paid Leave',
         'Half-day',
         'Day Off',
@@ -44,25 +45,77 @@ class AttendanceController extends Controller
         'SPL' => 'Paid Leave',
         'UL' => 'Unpaid Leave',
         'LWOP' => 'Unpaid Leave',
+        'RNR' => 'RNR',
         'HD' => 'Half-day',
         'OFF' => 'Day Off',
         'HOL' => 'Holiday',
         'LOA' => 'LOA',
     ];
 
-    private const TEMPLATE_CODES = ['P', 'L', 'A', 'UL', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
+    private const TEMPLATE_CODES = ['P', 'L', 'A', 'UL', 'RNR', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
+
+    public function resolveArea(Request $request)
+    {
+        $v = $request->validate([
+            'employee_id' => ['required', 'integer', 'exists:employees,id'],
+            'date'        => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $employee = Employee::find((int) $v['employee_id']);
+        if (!$employee || $employee->assignment_type !== 'Area') {
+            return response()->json(['area_place' => null]);
+        }
+
+        return response()->json(['area_place' => $employee->resolveAreaForDate($v['date'])]);
+    }
 
     public function index(Request $request)
     {
+        if ($request->boolean('latest')) {
+            $latestDate = AttendanceRecord::query()
+                ->whereNotNull('date')
+                ->orderByDesc('date')
+                ->value('date');
+
+            if (!$latestDate) {
+                return response()->json(['date' => null]);
+            }
+
+            $dateString = $latestDate instanceof \DateTimeInterface
+                ? $latestDate->format('Y-m-d')
+                : Carbon::parse($latestDate)->format('Y-m-d');
+
+            return response()->json(['date' => $dateString]);
+        }
+
         $v = Validator::make($request->query(), [
             'month' => ['nullable', 'regex:/^\d{4}-\d{2}$/'],
-            'cutoff' => ['nullable', Rule::in(['11-25', '26-10'])],
+            'cutoff' => ['nullable', Rule::in(['A', 'B', '11-25', '26-10'])],
             'assignment' => ['nullable', 'string'],
             'area' => ['nullable', 'string'],
+            'date' => ['nullable', 'date'],
+            'status' => ['nullable', 'string'],
+            'q' => ['nullable', 'string'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'emp_no' => ['nullable', 'string'],
         ])->validate();
 
         $records = AttendanceRecord::query()
-            ->with(['employee'])
+            ->select([
+                'id',
+                'employee_id',
+                'date',
+                'status',
+                'area_place',
+                'clock_in',
+                'clock_out',
+                'minutes_late',
+                'minutes_undertime',
+                'ot_hours',
+            ])
+            ->with(['employee:id,emp_no,first_name,middle_name,last_name,department,position,assignment_type,area_place'])
             ->orderByDesc('date')
             ->orderByDesc('id');
 
@@ -80,10 +133,67 @@ class AttendanceController extends Controller
             $records->whereHas('employee', fn ($q) => $q->where('assignment_type', $assignment));
         }
         if ($assignment === 'Area' && $area) {
-            $records->whereHas('employee', fn ($q) => $q->where('area_place', $area));
+            $records->where(function ($q) use ($area) {
+                $q->where('area_place', $area)
+                  ->orWhere(function ($qq) use ($area) {
+                      $qq->whereNull('area_place')
+                         ->whereHas('employee', fn ($e) => $e->where('area_place', $area));
+                  });
+            });
         }
 
-        $payload = $records->get()->map(function (AttendanceRecord $r) {
+        if (!empty($v['employee_id'])) {
+            $records->where('employee_id', (int) $v['employee_id']);
+        } elseif (!empty($v['emp_no'])) {
+            $empNo = trim((string) $v['emp_no']);
+            if ($empNo !== '') {
+                $records->whereHas('employee', fn ($q) => $q->where('emp_no', $empNo));
+            }
+        }
+
+        $date = $v['date'] ?? null;
+        if ($date) {
+            $records->whereDate('date', $date);
+        }
+
+        $status = $v['status'] ?? null;
+        if ($status && strtolower($status) !== 'all') {
+            $records->where('status', $status);
+        }
+
+        $q = trim((string) ($v['q'] ?? ''));
+        if ($q !== '') {
+            $records->where(function ($query) use ($q) {
+                $query->where('date', 'like', "%{$q}%")
+                    ->orWhere('status', 'like', "%{$q}%")
+                    ->orWhere('clock_in', 'like', "%{$q}%")
+                    ->orWhere('clock_out', 'like', "%{$q}%")
+                    ->orWhereHas('employee', function ($qq) use ($q) {
+                        $qq->where('emp_no', 'like', "%{$q}%")
+                            ->orWhere('first_name', 'like', "%{$q}%")
+                            ->orWhere('last_name', 'like', "%{$q}%")
+                            ->orWhere('department', 'like', "%{$q}%")
+                            ->orWhere('position', 'like', "%{$q}%")
+                            ->orWhereRaw("CONCAT(first_name,' ',last_name) LIKE ?", ["%{$q}%"])
+                            ->orWhereRaw("CONCAT(last_name,', ',first_name) LIKE ?", ["%{$q}%"]);
+                    });
+            });
+        }
+
+        $baseQuery = clone $records;
+        $leaveSet = ['Leave', 'Unpaid Leave', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
+        $stats = [
+            'total' => (int) (clone $baseQuery)->count(),
+            'present' => (int) (clone $baseQuery)->whereIn('status', ['Present', 'Half-day'])->count(),
+            'late' => (int) (clone $baseQuery)->where('status', 'Late')->count(),
+            'absent' => (int) (clone $baseQuery)->where('status', 'Absent')->count(),
+            'leave' => (int) (clone $baseQuery)->whereIn('status', $leaveSet)->count(),
+        ];
+
+        $perPage = (int) ($v['per_page'] ?? 20);
+        $paginator = $records->paginate($perPage)->withQueryString();
+
+        $payload = collect($paginator->items())->map(function (AttendanceRecord $r) {
             $emp = $r->employee;
             $name = $emp
                 ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
@@ -99,7 +209,7 @@ class AttendanceController extends Controller
                 'department' => $emp?->department,
                 'position' => $emp?->position,
                 'assignment_type' => $emp?->assignment_type,
-                'area_place' => $emp?->area_place,
+                'area_place' => $r->area_place ?? $emp?->area_place,
                 'date' => $r->date?->format('Y-m-d'),
                 'status' => $r->status,
                 'clock_in' => $r->clock_in,
@@ -110,12 +220,24 @@ class AttendanceController extends Controller
             ];
         })->values();
 
-        return response()->json($payload);
+        return response()->json([
+            'data' => $payload,
+            'meta' => [
+                'page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'total_pages' => $paginator->lastPage(),
+                'stats' => $stats,
+            ],
+        ]);
     }
 
     public function store(Request $request)
     {
         $validated = $this->validateRecord($request);
+        if (($validated['status'] ?? '') === 'Paid Leave') {
+            $this->checkPLBalance($validated['employee_id'], $validated['date']);
+        }
         $record = AttendanceRecord::create($validated);
 
         return response()->json(['id' => $record->id], 201);
@@ -124,9 +246,32 @@ class AttendanceController extends Controller
     public function update(Request $request, AttendanceRecord $record)
     {
         $validated = $this->validateRecord($request);
+        if (($validated['status'] ?? '') === 'Paid Leave') {
+            $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id);
+        }
         $record->update($validated);
 
         return response()->json(['updated' => true]);
+    }
+
+    private function checkPLBalance(int $employeeId, string $date, ?int $excludeId = null): void
+    {
+        $employee = Employee::find($employeeId);
+        if (!$employee || strtolower((string) ($employee->employment_type ?? '')) !== 'regular') {
+            return;
+        }
+        if (!in_array($employee->assignment_type, ['Tagum', 'Davao'], true)) {
+            return;
+        }
+        $year = Carbon::parse($date)->year;
+        $used = AttendanceRecord::where('employee_id', $employeeId)
+            ->where('status', 'Paid Leave')
+            ->whereYear('date', $year)
+            ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
+            ->count();
+        if ($used >= 5) {
+            abort(422, "Paid Leave balance exhausted (0 of 5 days remaining for {$year}).");
+        }
     }
 
     public function destroy(AttendanceRecord $record)
@@ -138,154 +283,158 @@ class AttendanceController extends Controller
     public function downloadTemplate(Request $request)
     {
         $v = Validator::make($request->query(), [
-            'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
-            'cutoff' => ['required', Rule::in(['11-25', '26-10'])],
+            'date' => ['required', 'date_format:Y-m-d'],
             'assignment' => ['nullable', 'string'],
             'area' => ['nullable', 'string'],
         ])->validate();
 
-        $month = $v['month'];
-        $cutoff = $v['cutoff'];
+        $date = Carbon::parse($v['date'])->startOfDay();
         $assignment = $v['assignment'] ?? 'All';
         $area = $v['area'] ?? null;
 
         $employees = $this->employeesForFilters($assignment, $area);
-        [$from, $to] = $this->cutoffRange($month, $cutoff);
 
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
 
         $statusListFormula = '"' . implode(',', self::TEMPLATE_CODES) . '"';
-        $noTimeFormula = 'OR($F{row}="A",$F{row}="UL",$F{row}="PL",$F{row}="OFF",$F{row}="HOL",$F{row}="LOA")';
-        $timeRequiredFormula = 'OR($F{row}="P",$F{row}="L",$F{row}="HD")';
+        $noTimeFormula = 'OR($K{row}="A",$K{row}="UL",$K{row}="PL",$K{row}="OFF",$K{row}="HOL",$K{row}="LOA")';
+        $timeRequiredFormula = 'OR($K{row}="P",$K{row}="L",$K{row}="HD")';
 
-        $date = $from->copy();
-        while ($date->lte($to)) {
-            $sheetTitle = $date->format('Y-m-d');
-            $sheet = $spreadsheet->createSheet();
-            $sheet->setTitle($sheetTitle);
+        $sheet = $spreadsheet->createSheet();
+        $sheet->setTitle($date->format('Y-m-d'));
 
-            $headers = [
-                'emp_no',
-                'name',
-                'dept',
-                'assignment',
-                'area',
-                'status',
-                'clock_in',
-                'clock_out',
-                'minutes_late',
-                'minutes_undertime',
-                'ot_hours',
-            ];
-            $sheet->fromArray($headers, null, 'A1');
-            $sheet->getStyle('A1:K1')->applyFromArray([
-                'font' => [
-                    'bold' => true,
-                    'color' => ['rgb' => '7A1530'],
-                    'size' => 11,
+        $headers = [
+            'emp_no',
+            'name',
+            'dept',
+            'assignment',
+            'area',
+            'clock_in',
+            'clock_out',
+            'minutes_late',
+            'minutes_undertime',
+            'ot_hours',
+            'status',
+        ];
+        $sheet->fromArray($headers, null, 'A1');
+        $sheet->getStyle('A1:K1')->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'color' => ['rgb' => '7A1530'],
+                'size' => 11,
+            ],
+            'fill' => [
+                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'F4DCE3'],
+            ],
+            'borders' => [
+                'bottom' => [
+                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                    'color' => ['rgb' => 'C98A9B'],
                 ],
-                'fill' => [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'F4DCE3'],
-                ],
-                'borders' => [
-                    'bottom' => [
-                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
-                        'color' => ['rgb' => 'C98A9B'],
-                    ],
-                ],
-            ]);
+            ],
+        ]);
 
-            $isSunday = $date->isSunday();
-            $row = 2;
-            foreach ($employees as $e) {
-                $assignType = $e->assignment_type ?? '';
-                $defaultStatus = ($isSunday && in_array($assignType, ['Tagum', 'Davao'], true)) ? 'OFF' : '';
-                $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
-                $sheet->fromArray([
-                    $e->emp_no,
-                    $name,
-                    $e->department ?? '',
-                    $e->assignment_type ?? '',
-                    $e->area_place ?? '',
-                    $defaultStatus,
-                    '',
-                    '',
-                    '',
-                    '',
-                    '',
-                ], null, "A{$row}");
+        $isSunday = $date->isSunday();
+        $row = 2;
+        foreach ($employees as $e) {
+            $assignType = $e->assignment_type ?? '';
+            $defaultStatus = ($isSunday && in_array($assignType, ['Tagum', 'Davao'], true)) ? 'OFF' : '';
+            $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
+            $sheet->fromArray([
+                $e->emp_no,
+                $name,
+                $e->department ?? '',
+                $e->assignment_type ?? '',
+                $e->area_place ?? '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                $defaultStatus,
+            ], null, "A{$row}");
 
-                $dv = new DataValidation();
-                $dv->setType(DataValidation::TYPE_LIST);
-                $dv->setErrorStyle(DataValidation::STYLE_STOP);
-                $dv->setAllowBlank(false);
-                $dv->setShowDropDown(true);
-                $dv->setFormula1($statusListFormula);
-                $dv->setErrorTitle('Invalid status');
-                $dv->setError('Choose from the dropdown list.');
+            $dv = new DataValidation();
+            $dv->setType(DataValidation::TYPE_LIST);
+            $dv->setErrorStyle(DataValidation::STYLE_STOP);
+            $dv->setAllowBlank(false);
+            $dv->setShowDropDown(true);
+            $dv->setFormula1($statusListFormula);
+            $dv->setErrorTitle('Invalid status');
+            $dv->setError('Choose from the dropdown list.');
 
-                $sheet->getCell("F{$row}")->setDataValidation($dv);
+            $sheet->getCell("K{$row}")->setDataValidation($dv);
 
-                // Minutes late: Late => compute after 07:35, otherwise 0
-                $lateFormula = sprintf(
-                    '=IF($F%d="L",MAX(0,ROUND(($G%d-TIME(7,35,0))*1440,0)),0)',
-                    $row,
-                    $row
-                );
-                $sheet->setCellValue("I{$row}", $lateFormula);
+            // Auto status based on grace time (07:35): Present if within grace, Late if beyond
+            $sheet->setCellValue("K{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(7,35,0),"P","L"))', $row, $row));
 
-                // Validation: block time/undertime/ot inputs for no-time statuses
-                $rowFormula = str_replace('{row}', (string) $row, $noTimeFormula);
+            // Minutes late: compute after 07:35, otherwise 0
+            $lateFormula = sprintf(
+                '=IF($F%d="","",MAX(0,ROUND(($F%d-TIME(7,35,0))*1440,0)))',
+                $row,
+                $row
+            );
+            $sheet->setCellValue("H{$row}", $lateFormula);
 
-                foreach (['G', 'H'] as $col) {
-                    $dvTime = new DataValidation();
-                    $dvTime->setType(DataValidation::TYPE_CUSTOM);
-                    $dvTime->setErrorStyle(DataValidation::STYLE_STOP);
-                    $dvTime->setAllowBlank(true);
-                    $dvTime->setErrorTitle('Invalid input');
-                    $dvTime->setError('Clock in/out must be blank for this status.');
-                    $dvTime->setFormula1(sprintf('=IF(%s,%s%d="",TRUE)', $rowFormula, $col, $row));
-                    $sheet->getCell("{$col}{$row}")->setDataValidation($dvTime);
-                }
+            // Minutes undertime: compute when clock_out is before 17:00
+            $underFormula = sprintf(
+                '=IF($G%d="","",MAX(0,ROUND((TIME(17,0,0)-$G%d)*1440,0)))',
+                $row,
+                $row
+            );
+            $sheet->setCellValue("I{$row}", $underFormula);
 
-                // Require time for Present / Late / Half-day
-                $reqFormula = str_replace('{row}', (string) $row, $timeRequiredFormula);
-                foreach (['G', 'H'] as $col) {
-                    $dvReq = new DataValidation();
-                    $dvReq->setType(DataValidation::TYPE_CUSTOM);
-                    $dvReq->setErrorStyle(DataValidation::STYLE_STOP);
-                    $dvReq->setAllowBlank(true);
-                    $dvReq->setErrorTitle('Missing time');
-                    $dvReq->setError('Clock in/out is required for this status.');
-                    $dvReq->setFormula1(sprintf('=IF(%s,%s%d<>"",TRUE)', $reqFormula, $col, $row));
-                    $sheet->getCell("{$col}{$row}")->setDataValidation($dvReq);
-                }
+            // Validation: block time/undertime/ot inputs for no-time statuses
+            $rowFormula = str_replace('{row}', (string) $row, $noTimeFormula);
 
-                foreach (['J', 'K'] as $col) {
-                    $dvNum = new DataValidation();
-                    $dvNum->setType(DataValidation::TYPE_CUSTOM);
-                    $dvNum->setErrorStyle(DataValidation::STYLE_STOP);
-                    $dvNum->setAllowBlank(true);
-                    $dvNum->setErrorTitle('Invalid input');
-                    $dvNum->setError('Minutes/OT must be 0 or blank for this status.');
-                    $dvNum->setFormula1(sprintf('=IF(%s,OR(%s%d="",%s%d=0),TRUE)', $rowFormula, $col, $row, $col, $row));
-                    $sheet->getCell("{$col}{$row}")->setDataValidation($dvNum);
-                }
-                $row++;
+            foreach (['F', 'G'] as $col) {
+                $dvTime = new DataValidation();
+                $dvTime->setType(DataValidation::TYPE_CUSTOM);
+                $dvTime->setErrorStyle(DataValidation::STYLE_STOP);
+                $dvTime->setAllowBlank(true);
+                $dvTime->setErrorTitle('Invalid input');
+                $dvTime->setError('Clock in/out must be blank for this status.');
+                $dvTime->setFormula1(sprintf('=IF(%s,%s%d="",TRUE)', $rowFormula, $col, $row));
+                $sheet->getCell("{$col}{$row}")->setDataValidation($dvTime);
             }
 
-            foreach (range('A', 'K') as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
+            // Require time for Present / Late / Half-day
+            $reqFormula = str_replace('{row}', (string) $row, $timeRequiredFormula);
+            foreach (['F', 'G'] as $col) {
+                $dvReq = new DataValidation();
+                $dvReq->setType(DataValidation::TYPE_CUSTOM);
+                $dvReq->setErrorStyle(DataValidation::STYLE_STOP);
+                $dvReq->setAllowBlank(true);
+                $dvReq->setErrorTitle('Missing time');
+                $dvReq->setError('Clock in/out is required for this status.');
+                $dvReq->setFormula1(sprintf('=IF(%s,%s%d<>"",TRUE)', $reqFormula, $col, $row));
+                $sheet->getCell("{$col}{$row}")->setDataValidation($dvReq);
             }
 
-            $date->addDay();
+            foreach (['I', 'J'] as $col) {
+                $dvNum = new DataValidation();
+                $dvNum->setType(DataValidation::TYPE_CUSTOM);
+                $dvNum->setErrorStyle(DataValidation::STYLE_STOP);
+                $dvNum->setAllowBlank(true);
+                $dvNum->setErrorTitle('Invalid input');
+                $dvNum->setError('Minutes/OT must be 0 or blank for this status.');
+                $dvNum->setFormula1(sprintf('=IF(%s,OR(%s%d="",%s%d=0),TRUE)', $rowFormula, $col, $row, $col, $row));
+                $sheet->getCell("{$col}{$row}")->setDataValidation($dvNum);
+            }
+            $row++;
         }
 
+        foreach (range('A', 'K') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        // Show AM/PM for time columns
+        $sheet->getStyle("F2:G{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
+
         $label = $assignment === 'Area' && $area ? "AREA - {$area}" : $assignment;
-        $cutoffLabel = $cutoff === '11-25' ? '11-25' : '26-10';
-        $filename = "{$label} ATTENDANCE ({$cutoffLabel} {$month}).xlsx";
+        $filename = "{$label} ATTENDANCE {$date->format('Y-m-d')}.xlsx";
 
         $tmpPath = storage_path('app/tmp_attendance_template.xlsx');
         (new Xlsx($spreadsheet))->save($tmpPath);
@@ -296,17 +445,10 @@ class AttendanceController extends Controller
     public function importExcel(Request $request)
     {
         $v = Validator::make($request->all(), [
-            'month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
-            'cutoff' => ['required', Rule::in(['11-25', '26-10'])],
             'assignment' => ['nullable', 'string'],
             'area' => ['nullable', 'string'],
             'file' => ['required', 'file', 'mimes:xlsx'],
         ])->validate();
-
-        $month = $v['month'];
-        $cutoff = $v['cutoff'];
-
-        [$from, $to] = $this->cutoffRange($month, $cutoff);
 
         $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
 
@@ -318,14 +460,15 @@ class AttendanceController extends Controller
             'dept',
             'assignment',
             'area',
-            'status',
             'clock_in',
             'clock_out',
             'minutes_late',
             'minutes_undertime',
             'ot_hours',
+            'status',
         ];
 
+        // Daily import: read all sheets; each sheet name must be a valid YYYY-MM-DD date
         foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
             $sheetName = $sheet->getTitle();
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $sheetName)) {
@@ -334,10 +477,6 @@ class AttendanceController extends Controller
             }
 
             $workDate = Carbon::parse($sheetName)->startOfDay();
-            if ($workDate->lt($from) || $workDate->gt($to)) {
-                $errors[] = "{$sheetName}: Date is outside selected cutoff.";
-                continue;
-            }
 
             $header = [];
             foreach (range('A', 'K') as $col) {
@@ -351,24 +490,31 @@ class AttendanceController extends Controller
             $highestRow = $sheet->getHighestDataRow();
             for ($r = 2; $r <= $highestRow; $r++) {
                 $empNo = trim((string) $sheet->getCell("A{$r}")->getValue());
-                $rawStatus = trim((string) $sheet->getCell("F{$r}")->getValue());
+                $statusCell = $sheet->getCell("K{$r}");
+                $rawStatus = $statusCell->isFormula()
+                    ? (string) $statusCell->getCalculatedValue()
+                    : (string) $statusCell->getValue();
+                $rawStatus = trim($rawStatus);
 
-                $clockIn = $this->readTimeCell($sheet->getCell("G{$r}"));
-                $clockOut = $this->readTimeCell($sheet->getCell("H{$r}"));
+                $clockIn = $this->readTimeCell($sheet->getCell("F{$r}"));
+                $clockOut = $this->readTimeCell($sheet->getCell("G{$r}"));
 
-                $lateCell = $sheet->getCell("I{$r}");
-                $underCell = $sheet->getCell("J{$r}");
-                $otCell = $sheet->getCell("K{$r}");
+                $lateCell = $sheet->getCell("H{$r}");
+                $underCell = $sheet->getCell("I{$r}");
+                $otCell = $sheet->getCell("J{$r}");
 
+                // Skip unfilled rows: status blank and no clock data entered.
+                // This handles pre-populated template rows (emp_no set, but row not filled in).
                 if (
-                    $empNo === '' &&
                     $rawStatus === '' &&
                     $clockIn === '' &&
-                    $clockOut === '' &&
-                    $lateCell->getValue() === null &&
-                    $underCell->getValue() === null &&
-                    $otCell->getValue() === null
+                    $clockOut === ''
                 ) {
+                    continue;
+                }
+
+                // Also skip completely blank rows (no emp_no, no data at all).
+                if ($empNo === '' && $rawStatus === '') {
                     continue;
                 }
 
@@ -395,15 +541,8 @@ class AttendanceController extends Controller
                         if (($late ?? 0) > 0 || ($under ?? 0) > 0 || ($ot ?? 0) > 0) {
                             $errors[] = "{$sheetName} row {$r}: minutes/ot must be 0 for {$status}.";
                         }
-                    } elseif ($status === 'Half-day') {
-                        if ($clockIn === '' && $clockOut === '') {
-                            $errors[] = "{$sheetName} row {$r}: clock_in or clock_out is required for {$status}.";
-                        }
-                    } else {
-                        if ($clockIn === '' || $clockOut === '') {
-                            $errors[] = "{$sheetName} row {$r}: clock_in and clock_out are required for {$status}.";
-                        }
                     }
+                    // Clock times are optional for Present, Late, Half-day, etc.
                 }
 
                 if ($empNo !== '' && !Employee::where('emp_no', $empNo)->exists()) {
@@ -417,10 +556,13 @@ class AttendanceController extends Controller
                     }
                 }
 
+                $areaVal = trim((string) $sheet->getCell("E{$r}")->getValue());
+
                 $rowsToUpsert[] = [
                     'date' => $workDate->toDateString(),
                     'emp_no' => $empNo,
                     'status' => $status ?: '',
+                    'area_place' => $areaVal !== '' ? $areaVal : null,
                     'clock_in' => $clockIn ?: null,
                     'clock_out' => $clockOut ?: null,
                     'minutes_late' => (int) ($late ?? 0),
@@ -448,6 +590,7 @@ class AttendanceController extends Controller
                     ['employee_id' => $emp->id, 'date' => $row['date']],
                     [
                         'status' => $row['status'],
+                        'area_place' => $row['area_place'],
                         'clock_in' => $row['clock_in'],
                         'clock_out' => $row['clock_out'],
                         'minutes_late' => $row['minutes_late'],
@@ -467,6 +610,7 @@ class AttendanceController extends Controller
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
             'date' => ['required', 'date'],
             'status' => ['required', Rule::in(self::STATUS_VALUES)],
+            'area_place' => ['nullable', 'string', 'max:255'],
             'clock_in' => ['nullable', 'date_format:H:i'],
             'clock_out' => ['nullable', 'date_format:H:i'],
             'minutes_late' => ['nullable', 'integer', 'min:0'],
@@ -481,10 +625,34 @@ class AttendanceController extends Controller
         [$y, $m] = array_map('intval', explode('-', $month));
         $base = Carbon::create($y, $m, 1)->startOfDay();
 
-        if ($cutoff === '11-25') {
-            return $this->cutoffWindow($base, (int) ($calendar->cutoff_a_from ?? 11), (int) ($calendar->cutoff_a_to ?? 25));
+        [$fromDay, $toDay] = $this->cutoffDays($cutoff, $calendar);
+        return $this->cutoffWindow($base, $fromDay, $toDay);
+    }
+
+    private function normalizeCutoffKey(string $cutoff): string
+    {
+        $c = strtoupper(trim($cutoff));
+        if ($c === '11-25') {
+            return 'A';
         }
-        return $this->cutoffWindow($base, (int) ($calendar->cutoff_b_from ?? 26), (int) ($calendar->cutoff_b_to ?? 10));
+        if ($c === '26-10') {
+            return 'B';
+        }
+        return in_array($c, ['A', 'B'], true) ? $c : 'A';
+    }
+
+    private function cutoffDays(string $cutoff, ?PayrollCalendarSetting $calendar = null): array
+    {
+        $calendar = $calendar ?? (PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]));
+        $key = $this->normalizeCutoffKey($cutoff);
+        if ($key === 'A') {
+            $from = (int) ($calendar->cutoff_a_from ?? 11);
+            $to = (int) ($calendar->cutoff_a_to ?? 25);
+            return [$from > 0 ? $from : 1, $to > 0 ? $to : 25];
+        }
+        $from = (int) ($calendar->cutoff_b_from ?? 26);
+        $to = (int) ($calendar->cutoff_b_to ?? 10);
+        return [$from > 0 ? $from : 1, $to > 0 ? $to : 10];
     }
 
     private function cutoffWindow(Carbon $base, int $fromDay, int $toDay): array

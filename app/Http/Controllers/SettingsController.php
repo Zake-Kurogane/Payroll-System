@@ -270,6 +270,7 @@ class SettingsController extends Controller
             'enabled' => ['required', 'boolean'],
             'default_method' => ['required', Rule::in(['salary_deduction', 'manual_payment'])],
             'default_term_months' => ['required', 'integer', 'min:1'],
+            'max_payback_months' => ['required', 'integer', 'min:1'],
             'deduct_timing' => ['required', Rule::in(['cutoff1', 'cutoff2', 'split'])],
             'priority' => ['required', 'integer', 'min:1'],
             'deduction_method' => ['required', Rule::in(['equal_amortization', 'manual_per_cutoff'])],

@@ -5,27 +5,26 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class AttendanceRecord extends Model
+class EmployeeAreaHistory extends Model
 {
     protected $fillable = [
         'employee_id',
-        'date',
-        'status',
         'area_place',
-        'clock_in',
-        'clock_out',
-        'minutes_late',
-        'minutes_undertime',
-        'ot_hours',
+        'effective_date',
+        'created_by',
     ];
 
     protected $casts = [
-        'date' => 'date',
-        'ot_hours' => 'decimal:2',
+        'effective_date' => 'date:Y-m-d',
     ];
 
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

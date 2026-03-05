@@ -309,6 +309,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
       document.getElementById("caEnabled") && (document.getElementById("caEnabled").checked = !!row.enabled);
       document.getElementById("caMethod") && (document.getElementById("caMethod").value = row.default_method ?? "salary_deduction");
       document.getElementById("caDefaultTermMonths") && (document.getElementById("caDefaultTermMonths").value = row.default_term_months ?? 3);
+      document.getElementById("caMaxPaybackMonths") && (document.getElementById("caMaxPaybackMonths").value = row.max_payback_months ?? 6);
       document.getElementById("caDeductTiming") && (document.getElementById("caDeductTiming").value = row.deduct_timing ?? "split");
       document.getElementById("caPriority") && (document.getElementById("caPriority").value = row.priority ?? 1);
       document.getElementById("caDeductionMethod") && (document.getElementById("caDeductionMethod").value = row.deduction_method ?? "equal_amortization");
@@ -335,6 +336,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
           enabled: !!document.getElementById("caEnabled")?.checked,
           default_method: document.getElementById("caMethod")?.value || "salary_deduction",
           default_term_months: Number(document.getElementById("caDefaultTermMonths")?.value || 3),
+          max_payback_months: Number(document.getElementById("caMaxPaybackMonths")?.value || 6),
           deduct_timing: document.getElementById("caDeductTiming")?.value || "split",
           priority: Number(document.getElementById("caPriority")?.value || 1),
           deduction_method: document.getElementById("caDeductionMethod")?.value || "equal_amortization",

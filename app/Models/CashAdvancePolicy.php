@@ -10,6 +10,7 @@ class CashAdvancePolicy extends Model
         'enabled',
         'default_method',
         'default_term_months',
+        'max_payback_months',
         'deduct_timing',
         'priority',
         'deduction_method',

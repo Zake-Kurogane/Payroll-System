@@ -54,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
       position: emp.position || "—",
       assignmentType: emp.assignment_type || "",
       areaPlace: emp.area_place || "",
+      employmentType: emp.employment_type || "",
     };
   }
 
@@ -61,6 +62,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const rows = await apiFetch("/employees");
     employees = Array.isArray(rows) ? rows.map(mapEmployee) : [];
     employeesById = new Map(employees.map(e => [String(e.id), e]));
+  }
+
+  async function loadEmployeeFilters() {
+    try {
+      const data = await apiFetch("/employees/filters");
+      assignmentOptions = Array.isArray(data?.assignments) ? data.assignments : [];
+      areaPlaceOptions = Array.isArray(data?.area_places) ? data.area_places : [];
+    } catch {
+      assignmentOptions = [];
+      areaPlaceOptions = [];
+    }
   }
 
   // =========================================================
@@ -104,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
         statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
     }
     if (f_status) {
-      f_status.innerHTML = `<option value="">â€”</option>` +
+      f_status.innerHTML = `<option value="">-- Select --</option>` +
         statuses.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
     }
   }
@@ -113,9 +125,13 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const data = await apiFetch("/settings/attendance-codes");
       const statuses = buildStatusListFromCodes(data?.codes || []);
-      setStatusOptions(statuses.length ? statuses : buildFallbackStatuses());
+      const merged = statuses.length ? statuses : buildFallbackStatuses();
+      if (!merged.includes("RNR")) merged.push("RNR");
+      setStatusOptions(merged);
     } catch (err) {
-      setStatusOptions(buildFallbackStatuses());
+      const fallback = buildFallbackStatuses();
+      if (!fallback.includes("RNR")) fallback.push("RNR");
+      setStatusOptions(fallback);
     }
   }
 
@@ -158,6 +174,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Unpaid Leave
     "UL":   { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
     "LWOP": { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
+    "RNR":  { status: "RNR", isPaid: false, countsAsPresent: false },
 
     // Paid Leave
     "PL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
@@ -184,6 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (s === "Absent") return { status: "Absent", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Leave") return { status: "Leave", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Unpaid Leave") return { status: "Unpaid Leave", isPaid: false, countsAsPresent: false, code: "" };
+      if (s === "RNR") return { status: "RNR", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Paid Leave") return { status: "Paid Leave", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Half-day") return { status: "Half-day", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Day Off") return { status: "Day Off", isPaid: false, countsAsPresent: false, code: "" };
@@ -205,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
   //   <select id="cutoffSelect"><option value="1-15">Cutoff A</option><option value="16-end">Cutoff B</option></select>
   //   <div id="cutoffRangeLabel"></div>
   const cutoffMonthInput = document.getElementById("cutoffMonth"); // type=month
-  const cutoffSelect = document.getElementById("cutoffSelect");   // 11-25 or 26-10
+  const cutoffSelect = document.getElementById("cutoffSelect");   // A or B
   const cutoffRangeLabel = document.getElementById("cutoffRangeLabel");
 
   // Date helpers (local-safe)
@@ -233,6 +251,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   let payrollCalendar = null;
+  let latestAttendanceDate = "";
   async function loadPayrollCalendarSettings() {
     try {
       payrollCalendar = await apiFetch("/settings/payroll-calendar");
@@ -241,13 +260,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function loadLatestAttendanceDate() {
+    try {
+      const data = await apiFetch("/attendance/records?latest=1");
+      latestAttendanceDate = String(data?.date || "");
+    } catch {
+      latestAttendanceDate = "";
+    }
+  }
+
   function resolveCutoffDays(year, month, cutoffType) {
     const lastDay = new Date(year, month, 0).getDate();
     const cal = payrollCalendar || {};
-    let from = cutoffType === "11-25" ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
-    let to = cutoffType === "11-25" ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
+    const isA = cutoffType === "A" || cutoffType === "11-25";
+    let from = isA ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
+    let to = isA ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
     if (!Number.isFinite(from) || from <= 0) from = 1;
-    if (!Number.isFinite(to) || to <= 0) to = cutoffType === "11-25" ? 25 : lastDay;
+    if (!Number.isFinite(to) || to <= 0) to = isA ? 25 : lastDay;
     return { from, to, lastDay };
   }
 
@@ -261,22 +290,52 @@ document.addEventListener("DOMContentLoaded", () => {
     return { start, end };
   }
 
+  function cutoffLabel(cutoffType, year, month) {
+    const { from, to } = resolveCutoffDays(year, month, cutoffType);
+    return `${from}-${to}`;
+  }
+
+  function syncCutoffOptions(selectEl, ym) {
+    if (!selectEl || !ym) return;
+    const current = selectEl.value || "";
+    let optA = selectEl.querySelector('option[value="A"]');
+    let optB = selectEl.querySelector('option[value="B"]');
+
+    if (!optA) {
+      optA = document.createElement("option");
+      optA.value = "A";
+      selectEl.appendChild(optA);
+    }
+    if (!optB) {
+      optB = document.createElement("option");
+      optB.value = "B";
+      selectEl.appendChild(optB);
+    }
+
+    optA.textContent = cutoffLabel("A", ym.y, ym.m);
+    optB.textContent = cutoffLabel("B", ym.y, ym.m);
+
+    const legacyA = selectEl.querySelector('option[value="11-25"]');
+    if (legacyA) legacyA.remove();
+    const legacyB = selectEl.querySelector('option[value="26-10"]');
+    if (legacyB) legacyB.remove();
+
+    const normalized = current === "11-25" ? "A" : current === "26-10" ? "B" : current;
+    if (normalized === "A" || normalized === "B") {
+      selectEl.value = normalized;
+    }
+  }
+
   function updateCutoffOptionLabels() {
     const ym = parseYM(cutoffMonthInput?.value);
     if (!ym || !cutoffSelect) return;
-    const optA = cutoffSelect.querySelector('option[value="11-25"]');
-    const optB = cutoffSelect.querySelector('option[value="26-10"]');
-    if (optA) optA.textContent = "11–25";
-    if (optB) optB.textContent = "26–10";
+    syncCutoffOptions(cutoffSelect, ym);
   }
 
   function updateEmpCutoffOptionLabels() {
     const ym = parseYM(empCutoffMonthInput?.value);
     if (!ym || !empCutoffSelect) return;
-    const optA = empCutoffSelect.querySelector('option[value="11-25"]');
-    const optB = empCutoffSelect.querySelector('option[value="26-10"]');
-    if (optA) optA.textContent = "11–25";
-    if (optB) optB.textContent = "26–10";
+    syncCutoffOptions(empCutoffSelect, ym);
   }
 
   function isDateWithinCutoff(ymd, range) {
@@ -292,10 +351,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getActiveCutoff() {
     const ym = parseYM(cutoffMonthInput?.value);
-    const cutoffType = cutoffSelect?.value || "11-25";
+    const cutoffType = cutoffSelect?.value || "A";
     if (!ym) return null;
     const range = getCutoffRange(ym.y, ym.m, cutoffType);
     return { year: ym.y, month: ym.m, cutoffType, range };
+  }
+
+  function findCutoffForDate(ymd) {
+    const d = parseYMD(ymd);
+    if (!d) return null;
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    const prev = new Date(y, d.getMonth() - 1, 1);
+    const candidates = [
+      { y, m },
+      { y: prev.getFullYear(), m: prev.getMonth() + 1 },
+    ];
+
+    for (const c of candidates) {
+      const rangeA = getCutoffRange(c.y, c.m, "A");
+      if (isDateWithinCutoff(ymd, rangeA)) {
+        return { year: c.y, month: c.m, cutoffType: "A" };
+      }
+      const rangeB = getCutoffRange(c.y, c.m, "B");
+      if (isDateWithinCutoff(ymd, rangeB)) {
+        return { year: c.y, month: c.m, cutoffType: "B" };
+      }
+    }
+    return { year: y, month: m, cutoffType: "A" };
   }
 
   // =========================================================
@@ -343,9 +426,48 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  async function loadRecords() {
-    const rows = await apiFetch("/attendance/records");
-    records = Array.isArray(rows) ? rows.map(mapRecordApi) : [];
+  async function loadRecords(options = {}) {
+    const qs = new URLSearchParams();
+    if (!options.ignoreCutoff) {
+      if (cutoffMonthInput?.value) qs.set("month", cutoffMonthInput.value);
+      if (cutoffSelect?.value) qs.set("cutoff", cutoffSelect.value);
+    }
+    if (assignmentFilter && assignmentFilter !== "All") {
+      qs.set("assignment", assignmentFilter);
+      if (assignmentFilter === "Area" && areaPlaceFilter?.value && areaPlaceFilter.value !== "All") {
+        qs.set("area", areaPlaceFilter.value);
+      }
+    }
+    const dateVal = dateInput?.value || "";
+    if (dateVal) qs.set("date", dateVal);
+    const statusVal = statusFilter?.value || "All";
+    if (statusVal && statusVal !== "All") qs.set("status", statusVal);
+    const q = String(searchInput?.value || "").trim();
+    if (q) qs.set("q", q);
+
+    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
+    const page = Number(pageState.page || 1);
+    qs.set("per_page", String(rows));
+    qs.set("page", String(page));
+
+    const url = qs.toString() ? `/attendance/records?${qs.toString()}` : "/attendance/records";
+    const res = await apiFetch(url);
+
+    if (Array.isArray(res)) {
+      records = res.map(mapRecordApi);
+      serverMeta = { page: 1, per_page: records.length, total: records.length, total_pages: 1, stats: null };
+      return;
+    }
+
+    records = Array.isArray(res?.data) ? res.data.map(mapRecordApi) : [];
+    const meta = res?.meta || {};
+    serverMeta = {
+      page: Number(meta.page || page),
+      per_page: Number(meta.per_page || rows),
+      total: Number(meta.total || records.length),
+      total_pages: Number(meta.total_pages || 1),
+      stats: meta.stats || null,
+    };
   }
 
   // =========================================================
@@ -353,14 +475,17 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const dateInput = document.getElementById("dateInput");
   const searchInput = document.getElementById("searchInput");
-  const segBtns = Array.from(
-    document.querySelectorAll(".filterbar__right .seg__btn[data-assign]")
-  );
+  const segContainer = document.getElementById("assignmentSeg");
+  let segBtns = [];
   let assignmentFilter = "All";
   const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
   const areaPlaceFilter = document.getElementById("areaPlaceFilter");
 
+  let assignmentOptions = [];
+  let areaPlaceOptions = [];
+
   const statTotal = document.getElementById("statTotal");
+  const statTotalBtn = document.getElementById("statTotalBtn");
   const statPresent = document.getElementById("statPresent");
   const statLate = document.getElementById("statLate");
   const statAbsent = document.getElementById("statAbsent");
@@ -401,8 +526,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const f_assignType = document.getElementById("f_assignType");
   const areaWrap = document.getElementById("areaWrap");
   const f_areaPlace = document.getElementById("f_areaPlace");
+  const areaPlaceHint = document.getElementById("areaPlaceHint");
   const f_notes = document.getElementById("f_notes");
   const editingId = document.getElementById("editingId");
+  const plBalanceWrap = document.getElementById("plBalanceWrap");
+  const plBalanceInfo = document.getElementById("plBalanceInfo");
+
+  let currentPLRemaining = null; // null = not applicable for this employee
 
   const errEmployee = document.getElementById("errEmployee");
   const errDate = document.getElementById("errDate");
@@ -428,6 +558,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const previewDrawer = document.getElementById("previewDrawer");
   const previewOverlay = document.getElementById("previewOverlay");
+  const kpiPreviewDrawer = document.getElementById("kpiPreviewDrawer");
+  const kpiPreviewOverlay = document.getElementById("kpiPreviewOverlay");
+  const kpiPreviewTbody = document.getElementById("kpiPreviewTbody");
+  const kpiPreviewTitle = document.getElementById("kpiPreviewTitle");
+  const closeKpiPreviewBtn = document.getElementById("closeKpiPreviewBtn");
+  const closeKpiPreviewFooter = document.getElementById("closeKpiPreviewFooter");
   const closePreviewBtn = document.getElementById("closePreviewBtn");
   const closePreviewFooter = document.getElementById("closePreviewFooter");
 
@@ -474,18 +610,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const empCutoffRangeLabel = document.getElementById("empCutoffRangeLabel");
 
   let currentEmpId = "";
+  let empRecords = [];
 
   // =========================================================
   // DATA: current cutoff + records
   // =========================================================
   let activeCutoff = null;
   let records = [];
+  let serverMeta = {
+    page: 1,
+    per_page: 20,
+    total: 0,
+    total_pages: 1,
+    stats: null,
+  };
   // default sorting (hoisted early to avoid TDZ when render runs during init)
   let sortState = { key: "name", dir: "asc" };
   let pageState = { page: 1, rows: 20 };
   let lastFilterSig = "";
 
-  async function refreshActiveCutoffAndLoad() {
+  async function refreshActiveCutoffAndLoad(options = {}) {
     // If cutoff UI exists => we require it
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
 
@@ -498,8 +642,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const now = new Date();
         cutoffMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       }
+      updateCutoffOptionLabels();
       if (cutoffSelect && !cutoffSelect.value) {
-        cutoffSelect.value = "11-25";
+        cutoffSelect.value = cutoffSelect.querySelector('option[value="A"]') ? "A" : "11-25";
       }
 
       const c = getActiveCutoff();
@@ -514,20 +659,52 @@ document.addEventListener("DOMContentLoaded", () => {
       updateCutoffOptionLabels();
       if (cutoffRangeLabel) cutoffRangeLabel.textContent = formatRangeLabel(c.range);
 
-      await loadRecords();
-
-      // date filter defaults
-      const today = toYMD(new Date());
+      // Clear stale date filter and constrain to new period before loading
       if (dateInput) {
-        dateInput.value = isDateWithinCutoff(today, c.range) ? today : "";
+        dateInput.value = "";
         dateInput.min = toYMD(c.range.start);
         dateInput.max = toYMD(c.range.end);
       }
-
-      // manual add date constraints
       if (f_date) {
         f_date.min = toYMD(c.range.start);
         f_date.max = toYMD(c.range.end);
+      }
+
+      // Load full period to find the most recent attendance date
+      await loadRecords();
+
+      // Auto-select the most recent attendance date within the cutoff
+      if (dateInput) {
+        const latest = records
+          .map(r => r.date)
+          .filter(d => isDateWithinCutoff(d, c.range))
+          .sort()
+          .pop() || "";
+
+        const today = toYMD(new Date());
+        const preferred = latest || (isDateWithinCutoff(today, c.range) ? today : "");
+
+        if (preferred) {
+          dateInput.value = preferred;
+          pageState.page = 1;
+          await loadRecords();
+        }
+      }
+
+      if (
+        options.allowLatestFallback &&
+        latestAttendanceDate &&
+        serverMeta.total === 0 &&
+        !isDateWithinCutoff(latestAttendanceDate, c.range)
+      ) {
+        activeCutoff = null;
+        if (cutoffRangeLabel) cutoffRangeLabel.textContent = "—";
+        await loadRecords({ ignoreCutoff: true });
+        if (dateInput) {
+          dateInput.value = latestAttendanceDate;
+          dateInput.min = "";
+          dateInput.max = "";
+        }
       }
 
       render();
@@ -543,22 +720,45 @@ document.addEventListener("DOMContentLoaded", () => {
   // init cutoff defaults (only if cutoff UI exists)
   (async function initCutoffDefaults() {
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
+    const preloads = [];
     if (hasCutoffUI) {
-      await loadPayrollCalendarSettings();
+      preloads.push(loadPayrollCalendarSettings(), loadLatestAttendanceDate());
+    }
+    preloads.push(loadEmployees(), loadEmployeeFilters(), loadAttendanceCodes());
+    await Promise.all(preloads);
+
+    if (hasCutoffUI) {
       const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const latest = latestAttendanceDate;
+      const latestCutoff = latest ? findCutoffForDate(latest) : null;
+      const ym = latestCutoff
+        ? `${latestCutoff.year}-${String(latestCutoff.month).padStart(2, "0")}`
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       cutoffMonthInput.value = ym;
 
-      const day = now.getDate();
-      const cutoffBFrom = Number(payrollCalendar?.cutoff_b_from ?? 26);
-      cutoffSelect.value = day >= cutoffBFrom ? "26-10" : "11-25";
       updateCutoffOptionLabels();
+      if (cutoffSelect) {
+        if (latestCutoff) {
+          cutoffSelect.value = latestCutoff.cutoffType;
+        } else {
+          const day = now.getDate();
+          const cutoffBFrom = Number(payrollCalendar?.cutoff_b_from ?? 26);
+          const useB = day >= cutoffBFrom;
+          if (cutoffSelect.querySelector('option[value="B"]')) {
+            cutoffSelect.value = useB ? "B" : "A";
+          } else {
+            cutoffSelect.value = useB ? "26-10" : "11-25";
+          }
+        }
+      }
     }
-    await loadEmployees();
-    await loadAttendanceCodes();
     initEmployeeSelect();
     if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
-    await refreshActiveCutoffAndLoad();
+    populateAssignTypeOptions();
+    populateAreaPlaceOptions();
+    buildAssignmentSeg();
+    bindSegButtons();
+    await refreshActiveCutoffAndLoad({ allowLatestFallback: true });
   })();
 
   cutoffMonthInput && cutoffMonthInput.addEventListener("change", () => { refreshActiveCutoffAndLoad(); });
@@ -583,6 +783,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (status === "Late") return `<span class="chip chip--late">Late</span>`;
     if (status === "Absent") return `<span class="chip chip--absent">Absent</span>`;
     if (status === "Unpaid Leave") return `<span class="chip chip--unpaid">Unpaid Leave</span>`;
+    if (status === "RNR") return `<span class="chip chip--unpaid">RNR</span>`;
     if (status === "Paid Leave") return `<span class="chip chip--paid">Paid Leave</span>`;
     if (status === "Half-day") return `<span class="chip chip--halfday">Half-day</span>`;
     if (status === "Day Off") return `<span class="chip chip--off">Day Off</span>`;
@@ -692,49 +893,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // FILTER + RENDER MAIN TABLE
   // =========================================================
-  function applyFilters(list) {
-    const dateVal = dateInput?.value || "";
-    const statusVal = statusFilter?.value || "All";
-    const q = normalize(searchInput?.value || "");
-    const areaVal = areaPlaceFilter?.value || "All";
-
-    return list.filter(r => {
-      const okDate = !dateVal || r.date === dateVal;
-      const okStatus = statusVal === "All" || r.status === statusVal;
-      const okAssign = assignmentFilter === "All" || r.assignType === assignmentFilter;
-      const okArea =
-        assignmentFilter !== "Area" ||
-        areaVal === "All" ||
-        (r.areaPlace || "") === areaVal;
-
-      const text = normalize(
-        `${r.empId} ${r.empName} ${r.department || ""} ${r.position || ""} ${r.date} ${r.timeIn || ""} ${r.timeOut || ""} ${r.status} ${assignmentText(r)} ${r.code || ""}`
-      );
-      const okSearch = !q || text.includes(q);
-
-      return okDate && okStatus && okAssign && okArea && okSearch;
-    });
-  }
-
   function getFilterSignature() {
+    const cutoffSig = activeCutoff
+      ? `${toYMD(activeCutoff.range.start)}_${toYMD(activeCutoff.range.end)}`
+      : "";
     return [
+      cutoffSig,
       dateInput?.value || "",
       statusFilter?.value || "",
       searchInput?.value || "",
       assignmentFilter || "",
       areaPlaceFilter?.value || "",
+      pageState.page || 1,
+      pageState.rows || 20,
     ].join("|");
-  }
-
-  function applyPagination(list) {
-    const total = list.length;
-    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
-    pageState.rows = rows;
-    const totalPages = Math.max(1, Math.ceil(total / rows));
-    pageState.page = Math.min(Math.max(1, pageState.page), totalPages);
-    const start = (pageState.page - 1) * rows;
-    const end = start + rows;
-    return { total, totalPages, slice: list.slice(start, end) };
   }
 
   function render() {
@@ -746,34 +918,42 @@ document.addEventListener("DOMContentLoaded", () => {
       lastFilterSig = sig;
     }
 
-    const filtered = applyFilters(records);
+    const filtered = records;
     const sorted = applySorting(filtered);
-    const paged = applyPagination(sorted);
+    const totalPages = Math.max(1, Number(serverMeta.total_pages || 1));
 
-    if (statTotal) statTotal.textContent = filtered.length;
-    if (statPresent) statPresent.textContent = filtered.filter(r => ["Present", "Half-day"].includes(r.status)).length;
-    if (statLate) statLate.textContent = filtered.filter(r => r.status === "Late").length;
-    if (statAbsent) statAbsent.textContent = filtered.filter(r => r.status === "Absent").length;
-    if (statLeave) {
-      const leaveSet = new Set(["Leave", "Unpaid Leave", "Paid Leave", "LOA", "Holiday", "Day Off"]);
-      statLeave.textContent = filtered.filter(r => leaveSet.has(r.status)).length;
+    if (serverMeta.stats) {
+      if (statTotal) statTotal.textContent = serverMeta.stats.total ?? 0;
+      if (statPresent) statPresent.textContent = serverMeta.stats.present ?? 0;
+      if (statLate) statLate.textContent = serverMeta.stats.late ?? 0;
+      if (statAbsent) statAbsent.textContent = serverMeta.stats.absent ?? 0;
+      if (statLeave) statLeave.textContent = serverMeta.stats.leave ?? 0;
+    } else {
+      if (statTotal) statTotal.textContent = filtered.length;
+      if (statPresent) statPresent.textContent = filtered.filter(r => ["Present", "Half-day"].includes(r.status)).length;
+      if (statLate) statLate.textContent = filtered.filter(r => r.status === "Late").length;
+      if (statAbsent) statAbsent.textContent = filtered.filter(r => r.status === "Absent").length;
+      if (statLeave) {
+        const leaveSet = new Set(["Leave", "Unpaid Leave", "RNR", "Paid Leave", "LOA", "Holiday", "Day Off"]);
+        statLeave.textContent = filtered.filter(r => leaveSet.has(r.status)).length;
+      }
     }
 
-    if (resultsMeta) resultsMeta.textContent = `Showing ${filtered.length} record(s)`;
+    if (resultsMeta) resultsMeta.textContent = `Showing ${serverMeta.total ?? filtered.length} record(s)`;
     if (attFooterInfo) {
-      attFooterInfo.textContent = `Page ${pageState.page} of ${paged.totalPages}`;
+      attFooterInfo.textContent = `Page ${serverMeta.page || pageState.page} of ${totalPages}`;
     }
-    if (attPageTotal) attPageTotal.textContent = `/ ${paged.totalPages}`;
-    if (attPageInput) attPageInput.value = String(pageState.page);
-    if (attFirst) attFirst.disabled = pageState.page <= 1;
-    if (attPrev) attPrev.disabled = pageState.page <= 1;
-    if (attNext) attNext.disabled = pageState.page >= paged.totalPages;
-    if (attLast) attLast.disabled = pageState.page >= paged.totalPages;
+    if (attPageTotal) attPageTotal.textContent = `/ ${totalPages}`;
+    if (attPageInput) attPageInput.value = String(serverMeta.page || pageState.page);
+    if (attFirst) attFirst.disabled = (serverMeta.page || pageState.page) <= 1;
+    if (attPrev) attPrev.disabled = (serverMeta.page || pageState.page) <= 1;
+    if (attNext) attNext.disabled = (serverMeta.page || pageState.page) >= totalPages;
+    if (attLast) attLast.disabled = (serverMeta.page || pageState.page) >= totalPages;
 
     const selected = new Set(selectedIds());
     tbody.innerHTML = "";
 
-    paged.slice.forEach(r => {
+    sorted.forEach(r => {
       const tr = document.createElement("tr");
       tr.dataset.empId = r.empId;
       tr.innerHTML = `
@@ -817,29 +997,35 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Pagination events
-  attRowsSelect && attRowsSelect.addEventListener("change", () => {
+  attRowsSelect && attRowsSelect.addEventListener("change", async () => {
     pageState.page = 1;
+    await loadRecords();
     render();
   });
-  attFirst && attFirst.addEventListener("click", () => {
+  attFirst && attFirst.addEventListener("click", async () => {
     pageState.page = 1;
+    await loadRecords();
     render();
   });
-  attPrev && attPrev.addEventListener("click", () => {
-    pageState.page = Math.max(1, pageState.page - 1);
+  attPrev && attPrev.addEventListener("click", async () => {
+    pageState.page = Math.max(1, (serverMeta.page || pageState.page) - 1);
+    await loadRecords();
     render();
   });
-  attNext && attNext.addEventListener("click", () => {
-    pageState.page = pageState.page + 1;
+  attNext && attNext.addEventListener("click", async () => {
+    pageState.page = (serverMeta.page || pageState.page) + 1;
+    await loadRecords();
     render();
   });
-  attLast && attLast.addEventListener("click", () => {
+  attLast && attLast.addEventListener("click", async () => {
     pageState.page = Number.MAX_SAFE_INTEGER;
+    await loadRecords();
     render();
   });
-  attPageInput && attPageInput.addEventListener("change", () => {
+  attPageInput && attPageInput.addEventListener("change", async () => {
     const n = Number(attPageInput.value || 1);
     pageState.page = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+    await loadRecords();
     render();
   });
 
@@ -891,10 +1077,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function populateAreaFilter(selectEl) {
     if (!selectEl) return;
     const current = selectEl.value;
-    const fromEmployees = employees
-      .filter(e => e.assignmentType === "Area" && e.areaPlace)
-      .map(e => e.areaPlace);
-    const unique = Array.from(new Set(fromEmployees));
+    const unique = Array.from(new Set(areaPlaceOptions.filter(x => String(x || "").trim() !== "")));
 
     selectEl.innerHTML =
       `<option value="All" selected>All</option>` +
@@ -902,6 +1085,49 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (current && (current === "All" || unique.includes(current))) {
       selectEl.value = current;
+    }
+  }
+
+  function buildAssignmentSeg() {
+    if (!segContainer) return;
+    const opts = Array.from(new Set(["All", ...assignmentOptions.filter(x => String(x || "").trim() !== "")]));
+
+    segContainer.innerHTML = "";
+    opts.forEach((label, idx) => {
+      const btn = document.createElement("button");
+      btn.className = `seg__btn${idx === 0 ? " is-active" : ""}`;
+      btn.type = "button";
+      btn.dataset.assign = label;
+      btn.setAttribute("role", "tab");
+      btn.setAttribute("aria-selected", idx === 0 ? "true" : "false");
+      btn.textContent = label;
+      segContainer.appendChild(btn);
+    });
+
+    segBtns = Array.from(segContainer.querySelectorAll(".seg__btn[data-assign]"));
+  }
+
+  function populateAssignTypeOptions() {
+    if (!f_assignType) return;
+    const current = f_assignType.value;
+    const opts = Array.from(new Set(assignmentOptions.filter(x => String(x || "").trim() !== "")));
+    f_assignType.innerHTML =
+      `<option value="">—</option>` +
+      opts.map(o => `<option value="${o}">${o}</option>`).join("");
+    if (current && opts.includes(current)) {
+      f_assignType.value = current;
+    }
+  }
+
+  function populateAreaPlaceOptions() {
+    if (!f_areaPlace) return;
+    const current = f_areaPlace.value;
+    const opts = Array.from(new Set(areaPlaceOptions.filter(x => String(x || "").trim() !== "")));
+    f_areaPlace.innerHTML =
+      `<option value="">—</option>` +
+      opts.map(o => `<option value="${o}">${o}</option>`).join("");
+    if (current && opts.includes(current)) {
+      f_areaPlace.value = current;
     }
   }
 
@@ -913,30 +1139,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (areaPlaceFilter) {
     populateAreaFilter(areaPlaceFilter);
-    areaPlaceFilter.addEventListener("change", render);
+    areaPlaceFilter.addEventListener("change", async () => {
+      pageState.page = 1;
+      await loadRecords();
+      render();
+    });
   }
   setAreaFilterVisibility(assignmentFilter === "Area");
 
-  segBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      segBtns.forEach(b => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
+  function bindSegButtons() {
+    segBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        segBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
 
-      assignmentFilter = btn.dataset.assign || "All";
-      if (assignmentFilter === "Area") {
-        setAreaFilterVisibility(true);
-        if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
-      } else {
-        setAreaFilterVisibility(false);
-        if (areaPlaceFilter) areaPlaceFilter.value = "All";
-      }
-      segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
-      render();
+        assignmentFilter = btn.dataset.assign || "All";
+        if (assignmentFilter === "Area") {
+          setAreaFilterVisibility(true);
+          if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
+        } else {
+          setAreaFilterVisibility(false);
+          if (areaPlaceFilter) areaPlaceFilter.value = "All";
+        }
+        segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+        pageState.page = 1;
+        loadRecords().then(render);
+      });
     });
-  });
+  }
 
-  [dateInput, statusFilter].forEach(el => el && el.addEventListener("change", render));
-  searchInput && searchInput.addEventListener("input", render);
+
+  [dateInput, statusFilter].forEach(el => el && el.addEventListener("change", async () => {
+    pageState.page = 1;
+    await loadRecords();
+    render();
+  }));
+  searchInput && searchInput.addEventListener("input", async () => {
+    pageState.page = 1;
+    await loadRecords();
+    render();
+  });
 
   // =========================================================
   // CHECKBOX + BULK
@@ -974,6 +1216,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const newStatus = bulkStatusSelectInline.value;
     if (!ids.length || !newStatus) return;
 
+    if (newStatus === "RNR") {
+      const updates = records.filter(r => ids.includes(r.id));
+      const invalid = updates.filter(r => r.assignType !== "Area");
+      if (invalid.length) {
+        alert("RNR is only allowed for Area employees.");
+        return;
+      }
+    }
+
     try {
       const updates = records.filter(r => ids.includes(r.id));
       await Promise.all(updates.map(r =>
@@ -1002,6 +1253,58 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // ✅ MANUAL DRAWER (Add button works)
   // =========================================================
+  async function resolveAndPopulateArea() {
+    if (!f_areaPlace || !f_employee || !f_date) return;
+    const employeeId = f_employee.value;
+    const date = f_date.value;
+    if (!employeeId || !date) return;
+
+    if (areaPlaceHint) areaPlaceHint.style.display = "";
+    try {
+      const data = await apiFetch(`/attendance/area?employee_id=${encodeURIComponent(employeeId)}&date=${encodeURIComponent(date)}`);
+      const resolved = data?.area_place || "";
+      if (resolved) {
+        if (!Array.from(f_areaPlace.options).some(o => o.value === resolved)) {
+          const opt = document.createElement("option");
+          opt.value = resolved;
+          opt.textContent = resolved;
+          f_areaPlace.appendChild(opt);
+        }
+        f_areaPlace.value = resolved;
+      }
+    } catch {
+      // silently ignore resolve errors
+    } finally {
+      if (areaPlaceHint) areaPlaceHint.style.display = "none";
+    }
+  }
+
+  async function fetchPLBalance(empNo, year) {
+    currentPLRemaining = null;
+    if (plBalanceWrap) plBalanceWrap.style.display = "none";
+    try {
+      const data = await apiFetch(`/employees/${encodeURIComponent(empNo)}/pl-balance?year=${year}`);
+      if (!data.applicable) return;
+      currentPLRemaining = data.remaining;
+      if (plBalanceInfo) {
+        plBalanceInfo.textContent = `Paid Leave: ${data.remaining} of ${data.total} days remaining (${data.year})`;
+        plBalanceInfo.style.color = data.remaining <= 0 ? "var(--danger,#c0392b)" : "var(--muted,#666)";
+      }
+      if (plBalanceWrap) plBalanceWrap.style.display = "";
+    } catch { /* silent */ }
+  }
+
+  function syncPLBalance() {
+    const emp = getEmpById(f_employee?.value);
+    if (emp && emp.employmentType.toLowerCase() === "regular" && ["Tagum", "Davao"].includes(emp.assignmentType)) {
+      const year = f_date?.value ? new Date(f_date.value + "T00:00:00").getFullYear() : new Date().getFullYear();
+      fetchPLBalance(emp.empNo, year);
+    } else {
+      currentPLRemaining = null;
+      if (plBalanceWrap) plBalanceWrap.style.display = "none";
+    }
+  }
+
   function syncAssignmentFromEmployee() {
     if (!f_employee) return;
     const emp = getEmpById(f_employee.value);
@@ -1009,24 +1312,43 @@ document.addEventListener("DOMContentLoaded", () => {
       if (f_assignType) f_assignType.value = "";
       if (f_areaPlace) f_areaPlace.value = "";
       if (areaWrap) areaWrap.hidden = true;
+      currentPLRemaining = null;
+      if (plBalanceWrap) plBalanceWrap.style.display = "none";
+      if (f_status) {
+        const opt = Array.from(f_status.options).find(o => o.value === "RNR");
+        if (opt) opt.disabled = true;
+      }
       return;
     }
     if (f_assignType) {
-      f_assignType.value = emp.assignmentType || "";
+      const assignVal = emp.assignmentType || "";
+      if (assignVal && !Array.from(f_assignType.options).some(o => o.value === assignVal)) {
+        const opt = document.createElement("option");
+        opt.value = assignVal;
+        opt.textContent = assignVal;
+        f_assignType.appendChild(opt);
+      }
+      f_assignType.value = assignVal;
       f_assignType.disabled = true;
     }
     if (f_areaPlace) {
-      const areaVal = emp.areaPlace || "";
-      if (areaVal && !Array.from(f_areaPlace.options).some(o => o.value === areaVal)) {
-        const opt = document.createElement("option");
-        opt.value = areaVal;
-        opt.textContent = areaVal;
-        f_areaPlace.appendChild(opt);
+      if (emp.assignmentType === "Area") {
+        f_areaPlace.disabled = false;
+        resolveAndPopulateArea();
+      } else {
+        f_areaPlace.value = "";
+        f_areaPlace.disabled = true;
       }
-      f_areaPlace.value = areaVal;
-      f_areaPlace.disabled = true;
     }
     if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Area";
+    if (f_status) {
+      const opt = Array.from(f_status.options).find(o => o.value === "RNR");
+      if (opt) opt.disabled = emp.assignmentType !== "Area";
+      if (emp.assignmentType !== "Area" && f_status.value === "RNR") {
+        f_status.value = "";
+      }
+    }
+    syncPLBalance();
   }
 
   function openDrawer(mode, record) {
@@ -1083,7 +1405,27 @@ document.addEventListener("DOMContentLoaded", () => {
       f_date.value = record.date;
       f_status.value = record.status;
       f_notes.value = record.notes || "";
-      syncAssignmentFromEmployee();
+
+      const emp = getEmpById(record.employeeId || "");
+      if (emp?.assignmentType === "Area") {
+        if (areaWrap) areaWrap.hidden = false;
+        if (f_areaPlace) f_areaPlace.disabled = false;
+        if (record.areaPlace) {
+          // Populate with the saved snapshot — do NOT re-resolve
+          if (!Array.from(f_areaPlace.options).some(o => o.value === record.areaPlace)) {
+            const opt = document.createElement("option");
+            opt.value = record.areaPlace;
+            opt.textContent = record.areaPlace;
+            f_areaPlace.appendChild(opt);
+          }
+          f_areaPlace.value = record.areaPlace;
+        } else {
+          // No snapshot yet — resolve from history
+          resolveAndPopulateArea();
+        }
+      } else {
+        syncAssignmentFromEmployee();
+      }
     }
   }
 
@@ -1093,6 +1435,8 @@ document.addEventListener("DOMContentLoaded", () => {
     drawer.setAttribute("aria-hidden", "true");
     if (drawerOverlay) drawerOverlay.hidden = true;
     document.body.style.overflow = "";
+    currentPLRemaining = null;
+    if (plBalanceWrap) plBalanceWrap.style.display = "none";
   }
 
   function validateForm() {
@@ -1119,6 +1463,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
+    const emp = getEmpById(employeeId);
+    if (status === "RNR" && emp?.assignmentType !== "Area") {
+      if (errStatus) errStatus.textContent = "RNR is only allowed for Area employees.";
+      ok = false;
+    }
 
     return ok;
   }
@@ -1132,9 +1481,22 @@ document.addEventListener("DOMContentLoaded", () => {
     syncAssignmentFromEmployee();
   });
 
+  f_date && f_date.addEventListener("change", () => {
+    const emp = getEmpById(f_employee?.value);
+    if (emp?.assignmentType === "Area") {
+      resolveAndPopulateArea();
+    }
+    syncPLBalance();
+  });
+
   // ✅ Save button now updates table immediately
   saveBtn && saveBtn.addEventListener("click", async () => {
     if (!validateForm()) return;
+
+    if (f_status?.value === "Paid Leave" && currentPLRemaining !== null && currentPLRemaining <= 0) {
+      alert("Cannot save: Paid Leave balance is exhausted (0 days remaining).");
+      return;
+    }
 
     const id = editingId.value;
     const employeeId = f_employee.value;
@@ -1144,6 +1506,7 @@ document.addEventListener("DOMContentLoaded", () => {
       employee_id: Number(employeeId),
       date: f_date.value,
       status: mapped.status,
+      area_place: f_areaPlace?.value || null,
       clock_in: null,
       clock_out: null,
       minutes_late: 0,
@@ -1212,6 +1575,86 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.style.overflow = "";
   }
 
+  function assignmentPreviewText(r) {
+    if (r.assignType === "Area") return r.areaPlace || "—";
+    return r.assignType || "—";
+  }
+
+  function openKpiPreview() {
+    if (!kpiPreviewDrawer || !kpiPreviewOverlay || !kpiPreviewTbody) return;
+    kpiPreviewDrawer.classList.add("is-open");
+    kpiPreviewDrawer.setAttribute("aria-hidden", "false");
+    kpiPreviewOverlay.hidden = false;
+    document.body.style.overflow = "hidden";
+
+    const total = serverMeta?.total ?? records.length;
+    if (kpiPreviewTitle) {
+      kpiPreviewTitle.textContent = `Total Records Preview (${total})`;
+    }
+
+    kpiPreviewTbody.innerHTML = "";
+    if (!records.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="muted small">No records to preview.</td>`;
+      kpiPreviewTbody.appendChild(tr);
+      return;
+    }
+
+    const grouped = new Map();
+    records.forEach(r => {
+      const day = r.date || "—";
+      const assign = assignmentPreviewText(r);
+      const key = `${day}||${assign}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(r);
+    });
+
+    Array.from(grouped.entries())
+      .sort((a, b) => {
+        const [aDate, aAssign] = a[0].split("||");
+        const [bDate, bAssign] = b[0].split("||");
+        if (aDate !== bDate) return String(bDate).localeCompare(String(aDate));
+        const order = { "Davao": 1, "Tagum": 2 };
+        const ao = order[aAssign] || 99;
+        const bo = order[bAssign] || 99;
+        if (ao !== bo) return ao - bo;
+        return String(aAssign).localeCompare(String(bAssign));
+      })
+      .forEach(([key, items]) => {
+        const [day, assign] = key.split("||");
+
+        const header = document.createElement("tr");
+        header.classList.add("kpiPreviewGroup");
+        header.innerHTML = `
+          <td colspan="5">
+            ${escapeHtml(day)} • ${escapeHtml(assign)}
+          </td>
+        `;
+        kpiPreviewTbody.appendChild(header);
+
+        items.forEach(r => {
+          const tr = document.createElement("tr");
+          const inOut = `${r.timeIn || "—"} / ${r.timeOut || "—"}`;
+          tr.innerHTML = `
+            <td>${escapeHtml(r.date || "—")}</td>
+            <td>${escapeHtml(assignmentPreviewText(r))}</td>
+            <td>${escapeHtml(r.empName || "—")}</td>
+            <td>${escapeHtml(r.department || "—")}</td>
+            <td>${escapeHtml(inOut)}</td>
+          `;
+          kpiPreviewTbody.appendChild(tr);
+        });
+      });
+  }
+
+  function closeKpiPreview() {
+    if (!kpiPreviewDrawer || !kpiPreviewOverlay) return;
+    kpiPreviewDrawer.classList.remove("is-open");
+    kpiPreviewDrawer.setAttribute("aria-hidden", "true");
+    kpiPreviewOverlay.hidden = true;
+    document.body.style.overflow = "";
+  }
+
   function parseDateOk(yyyy_mm_dd) {
     return /^\d{4}-\d{2}-\d{2}$/.test(yyyy_mm_dd || "");
   }
@@ -1222,6 +1665,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "Absent",
       "Leave",
       "Unpaid Leave",
+      "RNR",
       "Paid Leave",
       "Half-day",
       "Day Off",
@@ -1283,6 +1727,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const hasStatus = !!String(r.status || "").trim();
     if (!hasCode && !hasStatus) issues.push(`Row ${r.rowNo}: Provide either Code or Status`);
     if (!hasCode && hasStatus && !isValidStatus(r.status)) issues.push(`Row ${r.rowNo}: Invalid status "${r.status}"`);
+
+    const mapped = mapAttendanceCode(r.code, r.status);
+    const finalStatus = mapped.status || (r.status || "");
+    const emp = r.empId ? getEmpByNo(r.empId) : null;
+    if (finalStatus === "RNR" && emp?.assignmentType !== "Area") {
+      issues.push(`Row ${r.rowNo}: RNR is only allowed for Area employees`);
+    }
 
     return issues;
   }
@@ -1437,14 +1888,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const f = getImportFilters();
-    if (!f.month || !f.cutoff) {
-      alert("Please select a payroll month and cutoff.");
-      return;
-    }
 
     const fd = new FormData();
-    fd.append("month", f.month);
-    fd.append("cutoff", f.cutoff);
     fd.append("assignment", f.assignment);
     fd.append("area", f.area);
     fd.append("file", file);
@@ -1560,14 +2005,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   downloadTemplateBtn && downloadTemplateBtn.addEventListener("click", () => {
-    const f = getImportFilters();
-    if (!f.month || !f.cutoff) {
-      alert("Please select a payroll month and cutoff.");
+    const date = dateInput?.value || "";
+    if (!date) {
+      alert("Please select a date first.");
       return;
     }
+    const f = getImportFilters();
     const qs = new URLSearchParams({
-      month: f.month,
-      cutoff: f.cutoff,
+      date,
       assignment: f.assignment,
       area: f.area,
     });
@@ -1580,6 +2025,14 @@ document.addEventListener("DOMContentLoaded", () => {
     previewOverlay && previewOverlay.addEventListener("click", closePreview);
   }
   bindPreviewClose();
+
+  function bindKpiPreview() {
+    statTotalBtn && statTotalBtn.addEventListener("click", openKpiPreview);
+    closeKpiPreviewBtn && closeKpiPreviewBtn.addEventListener("click", closeKpiPreview);
+    closeKpiPreviewFooter && closeKpiPreviewFooter.addEventListener("click", closeKpiPreview);
+    kpiPreviewOverlay && kpiPreviewOverlay.addEventListener("click", closeKpiPreview);
+  }
+  bindKpiPreview();
 
   showErrorsOnlyBtn && showErrorsOnlyBtn.addEventListener("click", () => {
     previewMode = "errors";
@@ -1639,7 +2092,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return mins > 0 ? mins / 60 : 0;
   }
 
-  function openEmpDrawer(empId) {
+  async function openEmpDrawer(empId) {
     currentEmpId = empId;
 
     const emp = getEmpByNo(empId);
@@ -1672,10 +2125,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     if (empCutoffSelect && !empCutoffSelect.value) {
-      empCutoffSelect.value = cutoffSelect?.value || "11-25";
+      empCutoffSelect.value = cutoffSelect?.value || (empCutoffSelect.querySelector('option[value="A"]') ? "A" : "11-25");
     }
     updateEmpCutoffOptionLabels();
 
+    await loadEmpRecords();
     renderEmpRecords();
 
     if (empDrawer) {
@@ -1694,21 +2148,50 @@ document.addEventListener("DOMContentLoaded", () => {
     if (empOverlay) empOverlay.hidden = true;
     document.body.style.overflow = "";
     currentEmpId = "";
+    empRecords = [];
   }
 
   closeEmpDrawerBtn && closeEmpDrawerBtn.addEventListener("click", closeEmpDrawer);
   closeEmpDrawerFooter && closeEmpDrawerFooter.addEventListener("click", closeEmpDrawer);
   empOverlay && empOverlay.addEventListener("click", closeEmpDrawer);
 
-  empCutoffMonthInput && empCutoffMonthInput.addEventListener("change", () => renderEmpRecords());
-  empCutoffSelect && empCutoffSelect.addEventListener("change", () => renderEmpRecords());
+  empCutoffMonthInput && empCutoffMonthInput.addEventListener("change", async () => {
+    updateEmpCutoffOptionLabels();
+    await loadEmpRecords();
+    renderEmpRecords();
+  });
+  empCutoffSelect && empCutoffSelect.addEventListener("change", async () => {
+    updateEmpCutoffOptionLabels();
+    await loadEmpRecords();
+    renderEmpRecords();
+  });
 
   function getEmpActiveCutoff() {
     const ym = parseYM(empCutoffMonthInput?.value);
-    const cutoffType = empCutoffSelect?.value || "11-25";
+    const cutoffType = empCutoffSelect?.value || "A";
     if (!ym) return null;
     const range = getCutoffRange(ym.y, ym.m, cutoffType);
     return { year: ym.y, month: ym.m, cutoffType, range };
+  }
+
+  async function loadEmpRecords() {
+    if (!currentEmpId) return;
+    const emp = getEmpByNo(currentEmpId);
+    const empId = emp?.id || "";
+    const empCutoff = getEmpActiveCutoff();
+
+    const qs = new URLSearchParams();
+    if (empId) qs.set("employee_id", empId);
+    if (empCutoff) {
+      qs.set("month", `${empCutoff.year}-${String(empCutoff.month).padStart(2, "0")}`);
+      qs.set("cutoff", empCutoff.cutoffType);
+    }
+    qs.set("per_page", "200");
+    qs.set("page", "1");
+
+    const url = `/attendance/records?${qs.toString()}`;
+    const res = await apiFetch(url);
+    empRecords = Array.isArray(res?.data) ? res.data.map(mapRecordApi) : [];
   }
 
   function renderEmpRecords() {
@@ -1719,8 +2202,7 @@ document.addEventListener("DOMContentLoaded", () => {
       empCutoffRangeLabel.textContent = empCutoff ? formatRangeLabel(empCutoff.range) : "—";
     }
 
-    const list = records
-      .filter(r => r.empId === currentEmpId)
+    const list = empRecords
       .filter(r => !empCutoff || isDateWithinCutoff(r.date, empCutoff.range))
       .slice()
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -1734,6 +2216,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "Absent",
       "Leave",
       "Unpaid Leave",
+      "RNR",
       "Paid Leave",
       "Day Off",
       "Holiday",
@@ -1752,9 +2235,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const timeInDisplay = showStatus ? statusLabel : (r.timeIn || "—");
       const timeOutDisplay = showStatus ? "—" : (r.timeOut || "—");
 
+      const areaDisplay = r.assignType === "Area" ? (r.areaPlace || "—") : (r.assignType || "—");
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(r.date || "—")}</td>
+        <td>${escapeHtml(areaDisplay)}</td>
         <td>${escapeHtml(timeInDisplay)}</td>
         <td>${escapeHtml(timeOutDisplay)}</td>
         <td class="num">${escapeHtml(formatHours(ot))}</td>
@@ -1765,7 +2251,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!list.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="5" class="muted small">No attendance records found.</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">No attendance records found.</td>`;
       empTbody.appendChild(tr);
     }
 

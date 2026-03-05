@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceRecord;
 use App\Models\Employee;
+use App\Models\EmployeeAreaHistory;
 use App\Models\EmploymentStatus;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 
@@ -229,6 +232,100 @@ class EmployeeController extends Controller
         ]);
     }
 
+    public function areaHistory(string $empNo)
+    {
+        $employee = Employee::where('emp_no', $empNo)->firstOrFail();
+
+        // Build area history directly from attendance records —
+        // same source as the DTR drawer, so they always match.
+        $records = AttendanceRecord::where('employee_id', $employee->id)
+            ->whereNotNull('area_place')
+            ->where('area_place', '<>', '')
+            ->orderBy('date')
+            ->pluck('area_place', 'date');
+
+        if ($records->isNotEmpty()) {
+            // Collapse into change-point entries (first date each area started)
+            $entries = [];
+            $prevArea = null;
+            foreach ($records as $date => $area) {
+                if ($area !== $prevArea) {
+                    $entries[] = ['area_place' => $area, 'effective_date' => $date];
+                    $prevArea = $area;
+                }
+            }
+            return response()->json(array_reverse($entries));
+        }
+
+        // Fallback: no attendance records yet — use formal history table
+        $history = EmployeeAreaHistory::where('employee_id', $employee->id)
+            ->orderByDesc('effective_date')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get(['id', 'area_place', 'effective_date', 'created_at'])
+            ->map(fn($h) => [
+                'area_place'     => $h->area_place,
+                'effective_date' => $h->effective_date?->format('Y-m-d'),
+            ]);
+
+        return response()->json($history);
+    }
+
+    public function paidLeaveBalances(Request $request)
+    {
+        $year = $request->integer('year', now()->year);
+
+        $employees = Employee::query()
+            ->whereIn('assignment_type', ['Tagum', 'Davao'])
+            ->whereRaw('LOWER(TRIM(COALESCE(employment_type,""))) = ?', ['regular'])
+            ->where(function ($q) {
+                $q->whereNull('status')
+                  ->orWhereRaw('LOWER(status) NOT IN (?,?)', ['inactive', 'resigned']);
+            })
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'emp_no', 'first_name', 'middle_name', 'last_name', 'assignment_type']);
+
+        $usedCounts = \App\Models\AttendanceRecord::whereIn('employee_id', $employees->pluck('id'))
+            ->where('status', 'Paid Leave')
+            ->whereYear('date', $year)
+            ->groupBy('employee_id')
+            ->selectRaw('employee_id, COUNT(*) as used')
+            ->pluck('used', 'employee_id');
+
+        return response()->json($employees->map(fn($emp) => [
+            'emp_no'          => $emp->emp_no,
+            'name'            => trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : '')),
+            'assignment_type' => $emp->assignment_type,
+            'total'           => 5,
+            'used'            => (int) ($usedCounts[$emp->id] ?? 0),
+            'remaining'       => 5 - (int) ($usedCounts[$emp->id] ?? 0),
+        ]));
+    }
+
+    public function paidLeaveBalance(string $empNo, Request $request)
+    {
+        $employee = Employee::where('emp_no', $empNo)->firstOrFail();
+        $isRegular = strtolower((string) ($employee->employment_type ?? '')) === 'regular';
+        $isTagumOrDavao = in_array($employee->assignment_type, ['Tagum', 'Davao'], true);
+        if (!$isRegular || !$isTagumOrDavao) {
+            return response()->json(['applicable' => false]);
+        }
+        $year  = $request->integer('year', now()->year);
+        $total = 5;
+        $used  = \App\Models\AttendanceRecord::where('employee_id', $employee->id)
+            ->where('status', 'Paid Leave')
+            ->whereYear('date', $year)
+            ->count();
+        return response()->json([
+            'applicable' => true,
+            'total'      => $total,
+            'used'       => $used,
+            'remaining'  => $total - $used,
+            'year'       => $year,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $this->validateEmployee($request);
@@ -238,7 +335,22 @@ class EmployeeController extends Controller
             $validated['employment_status_id'] = $statusId;
         }
 
+        if (($validated['assignment_type'] ?? '') !== 'Area' ||
+            strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
+            $validated['external_area'] = null;
+        }
+
         $employee = Employee::create($validated);
+
+        if (($validated['assignment_type'] ?? '') === 'Area' && !empty($validated['area_place'])) {
+            EmployeeAreaHistory::create([
+                'employee_id'    => $employee->id,
+                'area_place'     => $validated['area_place'],
+                'effective_date' => now()->toDateString(),
+                'created_by'     => Auth::id(),
+            ]);
+        }
+
         $this->forgetEmployeeCaches();
 
         return response()->json($employee, 201);
@@ -247,6 +359,7 @@ class EmployeeController extends Controller
     public function update(Request $request, string $empNo)
     {
         $employee = Employee::where('emp_no', $empNo)->firstOrFail();
+        $oldAreaPlace = $employee->area_place;
         $validated = $this->validateEmployee($request, $employee->id);
 
         if (empty($validated['employment_status_id']) && !empty($validated['status'])) {
@@ -254,7 +367,38 @@ class EmployeeController extends Controller
             $validated['employment_status_id'] = $statusId;
         }
 
+        if (($validated['assignment_type'] ?? '') !== 'Area' ||
+            strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
+            $validated['external_area'] = null;
+        }
+
         $employee->update($validated);
+
+        if (($validated['assignment_type'] ?? '') === 'Area'
+            && !empty($validated['area_place'])
+            && $validated['area_place'] !== $oldAreaPlace
+        ) {
+            // If no history exists yet, backfill the previous area starting from hire date
+            if (!empty($oldAreaPlace) && !EmployeeAreaHistory::where('employee_id', $employee->id)->exists()) {
+                $startDate = $employee->date_hired
+                    ? $employee->date_hired->format('Y-m-d')
+                    : $employee->created_at->toDateString();
+                EmployeeAreaHistory::create([
+                    'employee_id'    => $employee->id,
+                    'area_place'     => $oldAreaPlace,
+                    'effective_date' => $startDate,
+                    'created_by'     => Auth::id(),
+                ]);
+            }
+
+            EmployeeAreaHistory::create([
+                'employee_id'    => $employee->id,
+                'area_place'     => $validated['area_place'],
+                'effective_date' => now()->toDateString(),
+                'created_by'     => Auth::id(),
+            ]);
+        }
+
         $this->forgetEmployeeCaches();
 
         return response()->json($employee);
@@ -278,6 +422,32 @@ class EmployeeController extends Controller
             $update['area_place'] = null;
         }
 
+        if ($assignment === 'Area' && $areaPlace) {
+            $today = now()->toDateString();
+            $userId = Auth::id();
+            $now = now();
+
+            $affected = Employee::whereIn('emp_no', $validated['ids'])
+                ->where(function ($q) use ($areaPlace) {
+                    $q->where('area_place', '!=', $areaPlace)
+                      ->orWhereNull('area_place');
+                })
+                ->get(['id']);
+
+            if ($affected->isNotEmpty()) {
+                $historyRows = $affected->map(fn($e) => [
+                    'employee_id'    => $e->id,
+                    'area_place'     => $areaPlace,
+                    'effective_date' => $today,
+                    'created_by'     => $userId,
+                    'created_at'     => $now,
+                    'updated_at'     => $now,
+                ])->all();
+
+                EmployeeAreaHistory::insert($historyRows);
+            }
+        }
+
         $updated = Employee::whereIn('emp_no', $validated['ids'])
             ->update($update);
 
@@ -293,6 +463,16 @@ class EmployeeController extends Controller
         $this->forgetEmployeeCaches();
 
         return response()->json(['deleted' => true]);
+    }
+
+    private function externalAreaRequiredRule(Request $request): array
+    {
+        $assignmentType = $request->input('assignment_type', '');
+        $employmentType = strtolower(trim((string) $request->input('employment_type', '')));
+        if ($assignmentType === 'Area' && $employmentType === 'regular') {
+            return ['required'];
+        }
+        return [];
     }
 
     private function forgetEmployeeCaches(): void
@@ -328,6 +508,13 @@ class EmployeeController extends Controller
             'date_hired' => ['nullable', 'date'],
             'assignment_type' => ['required', Rule::in(Assignment::where('is_active', true)->pluck('label')->all())],
             'area_place' => ['nullable', 'string', 'max:255', Rule::in(AreaPlace::where('is_active', true)->pluck('label')->all())],
+            'external_area' => array_merge(
+                ['nullable', 'string', 'max:255'],
+                AreaPlace::where('is_active', true)->pluck('label')->isNotEmpty()
+                    ? [Rule::in(AreaPlace::where('is_active', true)->pluck('label')->all())]
+                    : [],
+                $this->externalAreaRequiredRule($request)
+            ),
             'basic_pay' => ['required', 'numeric', 'min:0'],
             'allowance' => ['required', 'numeric', 'min:0'],
             'bank_name' => ['nullable', 'string', 'max:255'],

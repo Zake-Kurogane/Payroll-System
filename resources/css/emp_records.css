@@ -651,7 +651,7 @@ thead th {
 tbody td {
     padding: 12px 10px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
-    font-weight: 800;
+    font-weight: 700;
     font-size: 13px;
 }
 
@@ -952,6 +952,44 @@ th.sortable.is-desc .sortIcon {
 .field input[readonly] {
     background: rgba(17, 24, 39, 0.04);
     cursor: not-allowed;
+}
+
+.plField {
+    display: grid;
+    gap: 8px;
+}
+.plField__label {
+    font-weight: 800;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.plField__pill {
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    font-weight: 800;
+    background: #fff;
+    color: var(--text);
+    box-shadow: var(--shadow2);
+}
+.plField__pill.pl-pill--low {
+    background: #fdecea;
+    color: #c0392b;
+    border-color: #f5c6c2;
+}
+.plField__unit {
+    margin-left: 6px;
+    font-weight: 700;
+    color: var(--muted);
+    font-size: 12px;
+}
+.plField__pillMeta {
+    display: none;
 }
 
 .form__actions {
