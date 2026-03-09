@@ -9,6 +9,8 @@ use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
 use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
+use App\Models\AttendanceSummary;
+use App\Models\DeductionSchedule;
 use App\Services\Payroll\PayrollCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,7 +44,10 @@ class PayrollRunController extends Controller
                     'run_code' => $run->run_code,
                     'period_month' => $run->period_month,
                     'cutoff' => $run->cutoff,
+                    'run_type' => $run->run_type ?? 'External',
                     'assignment_filter' => $run->assignment_filter,
+                    'area_place_filter' => $run->area_place_filter,
+                    'display_label' => $run->displayLabel(),
                     'status' => $run->status,
                     'created_by' => $run->created_by,
                     'created_by_name' => $run->createdBy?->name,
@@ -62,20 +67,35 @@ class PayrollRunController extends Controller
     public function store(Request $request)
     {
         $assignmentLabels = Assignment::where('is_active', true)->pluck('label')->all();
-        $allowedAssignments = array_values(array_unique(array_merge(['All'], $assignmentLabels)));
+        // 'All' removed — every run must target a specific assignment
+        $allowedAssignments = array_values(array_unique($assignmentLabels));
+
+        $areaPlaceLabels = \App\Models\AreaPlace::where('is_active', true)->pluck('label')->all();
 
         $validated = $request->validate([
             'period_month' => ['required', 'regex:/^\d{4}-\d{2}$/'],
             'cutoff' => ['required', Rule::in(['11-25', '26-10'])],
-            'assignment_filter' => ['required', Rule::in($allowedAssignments)],
-            'area' => ['nullable', 'string'],
+            'run_type' => ['required', Rule::in(['Internal', 'External'])],
+            'assignment_filter' => ['required', Rule::in(array_merge($allowedAssignments, ['All']))],
+            'area_place_filter' => [
+                $request->input('assignment_filter') === 'Field' ? 'required' : 'nullable',
+                'string',
+                Rule::in($areaPlaceLabels),
+            ],
         ]);
+
+        // External runs must target a specific assignment (not All)
+        if ($validated['run_type'] === 'External' && $validated['assignment_filter'] === 'All') {
+            return response()->json(['message' => 'External runs must target a specific assignment.'], 422);
+        }
 
         $run = PayrollRun::create([
             'run_code' => 'RUN-' . strtoupper(Str::random(6)),
             'period_month' => $validated['period_month'],
             'cutoff' => $validated['cutoff'],
+            'run_type' => $validated['run_type'],
             'assignment_filter' => $validated['assignment_filter'],
+            'area_place_filter' => $validated['area_place_filter'] ?? null,
             'status' => 'Draft',
             'created_by' => Auth::id(),
         ]);
@@ -92,14 +112,6 @@ class PayrollRunController extends Controller
             return response()->json(['message' => 'Run is locked or released.'], 409);
         }
 
-        $assignmentLabels = Assignment::where('is_active', true)->pluck('label')->all();
-        $allowedAssignments = array_values(array_unique(array_merge(['All'], $assignmentLabels)));
-
-        $validated = $request->validate([
-            'assignment_filter' => ['required', Rule::in($allowedAssignments)],
-            'area' => ['nullable', 'string'],
-        ]);
-
         $overrides = PayrollRunRowOverride::query()
             ->where('payroll_run_id', $run->id)
             ->get()
@@ -113,11 +125,7 @@ class PayrollRunController extends Controller
                 ];
             });
 
-        if ($run->assignment_filter !== $validated['assignment_filter']) {
-            $run->assignment_filter = $validated['assignment_filter'];
-            $run->save();
-        }
-        $payload = $calculator->compute($run->period_month, $run->cutoff, $validated['assignment_filter'], $validated['area'] ?? null, $overrides);
+        $payload = $calculator->compute($run->period_month, $run->cutoff, $run->assignment_filter, $run->area_place_filter, $overrides, $run->run_type ?? 'External');
 
         PayrollRunRow::query()->where('payroll_run_id', $run->id)->delete();
         $rows = [];
@@ -266,18 +274,19 @@ class PayrollRunController extends Controller
         $wtBrackets = \App\Models\WithholdingTaxBracket::query()->orderBy('sort_order')->get();
         $cashPolicy = \App\Models\CashAdvancePolicy::query()->first();
 
-        $attendance = \App\Models\AttendanceRecord::query()
+        $summaries = AttendanceSummary::query()
             ->where('employee_id', $emp->id)
-            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->where('period_month', $run->period_month)
+            ->where('cutoff', $run->cutoff)
             ->get()
-            ->groupBy('employee_id');
+            ->keyBy('employee_id');
         $cashAdvances = \App\Models\CashAdvance::query()
             ->where('employee_id', $emp->id)
             ->where('status', 'Active')
             ->get()
             ->groupBy('employee_id');
 
-        $row = $calculator->computeForEmployee($emp, $start, $end, $run->cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $attendance, $cashAdvances);
+        $row = $calculator->computeForEmployee($emp, $start, $end, $run->cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $run->run_type ?? 'External');
 
         PayrollRunRow::updateOrCreate(
             [
@@ -320,6 +329,26 @@ class PayrollRunController extends Controller
         $run->status = 'Locked';
         $run->locked_at = now();
         $run->save();
+
+        // Mark all scheduled charge/shortage deductions for this period as applied
+        $employeeIds = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->pluck('employee_id')
+            ->all();
+
+        if ($employeeIds) {
+            DeductionSchedule::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->where('due_month', $run->period_month)
+                ->where('due_cutoff', $run->cutoff)
+                ->where('status', 'scheduled')
+                ->update([
+                    'status' => 'applied',
+                    'payroll_run_id' => $run->id,
+                    'applied_at' => now(),
+                ]);
+        }
+
         $this->generatePayslipsForRun($run);
         return response()->json($run);
     }

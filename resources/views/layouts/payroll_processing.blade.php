@@ -42,35 +42,19 @@
                             </div>
                         </div>
 
-                        <div class="filters__right">
-                            <div class="filters__rightRow">
-                                <div class="seg" role="tablist" aria-label="Assignment filter">
-                                    <button class="seg__btn is-active" type="button" data-assign="All"
-                                        aria-selected="true">All</button>
-                                    <button class="seg__btn" type="button" data-assign="Tagum"
-                                        aria-selected="false">Tagum</button>
-                                    <button class="seg__btn" type="button" data-assign="Davao"
-                                        aria-selected="false">Davao</button>
-                                    <button class="seg__btn" type="button" data-assign="Area"
-                                        aria-selected="false">Area</button>
-                                </div>
-                                <div class="field field--area" id="areaPlaceFilterWrap" hidden style="display:none;">
-                                    <label>Area Place</label>
-                                    <select id="areaPlaceFilter">
-                                        <option value="All" selected>All</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="filters__right"></div>
                         </div>
                         <div class="filters__payoutRow">
-                            <div class="seg" role="tablist" aria-label="Payout filter">
-                                <button class="seg__btn is-active" type="button" data-pay="All"
-                                    aria-selected="true">All</button>
-                                <button class="seg__btn" type="button" data-pay="Cash"
-                                    aria-selected="false">Cash</button>
-                                <button class="seg__btn" type="button" data-pay="Bank"
-                                    aria-selected="false">Bank</button>
+                            <div class="filters__payoutRowInner">
+                                <div class="seg seg--pill" role="group" aria-label="Assignment filter" id="assignmentSeg"></div>
+                                <div class="seg" role="tablist" aria-label="Payout filter">
+                                    <button class="seg__btn is-active" type="button" data-pay="All"
+                                        aria-selected="true">All</button>
+                                    <button class="seg__btn" type="button" data-pay="Cash"
+                                        aria-selected="false">Cash</button>
+                                    <button class="seg__btn" type="button" data-pay="Bank"
+                                        aria-selected="false">Bank</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -174,6 +158,7 @@
                                     <th class="num">OT Hours</th>
                                     <th class="num">OT Pay</th>
                                     <th class="num">Attendance Deduction</th>
+                                    <th class="num">Charges</th>
                                     <th class="num">Statutory + Tax (EE)</th>
                                     <th class="num">Employer Share (ER)</th>
                                     <th class="num">Net Pay</th>
@@ -380,5 +365,3 @@
         </div>
     </div>
 @endsection
-
-

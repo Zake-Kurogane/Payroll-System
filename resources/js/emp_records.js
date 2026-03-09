@@ -12,7 +12,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const notifyEmployeeUpdated = () => broadcastEmployeeUpdate();
 
   // ===== Constants =====
-  let areaPlaces = Array.isArray(window.__areaPlaces) ? window.__areaPlaces : [];
+  // Grouped area places: { Davao: [...], Tagum: [...], Field: [...] }
+  let areaPlaces = (window.__areaPlaces && typeof window.__areaPlaces === 'object' && !Array.isArray(window.__areaPlaces))
+    ? window.__areaPlaces
+    : {};
 
   // ===== Payroll Required Field Rules =====
   const PAYROLL_REQUIRED = {
@@ -82,6 +85,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       mobile: emp.mobile || "",
       email: emp.email || "",
       address: emp.address || "",
+      addrProvince: emp.address_province || "",
+      addrCity: emp.address_city || "",
+      addrBarangay: emp.address_barangay || "",
+      addrStreet: emp.address_street || "",
       bankName: emp.bank_name || "",
       accountName: emp.bank_account_name || "",
       accountNumber: emp.bank_account_number || "",
@@ -102,7 +109,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       employment_status_id: data.statusId || null,
       birthday: data.birthday || null,
       mobile: data.mobile || null,
-      address: data.address || null,
+      address: [data.addrStreet, data.addrBarangay, data.addrCity, data.addrProvince].filter(Boolean).join(", ") || null,
+      address_province: data.addrProvince || null,
+      address_city: data.addrCity || null,
+      address_barangay: data.addrBarangay || null,
+      address_street: data.addrStreet || null,
       email: data.email || null,
       department: data.dept,
       position: data.position,
@@ -164,8 +175,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const statusFilter = document.getElementById("statusFilter");
   const assignSeg = document.getElementById("assignSeg");
   let assignBtns = [];
-  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
-  const areaPlaceFilter = document.getElementById("areaPlaceFilter");
+  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap"); // may be null
+  const areaPlaceFilter = document.getElementById("areaPlaceFilter"); // may be null
+  let areaSubFilter = ""; // selected area_place sub-option
+  let openDropdown = null;
+  let openDropdownBtn = null;
 
   // import/export
   const exportBtn = document.getElementById("exportBtn");
@@ -219,7 +233,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_bday = F("f_bday");
   const f_mobile = F("f_mobile");
   const f_email = F("f_email");
-  const f_address = F("f_address");
+  const f_addrProvince = F("f_addrProvince");
+  const f_addrCity = F("f_addrCity");
+  const f_addrBarangay = F("f_addrBarangay");
+  const f_addrStreet = F("f_addrStreet");
   const f_dept = F("f_dept");
   const f_position = F("f_position");
   const f_type = F("f_type");
@@ -275,6 +292,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (drawerTitleEl) drawerTitleEl.textContent = title;
     if (drawerSubEl) drawerSubEl.textContent = subtitle;
     if (deleteBtn) deleteBtn.style.display = selectedEmpId ? "inline-flex" : "none";
+    const resetScroll = () => {
+      drawer.scrollTop = 0;
+      const panel = drawer.querySelector(".drawer__panel");
+      if (panel) panel.scrollTop = 0;
+      drawer.querySelectorAll("*").forEach((el) => {
+        if (el.scrollHeight > el.clientHeight) {
+          el.scrollTop = 0;
+        }
+      });
+    };
+    resetScroll();
+    requestAnimationFrame(resetScroll);
+    setTimeout(resetScroll, 50);
   }
 
   function closeDrawer() {
@@ -282,6 +312,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     drawer.classList.remove("is-open");
     drawer.setAttribute("aria-hidden", "true");
     if (drawerOverlay) drawerOverlay.setAttribute("hidden", "");
+    drawer.scrollTop = 0;
+    const panel = drawer.querySelector(".drawer__panel");
+    if (panel) panel.scrollTop = 0;
     selectedEmpId = null;
   }
 
@@ -357,6 +390,90 @@ document.addEventListener("DOMContentLoaded", async () => {
     return formatWithGroups(onlyDigits(value).slice(0, 12), [4, 4, 4]);
   }
 
+  // ===== Philippine Address (PSGC) =====
+  const PSGC = "https://psgc.gitlab.io/api";
+  let _psgcProvinces = null;
+  const _psgcCityCache = {};
+  const _psgcBrgyCache = {};
+
+  async function psgcProvinces() {
+    if (_psgcProvinces) return _psgcProvinces;
+    const res = await fetch(`${PSGC}/provinces/`);
+    const data = await res.json();
+    data.sort((a, b) => a.name.localeCompare(b.name));
+    _psgcProvinces = data;
+    return data;
+  }
+
+  async function psgcCities(provinceCode) {
+    if (_psgcCityCache[provinceCode]) return _psgcCityCache[provinceCode];
+    const res = await fetch(`${PSGC}/provinces/${provinceCode}/cities-municipalities/`);
+    const data = await res.json();
+    data.sort((a, b) => a.name.localeCompare(b.name));
+    _psgcCityCache[provinceCode] = data;
+    return data;
+  }
+
+  async function psgcBarangays(cityCode) {
+    if (_psgcBrgyCache[cityCode]) return _psgcBrgyCache[cityCode];
+    const res = await fetch(`${PSGC}/cities-municipalities/${cityCode}/barangays/`);
+    const data = await res.json();
+    data.sort((a, b) => a.name.localeCompare(b.name));
+    _psgcBrgyCache[cityCode] = data;
+    return data;
+  }
+
+  function fillSelect(el, items, selectedName) {
+    while (el.options.length > 1) el.remove(1);
+    items.forEach(item => el.add(new Option(item.name, item.code)));
+    if (selectedName) {
+      const match = Array.from(el.options).find(o => o.text === selectedName);
+      if (match) el.value = match.value;
+    }
+  }
+
+  function resetAddressDropdowns() {
+    if (f_addrProvince) { f_addrProvince.value = ""; while (f_addrProvince.options.length > 1) f_addrProvince.remove(1); }
+    if (f_addrCity) { f_addrCity.innerHTML = '<option value="">— Select City / Municipality —</option>'; f_addrCity.disabled = true; }
+    if (f_addrBarangay) { f_addrBarangay.innerHTML = '<option value="">— Select Barangay —</option>'; f_addrBarangay.disabled = true; }
+    if (f_addrStreet) f_addrStreet.value = "";
+  }
+
+  async function initAddressDropdowns(province = "", city = "", barangay = "") {
+    try {
+      const provinces = await psgcProvinces();
+      if (f_addrProvince && f_addrProvince.options.length <= 1) {
+        fillSelect(f_addrProvince, provinces, province);
+      } else if (f_addrProvince && province) {
+        const match = Array.from(f_addrProvince.options).find(o => o.text === province);
+        if (match) f_addrProvince.value = match.value;
+      } else if (f_addrProvince) {
+        f_addrProvince.value = "";
+      }
+
+      if (f_addrCity) { f_addrCity.innerHTML = '<option value="">— Select City / Municipality —</option>'; f_addrCity.disabled = true; }
+      if (f_addrBarangay) { f_addrBarangay.innerHTML = '<option value="">— Select Barangay —</option>'; f_addrBarangay.disabled = true; }
+
+      const provinceCode = f_addrProvince?.value;
+      if (!provinceCode) {
+        if (f_addrCity) { f_addrCity.innerHTML = '<option value="">— Select City / Municipality —</option>'; f_addrCity.disabled = true; }
+        if (f_addrBarangay) { f_addrBarangay.innerHTML = '<option value="">— Select Barangay —</option>'; f_addrBarangay.disabled = true; }
+        return;
+      }
+
+      const cities = await psgcCities(provinceCode);
+      if (f_addrCity) { fillSelect(f_addrCity, cities, city); f_addrCity.disabled = false; }
+
+      const cityCode = f_addrCity?.value;
+      if (!cityCode) return;
+
+      const barangays = await psgcBarangays(cityCode);
+      if (f_addrBarangay) { fillSelect(f_addrBarangay, barangays, barangay); f_addrBarangay.disabled = false; }
+    } catch (e) {
+      // Network error — address dropdowns remain empty, user can still save without address
+    }
+  }
+
   function formatMobile(value) {
     return formatWithGroups(onlyDigits(value).slice(0, 11), [4, 3, 4]);
   }
@@ -368,9 +485,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function clearForm() {
     empForm?.reset();
-    if (f_assignmentType) f_assignmentType.value = "Davao";
+    if (f_assignmentType) f_assignmentType.value = "G5-Davao";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_externalArea) f_externalArea.value = "";
+    resetAddressDropdowns();
     if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
     if (plInfoWrap) plInfoWrap.style.display = "none";
     syncAssignmentUI();
@@ -396,7 +514,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_bday && (f_bday.value = emp.birthday || "");
     f_mobile && (f_mobile.value = formatMobile(emp.mobile || ""));
     f_email && (f_email.value = emp.email || "");
-    f_address && (f_address.value = emp.address || "");
+    if (f_addrStreet) f_addrStreet.value = emp.addrStreet || "";
+    initAddressDropdowns(emp.addrProvince || "", emp.addrCity || "", emp.addrBarangay || "");
     f_dept && (f_dept.value = emp.dept || "");
     f_position && (f_position.value = emp.position || "");
     f_type && (f_type.value = emp.type || "");
@@ -405,7 +524,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_rate && (f_rate.value = emp.rate ?? "");
     f_allowance && (f_allowance.value = emp.allowance ?? 0);
 
-    f_assignmentType && (f_assignmentType.value = emp.assignmentType || "Davao");
+    f_assignmentType && (f_assignmentType.value = emp.assignmentType || "G5-Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
     if (f_externalArea) f_externalArea.value = emp.externalArea || "";
 
@@ -436,7 +555,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       birthday: f_bday?.value || "",
       mobile: onlyDigits(f_mobile?.value),
       email: f_email?.value?.trim(),
-      address: f_address?.value?.trim(),
+      addrProvince: f_addrProvince?.value ? (f_addrProvince.options[f_addrProvince.selectedIndex]?.text || "") : "",
+      addrCity: f_addrCity?.value ? (f_addrCity.options[f_addrCity.selectedIndex]?.text || "") : "",
+      addrBarangay: f_addrBarangay?.value ? (f_addrBarangay.options[f_addrBarangay.selectedIndex]?.text || "") : "",
+      addrStreet: f_addrStreet?.value?.trim() || "",
       dept: f_dept?.value?.trim(),
       position: f_position?.value?.trim(),
       type: f_type?.value?.trim(),
@@ -488,14 +610,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   function assignmentText(emp) {
     const t = (emp.assignmentType || "").trim();
     if (!t) return "-";
-    if (t === "Area") {
-      const place = (emp.areaPlace || "").trim() || "-";
-      const isRegular = String(emp.type || "").toLowerCase() === "regular";
-      const ext = isRegular && (emp.externalArea || "").trim()
-        ? ` — Ext: ${emp.externalArea.trim()}` : "";
-      return `Area (${place})${ext}`;
-    }
-    return t;
+    const place = (emp.areaPlace || "").trim();
+    return place ? `${t} (${place})` : `${t}`;
   }
   function govShort(emp) {
     const parts = [];
@@ -526,7 +642,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       "Birthday",
       "Mobile",
       "Email",
-      "Address",
+      "Province",
+      "City / Municipality",
+      "Barangay",
+      "Street / House No.",
       "Department",
       "Position",
       "Employment Type",
@@ -559,7 +678,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         emp.birthday || "",
         emp.mobile || "",
         emp.email || "",
-        emp.address || "",
+        emp.addrProvince || "",
+        emp.addrCity || "",
+        emp.addrBarangay || "",
+        emp.addrStreet || "",
         emp.dept || "",
         emp.position || "",
         emp.type || "",
@@ -590,48 +712,44 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
 
-  function populateAreaPlaces(selectEl) {
+  function populateAreaPlaces(selectEl, assignmentGroup) {
     if (!selectEl) return;
+    const group = assignmentGroup || f_assignmentType?.value || "";
+    const places = (areaPlaces[group] || []);
     const current = selectEl.value;
     selectEl.innerHTML =
-      `<option value="">-- Select area place --</option>` +
-      areaPlaces.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (areaPlaces.includes(current)) selectEl.value = current;
+      `<option value="">-- Select --</option>` +
+      places.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (places.includes(current)) selectEl.value = current;
   }
 
   function populateAreaFilterPlaces(selectEl) {
     if (!selectEl) return;
+    // Filter panel shows only Field area places (for the Area Place filter dropdown)
+    const places = areaPlaces["Field"] || [];
     const current = selectEl.value;
     selectEl.innerHTML =
       `<option value="All" selected>All</option>` +
-      areaPlaces.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (current && (current === "All" || areaPlaces.includes(current))) {
+      places.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (current && (current === "All" || places.includes(current))) {
       selectEl.value = current;
     }
   }
 
   function syncAssignmentUI() {
     if (!f_assignmentType || !f_areaPlace) return;
-    populateAreaPlaces(f_areaPlace);
-
     const type = f_assignmentType.value;
-    const isArea = type === "Area";
-    if (isArea) {
-      f_areaPlace.disabled = false;
-      if (areaPlaceWrap) areaPlaceWrap.style.display = "";
-    } else {
-      f_areaPlace.value = "";
-      f_areaPlace.disabled = true;
-      if (areaPlaceWrap) areaPlaceWrap.style.display = "none";
-    }
+    // Always show area_place for all assignment types (each group has sub-options)
+    populateAreaPlaces(f_areaPlace, type);
+    f_areaPlace.disabled = !type;
+    if (areaPlaceWrap) areaPlaceWrap.style.display = type ? "" : "none";
     syncExternalAreaUI();
   }
 
   function syncExternalAreaUI() {
     if (!f_assignmentType) return;
-    const isArea = f_assignmentType.value === "Area";
     const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
-    const show = isArea && isRegular;
+    const show = isRegular;
     if (f_externalArea) {
       if (show) {
         populateAreaPlaces(f_externalArea);
@@ -764,7 +882,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (PAYROLL_REQUIRED.requireAssignment) {
       const t = (emp.assignmentType || "").trim();
       if (!t) missing.push("Assignment");
-      if (t === "Area") {
+      if (t) {
         const ap = (emp.areaPlace || "").trim();
         if (!ap) missing.push("Area Place");
         const isRegular = String(emp.type || "").toLowerCase() === "regular";
@@ -824,7 +942,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       else if (key === "dept") res = String(a.dept || "").localeCompare(String(b.dept || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "position") res = String(a.position || "").localeCompare(String(b.position || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "type") res = String(a.type || "").localeCompare(String(b.type || "")) || fullName(a).localeCompare(fullName(b));
-      else if (key === "assignment") res = String(assignmentText(a)).localeCompare(String(assignmentText(b))) || fullName(a).localeCompare(fullName(b));
+        else if (key === "assignment") res = String(assignmentText(a)).localeCompare(String(assignmentText(b))) || fullName(a).localeCompare(fullName(b));
+        else if (key === "external") res = String(a.externalArea || "").localeCompare(String(b.externalArea || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "salary") res = (salaryTotal(a) - salaryTotal(b)) || fullName(a).localeCompare(fullName(b));
       else res = fullName(a).localeCompare(fullName(b));
       return res * sign;
@@ -855,17 +974,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deptVal = deptFilter?.value || "";
     const statusVal = statusFilter?.value || "";
     const assignVal = assignmentFilter || "All";
-    const areaVal = areaPlaceFilter?.value || "";
+    const areaVal = areaSubFilter || areaPlaceFilter?.value || "";
 
     return list.filter(emp => {
       const okDept = !deptVal || deptVal === "All" || (emp.dept || "") === deptVal;
       const okStatus = statusMatches(emp, statusVal);
       const okAssign = assignVal === "All" || !assignVal || (emp.assignmentType || "") === assignVal;
-      const okArea =
-        assignVal !== "Area" ||
-        !areaVal ||
-        areaVal === "All" ||
-        (emp.areaPlace || "") === areaVal;
+      const okArea = !areaVal || areaVal === "All" || (emp.areaPlace || "") === areaVal;
 
       const text = normalize(
         `${emp.empId} ${fullName(emp)} ${emp.dept || ""} ${emp.position || ""} ${emp.type || ""} ${emp.status || ""} ${assignmentText(emp)}`
@@ -927,7 +1042,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td>${emp.empId}</td>
         <td>${fullName(emp)}</td>
         <td>${emp.dept || "-"}</td>
-        <td>${assignmentText(emp)}</td>
+          <td>${assignmentText(emp)}</td>
+          <td>${emp.externalArea ? emp.externalArea : "—"}</td>
         <td>
           <div class="salaryVal">${money(salaryTotal(emp))}</div>
         </td>
@@ -941,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
             </svg>
           </button>
-          ${emp.assignmentType === "Area" ? `<button class="iconbtn" type="button" data-action="history" data-id="${emp.empId}" title="Area History" aria-label="Area History">
+          ${emp.assignmentType === "Field" ? `<button class="iconbtn" type="button" data-action="history" data-id="${emp.empId}" title="Field History" aria-label="Field History">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <circle cx="12" cy="12" r="9"></circle>
               <path d="M12 7v5l3 3"></path>
@@ -1023,24 +1139,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (bulkAssignSelect && bulkAssignApply) {
     bulkAssignSelect.addEventListener("change", () => {
-      const isArea = bulkAssignSelect.value === "Area";
+      const assignment = bulkAssignSelect.value;
+      const places = areaPlaces[assignment] || [];
+      const needsArea = places.length > 0;
       if (bulkAreaPlaceSelect) {
-        if (isArea) {
-          populateAreaPlaces(bulkAreaPlaceSelect);
+        if (needsArea) {
+          populateAreaPlaces(bulkAreaPlaceSelect, assignment);
           bulkAreaPlaceSelect.style.display = "";
         } else {
           bulkAreaPlaceSelect.value = "";
           bulkAreaPlaceSelect.style.display = "none";
         }
       }
-      bulkAssignApply.disabled = !bulkAssignSelect.value || (isArea && !bulkAreaPlaceSelect?.value);
+      bulkAssignApply.disabled = !assignment || (needsArea && !bulkAreaPlaceSelect?.value);
     });
   }
 
   bulkAreaPlaceSelect && bulkAreaPlaceSelect.addEventListener("change", () => {
-    const isArea = bulkAssignSelect?.value === "Area";
+    const assignment = bulkAssignSelect?.value || "";
+    const needsArea = (areaPlaces[assignment] || []).length > 0;
     if (bulkAssignApply) {
-      bulkAssignApply.disabled = !bulkAssignSelect?.value || (isArea && !bulkAreaPlaceSelect.value);
+      bulkAssignApply.disabled = !assignment || (needsArea && !bulkAreaPlaceSelect.value);
     }
   });
 
@@ -1049,8 +1168,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!assignment || selectedIds.size === 0) return;
 
     const ids = Array.from(selectedIds);
-    const areaPlace = assignment === "Area" ? (bulkAreaPlaceSelect?.value || "") : "";
-    if (assignment === "Area" && !areaPlace) {
+    const needsArea = (areaPlaces[assignment] || []).length > 0;
+    const areaPlace = needsArea ? (bulkAreaPlaceSelect?.value || "") : "";
+    if (needsArea && !areaPlace) {
       alert("Please select an Area Place.");
       return;
     }
@@ -1060,12 +1180,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         body: JSON.stringify({ ids, assignment, area_place: areaPlace || null }),
       });
 
-      employees.forEach(emp => {
-        if (selectedIds.has(emp.empId)) {
-          emp.assignmentType = assignment;
-          emp.areaPlace = assignment === "Area" ? areaPlace : "";
-        }
-      });
+        employees.forEach(emp => {
+          if (selectedIds.has(emp.empId)) {
+            emp.assignmentType = assignment;
+            emp.areaPlace = areaPlace || "";
+          }
+        });
 
       selectedIds.clear();
       if (selectAll) {
@@ -1108,33 +1228,111 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  function closeAllDropdowns() {
+    if (!assignSeg) return;
+    assignSeg.querySelectorAll(".seg__dropdown").forEach(d => {
+      d.classList.remove("is-open");
+      d.style.display = "none";
+    });
+    openDropdown = null;
+    openDropdownBtn = null;
+  }
+
   function wireAssignButtons() {
-    assignBtns = assignSeg ? Array.from(assignSeg.querySelectorAll(".seg__btn--emp")) : [];
-    if (!assignBtns.length) return;
+    if (!assignSeg) return;
+    assignBtns = Array.from(assignSeg.querySelectorAll(".seg__btn--emp"));
+    const contentScroller = document.querySelector(".content");
+    let rafId = 0;
+    function positionDropdown(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const rect = btn.getBoundingClientRect();
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const desiredMin = Math.round(rect.width);
+      const maxWidth = Math.min(320, Math.max(200, viewportW - 16));
+      const dropdownW = Math.max(desiredMin, maxWidth);
+      let left = Math.round(rect.left);
+      if (left + dropdownW > viewportW - 8) {
+        left = Math.max(8, viewportW - dropdownW - 8);
+      }
+      const top = Math.round(rect.bottom + 8);
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.minWidth = `${desiredMin}px`;
+      dropdown.style.maxWidth = `${maxWidth}px`;
+    }
+
+    function refreshOpenDropdownPosition() {
+      if (!openDropdown || !openDropdownBtn) return;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        positionDropdown(openDropdownBtn, openDropdown);
+      });
+    }
+
     assignBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+      const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+      const wasOpen = dropdown && dropdown.style.display === "block";
+
+        // If clicking the already-active group btn, toggle dropdown open/close
+        const isAlreadyActive = btn.classList.contains("is-active");
+        closeAllDropdowns();
+
+        // Activate this button
         assignBtns.forEach(b => b.classList.remove("is-active"));
         btn.classList.add("is-active");
-        const rawAssign = btn.getAttribute("data-assign");
-        assignmentFilter = rawAssign && rawAssign !== "" ? rawAssign : "All";
-        const assignInput = document.getElementById("assignmentInput");
-        if (assignInput) assignInput.value = assignmentFilter === "All" ? "" : assignmentFilter;
+        assignmentFilter = group;
+        areaSubFilter = "";
+        currentPage = 1;
+        render();
 
-        if (assignmentFilter === "Area") {
-          if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "";
-          if (areaPlaceFilter) {
-            populateAreaFilterPlaces(areaPlaceFilter);
+      // Show its dropdown (toggle off if it was already active+open)
+        if (dropdown) {
+          if (isAlreadyActive && wasOpen) {
+            dropdown.classList.remove("is-open");
+            dropdown.style.display = "none";
+            openDropdown = null;
+            openDropdownBtn = null;
+            return;
           }
-        } else {
-          if (areaPlaceFilterWrap) areaPlaceFilterWrap.style.display = "none";
-          if (areaPlaceFilter) areaPlaceFilter.value = "All";
+          positionDropdown(btn, dropdown);
+          dropdown.style.display = "block";
+          dropdown.classList.add("is-open");
+          openDropdown = dropdown;
+          openDropdownBtn = btn;
         }
+      });
+    });
 
+    // Wire dropdown items
+    assignSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const place = item.getAttribute("data-place");
+        const dropdown = item.closest(".seg__dropdown");
+        // Mark active item
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+        areaSubFilter = place || "";
+        closeAllDropdowns();
         currentPage = 1;
         render();
       });
     });
-  }
+
+  // Close dropdowns on outside click
+  document.addEventListener("click", (e) => {
+    if (!assignSeg.contains(e.target)) closeAllDropdowns();
+  }, { capture: true });
+
+  // Keep dropdown aligned while scrolling/resizing
+  window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+  window.addEventListener("resize", refreshOpenDropdownPosition);
+  contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+}
 
   // pagination
   pageSizeEl && pageSizeEl.addEventListener("change", () => { currentPage = 1; render(); });
@@ -1210,9 +1408,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       selectedEmpId = id;
       fillForm(emp);
       openDrawer("Edit Employee", `${fullName(emp)} - ${emp.empId}`);
-      if (String(emp.type || "").toLowerCase() === "regular" && ["Tagum", "Davao"].includes(emp.assignmentType)) {
+      if (String(emp.type || "").toLowerCase() === "regular" && !!(emp.assignmentType)) {
         fetchAndShowPLBalance(emp.empId);
       }
+      loadCharges(id);
     }
     if (action === "history") {
       if (areaHistoryList) areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Loading...</td></tr>';
@@ -1248,10 +1447,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // drawer events
-  openAddBtn && openAddBtn.addEventListener("click", () => {
+  openAddBtn && openAddBtn.addEventListener("click", async () => {
     selectedEmpId = null;
     clearForm();
     openDrawer("Add Employee", "Fill in the details then click Save.");
+    try {
+      const res = await apiFetch("/employees/next-id");
+      if (f_empId) f_empId.value = res.next_id;
+    } catch (e) { /* user can still see it's empty */ }
+    initAddressDropdowns();
   });
 
   closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
@@ -1277,11 +1481,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   f_allowance && f_allowance.addEventListener("input", syncSalaryFields);
   f_accountNumber && f_accountNumber.addEventListener("input", syncPayoutFields);
   f_assignmentType && f_assignmentType.addEventListener("change", syncAssignmentUI);
-  f_empId && f_empId.addEventListener("input", () => {
-    const digits = String(f_empId.value || "").replace(/\D/g, "").slice(0, 4);
-    if (f_empId.value !== digits) {
-      f_empId.value = digits;
-    }
+
+  // Address cascade listeners
+  f_addrProvince && f_addrProvince.addEventListener("change", async () => {
+    if (f_addrCity) { f_addrCity.innerHTML = '<option value="">— Select City / Municipality —</option>'; f_addrCity.disabled = true; }
+    if (f_addrBarangay) { f_addrBarangay.innerHTML = '<option value="">— Select Barangay —</option>'; f_addrBarangay.disabled = true; }
+    const code = f_addrProvince.value;
+    if (!code) return;
+    try {
+      const cities = await psgcCities(code);
+      if (f_addrCity) { fillSelect(f_addrCity, cities, ""); f_addrCity.disabled = false; }
+    } catch (e) {}
+  });
+  f_addrCity && f_addrCity.addEventListener("change", async () => {
+    if (f_addrBarangay) { f_addrBarangay.innerHTML = '<option value="">— Select Barangay —</option>'; f_addrBarangay.disabled = true; }
+    const code = f_addrCity.value;
+    if (!code) return;
+    try {
+      const barangays = await psgcBarangays(code);
+      if (f_addrBarangay) { fillSelect(f_addrBarangay, barangays, ""); f_addrBarangay.disabled = false; }
+    } catch (e) {}
   });
   f_mobile && f_mobile.addEventListener("input", () => {
     const next = formatMobile(f_mobile.value);
@@ -1320,7 +1539,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_middle,
     f_dept,
     f_position,
-    f_address,
+    f_addrStreet,
     f_bankName,
     f_accountName,
   ];
@@ -1416,7 +1635,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   syncPayoutFields();
   assignmentFilter = currentAssignmentFilter();
   if (areaPlaceFilterWrap) {
-    areaPlaceFilterWrap.style.display = assignmentFilter === "Area" ? "" : "none";
+    areaPlaceFilterWrap.style.display = "none";
   }
   wireHeaderSorting();
   updateSortIcons();
@@ -1435,17 +1654,58 @@ document.addEventListener("DOMContentLoaded", async () => {
         f_status.innerHTML = (data.statuses || []).map(s => `<option value="${s.id}">${s.label}</option>`).join("");
       }
       statusLabelMap = new Map((data.statuses || []).map(s => [String(s.id), s.label]));
-      if (assignSeg) {
-        const assignments = (data.assignments || []).length ? data.assignments : ["Tagum", "Davao", "Area"];
-        assignSeg.innerHTML =
-          `<button type="button" class="seg__btn seg__btn--emp is-active" data-assign="All">All</button>` +
-          assignments.map(a => `<button type="button" class="seg__btn seg__btn--emp" data-assign="${a}">${a}</button>`).join("");
-        assignmentFilter = "All";
-        wireAssignButtons();
-      }
-      if (Array.isArray(data.area_places)) {
+      if (data.area_places && typeof data.area_places === 'object' && !Array.isArray(data.area_places)) {
         areaPlaces = data.area_places;
+        // Rebuild assignment segment from API data to ensure dropdowns are populated
+        if (assignSeg) {
+          const activeAssign = currentAssignmentFilter() || "All";
+          const activeArea = areaSubFilter || "";
+          assignSeg.innerHTML = "";
+
+          const allBtn = document.createElement("button");
+          allBtn.type = "button";
+          allBtn.className = `seg__btn seg__btn--emp${activeAssign === "All" ? " is-active" : ""}`;
+          allBtn.setAttribute("data-assign", "");
+          allBtn.textContent = "All";
+          assignSeg.appendChild(allBtn);
+
+          (data.assignments || []).forEach((label) => {
+            const places = areaPlaces[label] || [];
+            const wrap = document.createElement("div");
+            wrap.className = "seg__btn-wrap";
+
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `seg__btn seg__btn--emp${activeAssign === label ? " is-active" : ""}`;
+            btn.setAttribute("data-assign", label);
+            btn.textContent = label;
+            if (places.length) {
+              const chev = document.createElement("span");
+              chev.className = "seg__chevron";
+              chev.textContent = "▾";
+              btn.appendChild(chev);
+            }
+            wrap.appendChild(btn);
+
+            const dropdown = document.createElement("div");
+            dropdown.className = "seg__dropdown";
+            dropdown.setAttribute("data-group", label);
+            dropdown.style.display = "none";
+            places.forEach((p) => {
+              const item = document.createElement("button");
+              item.type = "button";
+              item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
+              item.setAttribute("data-place", p);
+              item.textContent = p;
+              dropdown.appendChild(item);
+            });
+            wrap.appendChild(dropdown);
+
+            assignSeg.appendChild(wrap);
+          });
+        }
       }
+      wireAssignButtons();
     } catch (err) {
       console.error(err);
     }
@@ -1459,6 +1719,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       employees = seed.map(fromApi);
       wireAssignButtons();
       assignmentFilter = currentAssignmentFilter();
+    }
+    // Always refresh filters from API (server-rendered dropdowns can be stale/empty)
+    if (serverRendered) {
+      await loadFilters();
     }
 
     try {
@@ -1477,6 +1741,133 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (AUTO_REFRESH_MS > 0) {
     setInterval(runAutoRefresh, AUTO_REFRESH_MS);
+  }
+
+  // ===== Charges / Shortages =====
+  const chargesTbody = document.getElementById("chargesTbody");
+  const addChargeBtn = document.getElementById("addChargeBtn");
+  const cancelChargeBtn = document.getElementById("cancelChargeBtn");
+  const saveChargeBtn = document.getElementById("saveChargeBtn");
+  const chargeFormWrap = document.getElementById("chargeFormWrap");
+  const cf_type = document.getElementById("cf_type");
+  const cf_amount = document.getElementById("cf_amount");
+  const cf_description = document.getElementById("cf_description");
+  const cf_planType = document.getElementById("cf_planType");
+  const cf_installmentWrap = document.getElementById("cf_installmentWrap");
+  const cf_installmentCount = document.getElementById("cf_installmentCount");
+  const cf_startMonth = document.getElementById("cf_startMonth");
+  const cf_startCutoff = document.getElementById("cf_startCutoff");
+
+  // Default start month to current month
+  if (cf_startMonth) {
+    const now = new Date();
+    cf_startMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  cf_planType && cf_planType.addEventListener("change", () => {
+    if (cf_installmentWrap) {
+      cf_installmentWrap.style.display = cf_planType.value === "installment" ? "" : "none";
+    }
+  });
+
+  addChargeBtn && addChargeBtn.addEventListener("click", () => {
+    if (chargeFormWrap) chargeFormWrap.style.display = "";
+    if (addChargeBtn) addChargeBtn.style.display = "none";
+  });
+
+  cancelChargeBtn && cancelChargeBtn.addEventListener("click", () => {
+    if (chargeFormWrap) chargeFormWrap.style.display = "none";
+    if (addChargeBtn) addChargeBtn.style.display = "";
+    clearChargeForm();
+  });
+
+  saveChargeBtn && saveChargeBtn.addEventListener("click", async () => {
+    if (!selectedEmpId) return;
+    const amount = parseFloat(cf_amount?.value || 0);
+    if (!amount || amount <= 0) { alert("Please enter a valid amount."); return; }
+    if (cf_planType?.value === "installment" && !(parseInt(cf_installmentCount?.value || 0) >= 2)) {
+      alert("Please enter at least 2 cutoffs for installment."); return;
+    }
+    try {
+      await apiFetch(`/employees/${encodeURIComponent(selectedEmpId)}/deduction-cases`, {
+        method: "POST",
+        body: JSON.stringify({
+          type: cf_type?.value || "shortage",
+          description: cf_description?.value || null,
+          amount_total: amount,
+          plan_type: cf_planType?.value || "one_time",
+          installment_count: cf_planType?.value === "installment" ? parseInt(cf_installmentCount?.value || 0) : null,
+          start_month: cf_startMonth?.value || "",
+          start_cutoff: cf_startCutoff?.value || "11-25",
+        }),
+      });
+      clearChargeForm();
+      if (chargeFormWrap) chargeFormWrap.style.display = "none";
+      if (addChargeBtn) addChargeBtn.style.display = "";
+      await loadCharges(selectedEmpId);
+    } catch (err) {
+      alert(err.message || "Failed to save charge.");
+    }
+  });
+
+  function clearChargeForm() {
+    if (cf_type) cf_type.value = "shortage";
+    if (cf_amount) cf_amount.value = "";
+    if (cf_description) cf_description.value = "";
+    if (cf_planType) cf_planType.value = "one_time";
+    if (cf_installmentWrap) cf_installmentWrap.style.display = "none";
+    if (cf_installmentCount) cf_installmentCount.value = "";
+    const now = new Date();
+    if (cf_startMonth) cf_startMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    if (cf_startCutoff) cf_startCutoff.value = "11-25";
+  }
+
+  async function loadCharges(empId) {
+    if (!chargesTbody) return;
+    chargesTbody.innerHTML = `<tr><td colspan="7" class="muted small">Loading...</td></tr>`;
+    try {
+      const cases = await apiFetch(`/employees/${encodeURIComponent(empId)}/deduction-cases`);
+      renderCharges(cases, empId);
+    } catch {
+      chargesTbody.innerHTML = `<tr><td colspan="7" class="muted small">Failed to load.</td></tr>`;
+    }
+  }
+
+  function renderCharges(cases, empId) {
+    if (!chargesTbody) return;
+    if (!cases || !cases.length) {
+      chargesTbody.innerHTML = `<tr><td colspan="7" class="muted small">No charges or shortages.</td></tr>`;
+      return;
+    }
+    const fmtMoney = (n) => "₱" + Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const planLabel = (c) => c.plan_type === "installment" ? `Installment (${c.installment_count} cutoffs)` : "One-time";
+    chargesTbody.innerHTML = cases.map(c => `
+      <tr>
+        <td>${c.type.charAt(0).toUpperCase() + c.type.slice(1)}</td>
+        <td class="muted small">${c.description || "—"}</td>
+        <td class="num">${fmtMoney(c.amount_total)}</td>
+        <td class="num">${fmtMoney(c.amount_remaining)}</td>
+        <td class="small">${planLabel(c)}</td>
+        <td><span class="badge ${c.status === "active" ? "badge--ok" : "badge--warn"}">${c.status}</span></td>
+        <td>
+          ${c.status === "active" ? `<button class="iconbtn" type="button" data-charge-close="${c.id}" title="Close">✕</button>` : ""}
+        </td>
+      </tr>
+    `).join("");
+
+    // Bind close buttons
+    chargesTbody.querySelectorAll("[data-charge-close]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const caseId = btn.getAttribute("data-charge-close");
+        if (!confirm("Close this charge/shortage? Future scheduled lines will be voided.")) return;
+        try {
+          await apiFetch(`/employees/${encodeURIComponent(empId)}/deduction-cases/${caseId}/close`, { method: "POST" });
+          await loadCharges(empId);
+        } catch (err) {
+          alert(err.message || "Failed to close case.");
+        }
+      });
+    });
   }
 
   // ===== Expose helpers (optional) =====

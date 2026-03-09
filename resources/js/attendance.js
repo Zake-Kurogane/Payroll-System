@@ -68,9 +68,12 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const data = await apiFetch("/employees/filters");
       assignmentOptions = Array.isArray(data?.assignments) ? data.assignments : [];
-      areaPlaceOptions = Array.isArray(data?.area_places) ? data.area_places : [];
+      const ap = data?.area_places;
+      areaPlacesGrouped = (ap && typeof ap === "object" && !Array.isArray(ap)) ? ap : {};
+      areaPlaceOptions = Array.isArray(areaPlacesGrouped["Field"]) ? areaPlacesGrouped["Field"] : [];
     } catch {
       assignmentOptions = [];
+      areaPlacesGrouped = {};
       areaPlaceOptions = [];
     }
   }
@@ -386,12 +389,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   function mapRecordApi(r) {
     const emp = r.employee_id ? getEmpById(r.employee_id) : null;
-    const empNo = r.emp_no || emp?.empNo || "";
-    const empName = r.emp_name || emp?.name || (empNo ? empNo : "");
-    const dept = r.department || emp?.department || "—";
-    const pos = r.position || emp?.position || "—";
-    const assignType = r.assignment_type || emp?.assignmentType || "";
-    const areaPlace = r.area_place || emp?.areaPlace || "";
+    const empNo = emp?.empNo || r.emp_no || "";
+    const empName = emp?.name || r.emp_name || (empNo ? empNo : "");
+    const dept = emp?.department || r.department || "—";
+    const pos = emp?.position || r.position || "—";
+    const assignType = emp?.assignmentType || r.assignment_type || "";
+    const areaPlace = emp?.areaPlace || r.area_place || "";
     return {
       id: String(r.id),
       employeeId: String(r.employee_id || ""),
@@ -434,8 +437,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (assignmentFilter && assignmentFilter !== "All") {
       qs.set("assignment", assignmentFilter);
-      if (assignmentFilter === "Area" && areaPlaceFilter?.value && areaPlaceFilter.value !== "All") {
-        qs.set("area", areaPlaceFilter.value);
+      if (areaSubFilter) {
+        qs.set("area", areaSubFilter);
       }
     }
     const dateVal = dateInput?.value || "";
@@ -478,11 +481,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const segContainer = document.getElementById("assignmentSeg");
   let segBtns = [];
   let assignmentFilter = "All";
-  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
-  const areaPlaceFilter = document.getElementById("areaPlaceFilter");
+  let areaSubFilter = "";
+  let openDropdown = null;
+  let openDropdownBtn = null;
 
   let assignmentOptions = [];
   let areaPlaceOptions = [];
+  let areaPlacesGrouped = {};
 
   const statTotal = document.getElementById("statTotal");
   const statTotalBtn = document.getElementById("statTotalBtn");
@@ -753,7 +758,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     initEmployeeSelect();
-    if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
     populateAssignTypeOptions();
     populateAreaPlaceOptions();
     buildAssignmentSeg();
@@ -793,7 +797,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function assignmentText(r) {
-    if (r.assignType === "Area") return `Area (${r.areaPlace || "—"})`;
+    if (r.areaPlace) return `${r.assignType || "—"} (${r.areaPlace})`;
     return r.assignType || "—";
   }
 
@@ -903,7 +907,7 @@ document.addEventListener("DOMContentLoaded", () => {
       statusFilter?.value || "",
       searchInput?.value || "",
       assignmentFilter || "",
-      areaPlaceFilter?.value || "",
+      areaSubFilter || "",
       pageState.page || 1,
       pageState.rows || 20,
     ].join("|");
@@ -1074,37 +1078,60 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // TABS + FILTER EVENTS
   // =========================================================
-  function populateAreaFilter(selectEl) {
-    if (!selectEl) return;
-    const current = selectEl.value;
-    const unique = Array.from(new Set(areaPlaceOptions.filter(x => String(x || "").trim() !== "")));
-
-    selectEl.innerHTML =
-      `<option value="All" selected>All</option>` +
-      unique.map(p => `<option value="${p}">${p}</option>`).join("");
-
-    if (current && (current === "All" || unique.includes(current))) {
-      selectEl.value = current;
-    }
+  function closeAllDropdowns() {
+    if (!segContainer) return;
+    segContainer.querySelectorAll(".seg__dropdown").forEach(dd => {
+      dd.classList.remove("is-open");
+      dd.style.display = "none";
+    });
+    openDropdown = null;
+    openDropdownBtn = null;
   }
 
   function buildAssignmentSeg() {
     if (!segContainer) return;
-    const opts = Array.from(new Set(["All", ...assignmentOptions.filter(x => String(x || "").trim() !== "")]));
+    const opts = Array.from(new Set(assignmentOptions.filter(x => String(x || "").trim() !== "")));
 
     segContainer.innerHTML = "";
-    opts.forEach((label, idx) => {
+
+    const allBtn = document.createElement("button");
+    allBtn.className = "seg__btn seg__btn--emp is-active";
+    allBtn.type = "button";
+    allBtn.dataset.assign = "All";
+    allBtn.textContent = "All";
+    segContainer.appendChild(allBtn);
+
+    opts.forEach((label) => {
+      const places = Array.isArray(areaPlacesGrouped[label]) ? areaPlacesGrouped[label] : [];
+      const wrap = document.createElement("div");
+      wrap.className = "seg__btn-wrap";
+
       const btn = document.createElement("button");
-      btn.className = `seg__btn${idx === 0 ? " is-active" : ""}`;
+      btn.className = "seg__btn seg__btn--emp";
       btn.type = "button";
       btn.dataset.assign = label;
-      btn.setAttribute("role", "tab");
-      btn.setAttribute("aria-selected", idx === 0 ? "true" : "false");
       btn.textContent = label;
-      segContainer.appendChild(btn);
+      if (places.length) {
+        const chev = document.createElement("span");
+        chev.className = "seg__chevron";
+        chev.textContent = "▾";
+        btn.appendChild(chev);
+      }
+      wrap.appendChild(btn);
+
+      const dropdown = document.createElement("div");
+      dropdown.className = "seg__dropdown";
+      dropdown.dataset.group = label;
+      dropdown.style.display = "none";
+      dropdown.innerHTML = places.map(p =>
+        `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+      ).join("");
+      wrap.appendChild(dropdown);
+
+      segContainer.appendChild(wrap);
     });
 
-    segBtns = Array.from(segContainer.querySelectorAll(".seg__btn[data-assign]"));
+    segBtns = Array.from(segContainer.querySelectorAll(".seg__btn--emp"));
   }
 
   function populateAssignTypeOptions() {
@@ -1131,41 +1158,95 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function setAreaFilterVisibility(isArea) {
-    if (!areaPlaceFilterWrap) return;
-    areaPlaceFilterWrap.hidden = !isArea;
-    areaPlaceFilterWrap.style.display = isArea ? "" : "none";
-  }
-
-  if (areaPlaceFilter) {
-    populateAreaFilter(areaPlaceFilter);
-    areaPlaceFilter.addEventListener("change", async () => {
-      pageState.page = 1;
-      await loadRecords();
-      render();
-    });
-  }
-  setAreaFilterVisibility(assignmentFilter === "Area");
-
   function bindSegButtons() {
+    if (!segContainer) return;
+    const contentScroller = document.querySelector(".content");
+    let rafId = 0;
+    function positionDropdown(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const rect = btn.getBoundingClientRect();
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const desiredMin = Math.round(rect.width);
+      const maxWidth = Math.min(320, Math.max(200, viewportW - 16));
+      const dropdownW = Math.max(desiredMin, maxWidth);
+      let left = Math.round(rect.left);
+      if (left + dropdownW > viewportW - 8) {
+        left = Math.max(8, viewportW - dropdownW - 8);
+      }
+      const top = Math.round(rect.bottom + 8);
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.minWidth = `${desiredMin}px`;
+      dropdown.style.maxWidth = `${maxWidth}px`;
+    }
+
+    function refreshOpenDropdownPosition() {
+      if (!openDropdown || !openDropdownBtn) return;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        positionDropdown(openDropdownBtn, openDropdown);
+      });
+    }
+
     segBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+        const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+        const wasOpen = dropdown && dropdown.style.display === "block";
+
+        const isAlreadyActive = btn.classList.contains("is-active");
+        closeAllDropdowns();
+
         segBtns.forEach(b => b.classList.remove("is-active"));
         btn.classList.add("is-active");
+        assignmentFilter = group;
+        areaSubFilter = "";
+        pageState.page = 1;
+        loadRecords().then(render);
 
-        assignmentFilter = btn.dataset.assign || "All";
-        if (assignmentFilter === "Area") {
-          setAreaFilterVisibility(true);
-          if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
-        } else {
-          setAreaFilterVisibility(false);
-          if (areaPlaceFilter) areaPlaceFilter.value = "All";
+        if (dropdown) {
+          if (isAlreadyActive && wasOpen) {
+            dropdown.classList.remove("is-open");
+            dropdown.style.display = "none";
+            openDropdown = null;
+            openDropdownBtn = null;
+            return;
+          }
+          positionDropdown(btn, dropdown);
+          dropdown.style.display = "block";
+          dropdown.classList.add("is-open");
+          openDropdown = dropdown;
+          openDropdownBtn = btn;
         }
-        segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+      });
+    });
+
+    segContainer.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const place = item.getAttribute("data-place");
+        const dropdown = item.closest(".seg__dropdown");
+        const group = dropdown?.getAttribute("data-group") || "";
+
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+
+        assignmentFilter = group || assignmentFilter;
+        areaSubFilter = place || "";
+        closeAllDropdowns();
         pageState.page = 1;
         loadRecords().then(render);
       });
     });
+
+    document.addEventListener("click", (e) => {
+      if (!segContainer.contains(e.target)) closeAllDropdowns();
+    }, { capture: true });
+    window.addEventListener("resize", refreshOpenDropdownPosition);
+    window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+    contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
   }
 
 
@@ -1218,9 +1299,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (newStatus === "RNR") {
       const updates = records.filter(r => ids.includes(r.id));
-      const invalid = updates.filter(r => r.assignType !== "Area");
+      const invalid = updates.filter(r => r.assignType !== "Field");
       if (invalid.length) {
-        alert("RNR is only allowed for Area employees.");
+        alert("RNR is only allowed for Field employees.");
         return;
       }
     }
@@ -1296,7 +1377,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function syncPLBalance() {
     const emp = getEmpById(f_employee?.value);
-    if (emp && emp.employmentType.toLowerCase() === "regular" && ["Tagum", "Davao"].includes(emp.assignmentType)) {
+    if (emp && emp.employmentType.toLowerCase() === "regular" && !!(emp.assignmentType)) {
       const year = f_date?.value ? new Date(f_date.value + "T00:00:00").getFullYear() : new Date().getFullYear();
       fetchPLBalance(emp.empNo, year);
     } else {
@@ -1332,7 +1413,7 @@ document.addEventListener("DOMContentLoaded", () => {
       f_assignType.disabled = true;
     }
     if (f_areaPlace) {
-      if (emp.assignmentType === "Area") {
+      if (emp.assignmentType === "Field") {
         f_areaPlace.disabled = false;
         resolveAndPopulateArea();
       } else {
@@ -1340,11 +1421,11 @@ document.addEventListener("DOMContentLoaded", () => {
         f_areaPlace.disabled = true;
       }
     }
-    if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Area";
+    if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Field";
     if (f_status) {
       const opt = Array.from(f_status.options).find(o => o.value === "RNR");
-      if (opt) opt.disabled = emp.assignmentType !== "Area";
-      if (emp.assignmentType !== "Area" && f_status.value === "RNR") {
+      if (opt) opt.disabled = emp.assignmentType !== "Field";
+      if (emp.assignmentType !== "Field" && f_status.value === "RNR") {
         f_status.value = "";
       }
     }
@@ -1365,11 +1446,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    drawer.classList.add("is-open");
-    drawer.setAttribute("aria-hidden", "false");
-    drawerOverlay.hidden = false;
-    document.body.style.overflow = "hidden";
-    clearErrors();
+      drawer.classList.add("is-open");
+      drawer.setAttribute("aria-hidden", "false");
+      drawerOverlay.hidden = false;
+      document.body.style.overflow = "hidden";
+      clearErrors();
+      const panel = drawer.querySelector(".drawer__body");
+      const resetScroll = () => {
+        if (drawer) drawer.scrollTop = 0;
+        if (panel) panel.scrollTop = 0;
+      };
+      resetScroll();
+      requestAnimationFrame(resetScroll);
 
     // clamp date inputs to cutoff when available
     if (activeCutoff && f_date) {
@@ -1407,7 +1495,7 @@ document.addEventListener("DOMContentLoaded", () => {
       f_notes.value = record.notes || "";
 
       const emp = getEmpById(record.employeeId || "");
-      if (emp?.assignmentType === "Area") {
+      if (emp?.assignmentType === "Field") {
         if (areaWrap) areaWrap.hidden = false;
         if (f_areaPlace) f_areaPlace.disabled = false;
         if (record.areaPlace) {
@@ -1464,8 +1552,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
     const emp = getEmpById(employeeId);
-    if (status === "RNR" && emp?.assignmentType !== "Area") {
-      if (errStatus) errStatus.textContent = "RNR is only allowed for Area employees.";
+    if (status === "RNR" && emp?.assignmentType !== "Field") {
+      if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees.";
       ok = false;
     }
 
@@ -1483,7 +1571,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   f_date && f_date.addEventListener("change", () => {
     const emp = getEmpById(f_employee?.value);
-    if (emp?.assignmentType === "Area") {
+    if (emp?.assignmentType === "Field") {
       resolveAndPopulateArea();
     }
     syncPLBalance();
@@ -1555,7 +1643,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const month = cutoffMonthInput?.value || "";
     const cutoff = cutoffSelect?.value || "";
     const assignment = assignmentFilter || "All";
-    let area = assignment === "Area" ? (areaPlaceFilter?.value || "") : "";
+    let area = assignment !== "All" ? (areaSubFilter || "") : "";
     if (area === "All") area = "";
     return { month, cutoff, assignment, area };
   }
@@ -1576,7 +1664,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function assignmentPreviewText(r) {
-    if (r.assignType === "Area") return r.areaPlace || "—";
+    if (r.areaPlace) return `${r.assignType || "—"} (${r.areaPlace})`;
     return r.assignType || "—";
   }
 
@@ -1614,7 +1702,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const [aDate, aAssign] = a[0].split("||");
         const [bDate, bAssign] = b[0].split("||");
         if (aDate !== bDate) return String(bDate).localeCompare(String(aDate));
-        const order = { "Davao": 1, "Tagum": 2 };
+        const order = { "G5-Davao": 1, "AYU Household": 2, "Agri-Farm": 3, "Stallion Farm": 4, "Auraland Property": 5, "AURA FORTUNE G5 TRADERS CORPORATION": 6 };
         const ao = order[aAssign] || 99;
         const bo = order[bAssign] || 99;
         if (ao !== bo) return ao - bo;
@@ -1731,8 +1819,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapped = mapAttendanceCode(r.code, r.status);
     const finalStatus = mapped.status || (r.status || "");
     const emp = r.empId ? getEmpByNo(r.empId) : null;
-    if (finalStatus === "RNR" && emp?.assignmentType !== "Area") {
-      issues.push(`Row ${r.rowNo}: RNR is only allowed for Area employees`);
+    if (finalStatus === "RNR" && emp?.assignmentType !== "Field") {
+      issues.push(`Row ${r.rowNo}: RNR is only allowed for Field employees`);
     }
 
     return issues;
@@ -2235,7 +2323,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const timeInDisplay = showStatus ? statusLabel : (r.timeIn || "—");
       const timeOutDisplay = showStatus ? "—" : (r.timeOut || "—");
 
-      const areaDisplay = r.assignType === "Area" ? (r.areaPlace || "—") : (r.assignType || "—");
+      const areaDisplay = r.assignType === "Field" ? (r.areaPlace || "—") : (r.assignType || "—");
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -2265,3 +2353,4 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   render();
 });
+

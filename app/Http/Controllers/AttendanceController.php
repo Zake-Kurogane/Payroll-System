@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AttendanceRecord;
 use App\Models\Employee;
 use App\Models\PayrollCalendarSetting;
+use App\Services\Attendance\AttendanceSummaryService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +63,7 @@ class AttendanceController extends Controller
         ]);
 
         $employee = Employee::find((int) $v['employee_id']);
-        if (!$employee || $employee->assignment_type !== 'Area') {
+        if (!$employee) {
             return response()->json(['area_place' => null]);
         }
 
@@ -132,14 +133,8 @@ class AttendanceController extends Controller
         if ($assignment !== 'All') {
             $records->whereHas('employee', fn ($q) => $q->where('assignment_type', $assignment));
         }
-        if ($assignment === 'Area' && $area) {
-            $records->where(function ($q) use ($area) {
-                $q->where('area_place', $area)
-                  ->orWhere(function ($qq) use ($area) {
-                      $qq->whereNull('area_place')
-                         ->whereHas('employee', fn ($e) => $e->where('area_place', $area));
-                  });
-            });
+        if ($area) {
+            $records->whereHas('employee', fn ($q) => $q->where('area_place', $area));
         }
 
         if (!empty($v['employee_id'])) {
@@ -209,7 +204,7 @@ class AttendanceController extends Controller
                 'department' => $emp?->department,
                 'position' => $emp?->position,
                 'assignment_type' => $emp?->assignment_type,
-                'area_place' => $r->area_place ?? $emp?->area_place,
+                'area_place' => $emp?->area_place,
                 'date' => $r->date?->format('Y-m-d'),
                 'status' => $r->status,
                 'clock_in' => $r->clock_in,
@@ -239,17 +234,26 @@ class AttendanceController extends Controller
             $this->checkPLBalance($validated['employee_id'], $validated['date']);
         }
         $record = AttendanceRecord::create($validated);
+        (new AttendanceSummaryService())->refreshForEmployeeDate(
+            (int) $validated['employee_id'],
+            (string) $validated['date']
+        );
 
         return response()->json(['id' => $record->id], 201);
     }
 
     public function update(Request $request, AttendanceRecord $record)
     {
+        $prevEmployeeId = (int) $record->employee_id;
+        $prevDate = $record->date?->format('Y-m-d') ?? (string) $record->date;
         $validated = $this->validateRecord($request);
         if (($validated['status'] ?? '') === 'Paid Leave') {
             $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id);
         }
         $record->update($validated);
+        $svc = new AttendanceSummaryService();
+        $svc->refreshForEmployeeDate($prevEmployeeId, $prevDate);
+        $svc->refreshForEmployeeDate((int) $validated['employee_id'], (string) $validated['date']);
 
         return response()->json(['updated' => true]);
     }
@@ -260,7 +264,7 @@ class AttendanceController extends Controller
         if (!$employee || strtolower((string) ($employee->employment_type ?? '')) !== 'regular') {
             return;
         }
-        if (!in_array($employee->assignment_type, ['Tagum', 'Davao'], true)) {
+        if (empty($employee->assignment_type)) {
             return;
         }
         $year = Carbon::parse($date)->year;
@@ -276,7 +280,10 @@ class AttendanceController extends Controller
 
     public function destroy(AttendanceRecord $record)
     {
+        $employeeId = (int) $record->employee_id;
+        $date = $record->date?->format('Y-m-d') ?? (string) $record->date;
         $record->delete();
+        (new AttendanceSummaryService())->refreshForEmployeeDate($employeeId, $date);
         return response()->json(['deleted' => true]);
     }
 
@@ -340,7 +347,7 @@ class AttendanceController extends Controller
         $row = 2;
         foreach ($employees as $e) {
             $assignType = $e->assignment_type ?? '';
-            $defaultStatus = ($isSunday && in_array($assignType, ['Tagum', 'Davao'], true)) ? 'OFF' : '';
+            $defaultStatus = ($isSunday && !empty($assignType)) ? 'OFF' : '';
             $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
             $sheet->fromArray([
                 $e->emp_no,
@@ -433,7 +440,7 @@ class AttendanceController extends Controller
         // Show AM/PM for time columns
         $sheet->getStyle("F2:G{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
 
-        $label = $assignment === 'Area' && $area ? "AREA - {$area}" : $assignment;
+        $label = $area ? "{$assignment} - {$area}" : $assignment;
         $filename = "{$label} ATTENDANCE {$date->format('Y-m-d')}.xlsx";
 
         $tmpPath = storage_path('app/tmp_attendance_template.xlsx');
@@ -579,7 +586,8 @@ class AttendanceController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($rowsToUpsert) {
+        $summaryTouches = [];
+        DB::transaction(function () use ($rowsToUpsert, &$summaryTouches) {
             foreach ($rowsToUpsert as $row) {
                 $emp = Employee::where('emp_no', $row['emp_no'])->first();
                 if (!$emp) {
@@ -598,8 +606,25 @@ class AttendanceController extends Controller
                         'ot_hours' => $row['ot_hours'],
                     ]
                 );
+
+                $summaryTouches[] = [
+                    'employee_id' => (int) $emp->id,
+                    'date' => (string) $row['date'],
+                ];
             }
         });
+        if ($summaryTouches) {
+            $svc = new AttendanceSummaryService();
+            $seen = [];
+            foreach ($summaryTouches as $touch) {
+                $key = $touch['employee_id'] . '|' . $touch['date'];
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $svc->refreshForEmployeeDate($touch['employee_id'], $touch['date']);
+            }
+        }
 
         return response()->json(['message' => 'Imported successfully.']);
     }
@@ -686,7 +711,7 @@ class AttendanceController extends Controller
         if ($assignment !== 'All') {
             $q->where('assignment_type', $assignment);
         }
-        if ($assignment === 'Area' && $area) {
+        if ($area) {
             $q->where('area_place', $area);
         }
 

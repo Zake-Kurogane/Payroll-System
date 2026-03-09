@@ -415,16 +415,20 @@ h1 {
 .field {
     display: grid;
     gap: 8px;
-    min-width: 200px;
+    min-width: 180px;
     flex: 1;
 }
 
 .field--grow {
-    flex: 2;
-    min-width: 360px;
+    flex: 1.5;
+    min-width: 300px;
 }
 .field--status {
-    min-width: 220px;
+    min-width: 180px;
+}
+.field--assign-group {
+    flex: 0 0 auto;
+    min-width: 0;
 }
 .field--area {
     min-width: 220px;
@@ -477,23 +481,25 @@ h1 {
     background: rgba(156, 29, 60, 0.08);
 }
 
-/* segmented assignment filter */
+/* segmented assignment filter (match Attendance) */
 .seg {
-    display: inline-flex;
-    align-items: stretch;
-    height: 44px;
-    border-radius: 999px;
-    border: 1px solid rgba(156, 29, 60, 0.14);
-    overflow: hidden;
     background: #fff;
-    box-shadow: 0 4px 10px rgba(17, 24, 39, 0.08);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    display: flex;
+    height: 44px;
     flex: 0 0 auto;
+}
+.seg--pill {
+    overflow: visible;
 }
 
 .seg--pill .seg__btn:first-child {
     border-radius: 999px 0 0 999px;
 }
-.seg--pill .seg__btn:last-child {
+.seg--pill .seg__btn:last-child,
+.seg--pill .seg__btn-wrap:last-child .seg__btn {
     border-radius: 0 999px 999px 0;
 }
 
@@ -504,18 +510,78 @@ h1 {
     font-weight: 1000;
     cursor: pointer;
     color: var(--muted);
-    transition:
-        background 0.12s ease,
-        color 0.12s ease;
 }
-
 .seg__btn:hover {
     background: rgba(156, 29, 60, 0.06);
     color: var(--maroon);
 }
 .seg__btn.is-active {
-    background: rgba(156, 29, 60, 0.12);
+    background: rgba(156, 29, 60, 0.1);
     color: var(--maroon);
+}
+
+.seg__btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+.seg__chevron {
+    font-size: 0.7em;
+    margin-left: 4px;
+    opacity: 0.6;
+}
+.seg__dropdown {
+    position: fixed;
+    top: 0;
+    left: 0;
+    background: #fff;
+    border: 1px solid rgba(156, 29, 60, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 14px 28px rgba(156, 29, 60, 0.18);
+    z-index: 200;
+    min-width: 180px;
+    padding: 6px 0;
+    white-space: normal;
+    display: none;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    max-height: 260px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.seg__dropdown.is-open {
+    opacity: 1;
+    transform: translateY(0);
+}
+.seg__dropdown-item {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 8px 16px 8px 28px;
+    text-align: left;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--maroon);
+    position: relative;
+    word-break: break-word;
+}
+.seg__dropdown-item::before {
+    content: "•";
+    position: absolute;
+    left: 14px;
+    top: 7px;
+    color: var(--maroon);
+    opacity: 0.9;
+}
+.seg__dropdown-item:hover {
+    background: rgba(156, 29, 60, 0.08);
+    color: var(--maroon);
+}
+.seg__dropdown-item.is-active {
+    background: rgba(156, 29, 60, 0.14);
+    color: var(--maroon);
+    font-weight: 600;
 }
 
 /* BUTTONS */
@@ -632,6 +698,8 @@ h1 {
 #empTable td:nth-child(1) { width: 44px; }
 #empTable th:last-child,
 #empTable td:last-child { width: 90px; }
+#empTable th:nth-child(6),
+#empTable td:nth-child(6) { width: 180px; }
 
 thead th {
     position: sticky;

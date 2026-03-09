@@ -362,6 +362,13 @@ h1 {
     display: flex;
     justify-content: flex-end;
 }
+.filters__payoutRowInner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
 .filters__left {
     display: grid;
     grid-template-columns: 190px 160px minmax(260px, 1fr);
@@ -420,6 +427,9 @@ h1 {
     background: #fff;
     flex: 0 0 auto;
 }
+.seg--pill {
+    overflow: hidden;
+}
 .seg__btn {
     border: 0;
     background: transparent;
@@ -431,6 +441,81 @@ h1 {
 .seg__btn.is-active {
     background: rgba(156, 29, 60, 0.1);
     color: var(--maroon);
+}
+.seg__btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+.seg__chevron {
+    font-size: 0.7em;
+    margin-left: 4px;
+    opacity: 0.6;
+}
+.seg__dropdown {
+    position: fixed;
+    top: 0;
+    left: 0;
+    background: #fff;
+    border: 1px solid rgba(156, 29, 60, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 14px 28px rgba(156, 29, 60, 0.18);
+    z-index: 200;
+    min-width: 180px;
+    padding: 6px 0;
+    white-space: normal;
+    display: none;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    max-height: 260px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.seg__dropdown.is-open {
+    opacity: 1;
+    transform: translateY(0);
+}
+.seg__dropdown-item {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 8px 16px 8px 28px;
+    text-align: left;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--maroon);
+    position: relative;
+    word-break: break-word;
+}
+.seg__dropdown-item::before {
+    content: "•";
+    position: absolute;
+    left: 14px;
+    top: 7px;
+    color: var(--maroon);
+    opacity: 0.9;
+}
+.seg__dropdown-item:hover {
+    background: rgba(156, 29, 60, 0.08);
+    color: var(--maroon);
+}
+.seg__dropdown-item.is-active {
+    background: rgba(156, 29, 60, 0.14);
+    color: var(--maroon);
+    font-weight: 600;
+}
+.seg__divider {
+    padding: 0 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #8899aa);
+    border-left: 1px solid var(--line);
+    line-height: 1;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 /* Validation */

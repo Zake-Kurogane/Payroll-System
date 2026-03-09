@@ -75,17 +75,24 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   const monthInput = document.getElementById("monthInput");
   const cutoffSelect = document.getElementById("cutoffSelect");
-  const assignmentSeg = document.querySelector(".filters__right .seg[aria-label='Assignment filter']");
+  const assignmentSeg = document.getElementById("assignmentSeg");
   let segBtns = Array.from(
-    document.querySelectorAll(".filters__right .seg__btn[data-assign]")
+    document.querySelectorAll("#assignmentSeg .seg__btn[data-assign]")
   );
   const payoutBtns = Array.from(
-    document.querySelectorAll(".filters__right .seg__btn[data-pay]")
+    document.querySelectorAll(".seg__btn[data-pay]")
   );
+  const runTypeBtns = Array.from(document.querySelectorAll("#runTypeSeg .seg__btn[data-run-type]"));
+  const assignmentFilterEnabled = !!assignmentSeg;
+  const runTypeEnabled = runTypeBtns.length > 0;
+  let runType = "Internal"; // "Internal" | "External"
   let assignmentFilter = "All";
+  let areaPlaceFilter = ""; // string
+  let assignmentOptions = [];
+  let areaPlacesGrouped = {};
+  let openDropdown = null;
+  let openDropdownBtn = null;
   let payoutFilter = "All";
-  const areaPlaceFilterWrap = document.getElementById("areaPlaceFilterWrap");
-  const areaPlaceFilter = document.getElementById("areaPlaceFilter");
   const searchInput = document.getElementById("searchInput");
 
   const resultsMeta = document.getElementById("resultsMeta");
@@ -168,6 +175,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // HELPERS
   // =========================================================
   const money = (n) => formatMoney(n);
+  const escapeHtml = (s) => String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 
   const fmtDT = (d) => {
     if (!d) return "—";
@@ -268,51 +281,29 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadFilterOptions() {
     try {
       const data = await apiFetch("/employees/filters");
-      const assignments = Array.isArray(data.assignments) ? data.assignments : [];
-      const areaPlaces = Array.isArray(data.area_places) ? data.area_places : [];
+      assignmentOptions = Array.isArray(data.assignments) ? data.assignments : [];
+      const grouped = (data.area_places && typeof data.area_places === "object" && !Array.isArray(data.area_places))
+        ? data.area_places : {};
+      areaPlacesGrouped = grouped;
 
-      if (assignmentSeg) {
-        assignmentSeg.innerHTML = "";
-        const allBtn = document.createElement("button");
-        allBtn.className = "seg__btn is-active";
-        allBtn.type = "button";
-        allBtn.dataset.assign = "All";
-        allBtn.setAttribute("aria-selected", "true");
-        allBtn.textContent = "All";
-        assignmentSeg.appendChild(allBtn);
-
-        assignments.forEach((label) => {
-          const btn = document.createElement("button");
-          btn.className = "seg__btn";
-          btn.type = "button";
-          btn.dataset.assign = label;
-          btn.setAttribute("aria-selected", "false");
-          btn.textContent = label;
-          assignmentSeg.appendChild(btn);
-        });
-
-        segBtns = Array.from(
-          assignmentSeg.querySelectorAll(".seg__btn[data-assign]")
-        );
-        bindAssignmentButtons();
-      }
-
-      if (areaPlaceFilter) {
-        areaPlaceFilter.innerHTML = "";
-        const allOpt = document.createElement("option");
-        allOpt.value = "All";
-        allOpt.textContent = "All";
-        allOpt.selected = true;
-        areaPlaceFilter.appendChild(allOpt);
-        areaPlaces.forEach((label) => {
-          const opt = document.createElement("option");
-          opt.value = label;
-          opt.textContent = label;
-          areaPlaceFilter.appendChild(opt);
-        });
+      if (assignmentFilterEnabled) {
+        if (!assignmentOptions.length) {
+          assignmentOptions = ["Davao", "Tagum", "Field"];
+        }
+        buildAssignmentSeg();
+        bindAssignmentSeg();
+        syncSegButtons();
       }
     } catch {
-      // keep defaults
+      if (assignmentFilterEnabled) {
+        if (!assignmentOptions.length) {
+          assignmentOptions = ["Davao", "Tagum", "Field"];
+        }
+        areaPlacesGrouped = areaPlacesGrouped || {};
+        buildAssignmentSeg();
+        bindAssignmentSeg();
+        syncSegButtons();
+      }
     }
   }
 
@@ -352,12 +343,13 @@ document.addEventListener("DOMContentLoaded", () => {
       accountMasked: r.account_masked || r.bank_account_masked || "",
       adjustments: Array.isArray(r.adjustments) ? r.adjustments : (ov.adjustments || []),
       cashAdvance: Number(r.cash_advance || 0),
+      chargesDeduction: Number(r.charges_deduction || 0),
       status: r.status || "Ready",
     };
   }
 
   const assignmentLabel = (e) => {
-    if (e.assignType === "Area") return `Area (${e.areaPlace || "—"})`;
+    if (e.areaPlace) return `${e.assignType || "—"} (${e.areaPlace})`;
     return e.assignType || "—";
   };
 
@@ -450,7 +442,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (searchInput) searchInput.disabled = !enabled;
     segBtns.forEach(b => b.disabled = !enabled);
     payoutBtns.forEach(b => b.disabled = !enabled);
-    if (areaPlaceFilter) areaPlaceFilter.disabled = !enabled;
+    runTypeBtns.forEach(b => b.disabled = !enabled);
 
     // actions
     if (computeBtn) computeBtn.disabled = !enabled;
@@ -533,17 +525,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   function filteredRows() {
     const q = (searchInput?.value || "").trim().toLowerCase();
-    const assign = assignmentFilter || "All";
-    const areaVal = areaPlaceFilter?.value || "All";
+    const norm = (v) => String(v || "").trim().toLowerCase();
 
     return previewRows.filter(r => {
-      const okAssign = assign === "All" ? true : r.assign === assign;
-      const okArea = assign !== "Area" || areaVal === "All" || (r.areaPlace || "") === areaVal;
       const payout = (r.payoutMethod || "").toLowerCase() === "bank" ? "Bank" : "Cash";
       const okPayout = payoutFilter === "All" || payout === payoutFilter;
       const text = `${r.empId} ${r.name} ${r.dept} ${r.assign} ${r.areaPlace || ""}`.toLowerCase();
       const okQ = !q || text.includes(q);
-      return okAssign && okArea && okPayout && okQ;
+      const okAssign = assignmentFilter === "All"
+        ? true
+        : (String(r.assign || "") === String(assignmentFilter)
+          && (!areaPlaceFilter || String(r.areaPlace || "") === String(areaPlaceFilter)));
+      return okPayout && okQ && okAssign;
     });
   }
 
@@ -552,14 +545,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   async function computePreview() {
     if (!currentRun) return;
-    const areaVal = assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null;
-    const area = areaVal === "All" ? null : areaVal;
     const payload = await apiFetch(`/payroll-runs/${currentRun.id}/compute`, {
       method: "POST",
-      body: JSON.stringify({
-        assignment_filter: assignmentFilter || "All",
-        area,
-      }),
+      body: JSON.stringify({}),
     });
     previewRows = (payload?.rows || []).map(mapRowFromApi);
     overrides = {};
@@ -770,6 +758,11 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </details>
         </td>
+
+        <td class="num">${r.chargesDeduction > 0
+          ? `<details class="dd"><summary>${money(r.chargesDeduction)}</summary><div class="dd__body"><div>This cutoff: ${money(r.chargesDeduction)}</div></div></details>`
+          : `<span class="muted">—</span>`
+        }</td>
 
         <td class="num">
           <details class="dd">
@@ -1131,15 +1124,14 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows = [];
     selectedEmpIds.clear();
 
-    const areaVal = assignmentFilter === "Area" ? (areaPlaceFilter?.value || null) : null;
-    const area = areaVal === "All" ? null : areaVal;
     const payload = await apiFetch("/payroll-runs", {
       method: "POST",
       body: JSON.stringify({
         period_month: monthInput?.value || "",
         cutoff: cutoffSelect?.value || "11-25",
-        assignment_filter: assignmentFilter || "All",
-        area,
+        run_type: runTypeEnabled ? runType : "Internal",
+        assignment_filter: assignmentFilterEnabled ? assignmentFilter : "All",
+        area_place_filter: assignmentFilterEnabled ? (areaPlaceFilter || null) : null,
       }),
     });
 
@@ -1156,7 +1148,8 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadLatestDraftForSelection() {
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "11-25";
-    const assign = assignmentFilter || "All";
+    const assign = assignmentFilterEnabled ? (assignmentFilter || "All") : "All";
+    const areaFilter = assignmentFilterEnabled ? (areaPlaceFilter || null) : null;
 
     try {
       const runs = await apiFetch("/payroll-runs");
@@ -1164,7 +1157,9 @@ document.addEventListener("DOMContentLoaded", () => {
         r.status === "Draft" &&
         r.period_month === monthVal &&
         r.cutoff === cutoffVal &&
-        (r.assignment_filter || "All") === assign
+        (!runTypeEnabled || (r.run_type || "Internal") === runType) &&
+        (!assignmentFilterEnabled || (r.assignment_filter || "") === assign) &&
+        (!assignmentFilterEnabled || (r.area_place_filter || null) === areaFilter)
       );
 
       currentRun = match || null;
@@ -1279,14 +1274,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     processedRuns.forEach(r => {
       const periodLabel = `${r.run_code || r.id} ${r.period_month} (${r.cutoff || formatCutoffLabel(r.period_month, r.cutoff)})`;
-      const canUnlock = r.status === "Locked";
-      const periodCell = canUnlock
+      const isLocked = r.status === "Locked";
+      const isDraft = r.status === "Draft";
+      const periodCell = isLocked
         ? `<button class="linkRun" type="button" data-action="unlock" data-id="${r.id}" title="Unlock and edit">${periodLabel}</button>`
-        : `<strong>${periodLabel}</strong>`;
+        : isDraft
+          ? `<button class="linkRun" type="button" data-action="open" data-id="${r.id}" title="Open draft run">${periodLabel}</button>`
+          : `<strong>${periodLabel}</strong>`;
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${periodCell}</td>
-        <td class="muted small">${r.assignment_filter || "All"}</td>
+        <td class="muted small">${r.display_label || r.assignment_filter || ""}</td>
         <td class="num">${r.headcount ?? 0}</td>
         <td class="num">${money(r.net ?? 0)}</td>
         <td><span class="st st--ok">${r.status}</span></td>
@@ -1296,42 +1294,75 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   runsTbody && runsTbody.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action='unlock']");
+    const btn = e.target.closest("button[data-action]");
     if (!btn) return;
+    const action = btn.getAttribute("data-action");
     const id = btn.getAttribute("data-id");
     const run = processedRuns.find(r => String(r.id) === String(id));
     if (!run) return;
-    if (run.status !== "Locked") return;
+    if (action === "unlock") {
+      if (run.status !== "Locked") return;
 
-    const password = await askPassword("Enter your password to unlock this run:");
-    if (!password) return;
+      const password = await askPassword("Enter your password to unlock this run:");
+      if (!password) return;
 
-    try {
-      currentRun = await apiFetch(`/payroll-runs/${run.id}/unlock`, {
-        method: "POST",
-        body: JSON.stringify({ password }),
-      });
+      try {
+        currentRun = await apiFetch(`/payroll-runs/${run.id}/unlock`, {
+          method: "POST",
+          body: JSON.stringify({ password }),
+        });
+
+        if (monthInput) monthInput.value = currentRun.period_month || "";
+        if (cutoffSelect) cutoffSelect.value = currentRun.cutoff || "11-25";
+        updateCutoffOptions();
+
+        if (runTypeEnabled) {
+          runType = currentRun.run_type || "Internal";
+        }
+        if (assignmentFilterEnabled) {
+          assignmentFilter = currentRun.assignment_filter || "All";
+          areaPlaceFilter = currentRun.area_place_filter || null;
+        }
+        syncRunTypeUI();
+
+        if (stickyHint) stickyHint.textContent = "Run unlocked (Draft). You can edit and lock again.";
+
+        applyRunUi();
+        await computePreview();
+        renderTable();
+        renderRunSummary();
+        await renderRuns();
+      } catch (err) {
+        alert(err.message || "Failed to unlock run.");
+      }
+      return;
+    }
+
+    if (action === "open") {
+      if (run.status !== "Draft") return;
+      currentRun = run;
 
       if (monthInput) monthInput.value = currentRun.period_month || "";
       if (cutoffSelect) cutoffSelect.value = currentRun.cutoff || "11-25";
+      updateCutoffOptions();
 
-      assignmentFilter = currentRun.assignment_filter || "All";
-      segBtns.forEach(b => {
-        const isActive = (b.dataset.assign || "All") === assignmentFilter;
-        b.classList.toggle("is-active", isActive);
-        b.setAttribute("aria-selected", isActive ? "true" : "false");
-      });
-      setAreaFilterVisibility(assignmentFilter === "Area");
+      if (runTypeEnabled) {
+        runType = currentRun.run_type || "Internal";
+      }
+      if (assignmentFilterEnabled) {
+        assignmentFilter = currentRun.assignment_filter || "All";
+        areaPlaceFilter = currentRun.area_place_filter || null;
+      }
+      syncRunTypeUI();
 
-      if (stickyHint) stickyHint.textContent = "Run unlocked (Draft). You can edit and lock again.";
+      if (stickyHint) stickyHint.textContent = "Draft run loaded. You can edit and lock.";
 
       applyRunUi();
       await computePreview();
       renderTable();
       renderRunSummary();
       await renderRuns();
-    } catch (err) {
-      alert(err.message || "Failed to unlock run.");
+      return;
     }
   });
 
@@ -1354,6 +1385,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function refreshAll() {
+    if (currentRun && currentRun.status === "Draft") {
+      const monthVal = monthInput?.value || "";
+      const cutoffVal = cutoffSelect?.value || "11-25";
+      const mismatch = currentRun.period_month !== monthVal
+        || currentRun.cutoff !== cutoffVal;
+      if (mismatch) {
+        currentRun = null;
+        await loadLatestDraftForSelection();
+        return;
+      }
+    }
+
     if (!currentRun) {
       await loadLatestDraftForSelection();
       return;
@@ -1369,6 +1412,17 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Draft: recompute to reflect latest data
+    if (currentRun.status === "Draft") {
+      if (stickyHint) stickyHint.textContent = "Loading latest attendance and rates...";
+      await computePreview();
+      applyRunUi();
+      renderTable();
+      await renderRuns();
+      renderRunSummary();
+      return;
+    }
+
     await computePreview();
     applyRunUi();
     renderTable();
@@ -1376,28 +1430,195 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRunSummary();
   }
 
-  function setAreaFilterVisibility(isArea) {
-    if (!areaPlaceFilterWrap) return;
-    areaPlaceFilterWrap.hidden = !isArea;
-    areaPlaceFilterWrap.style.display = isArea ? "" : "none";
+  function closeAllDropdowns() {
+    if (!assignmentSeg) return;
+    assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
+      dd.classList.remove("is-open");
+      dd.style.display = "none";
+    });
+    openDropdown = null;
+    openDropdownBtn = null;
   }
 
-  function populateAreaFilter(selectEl) {
-    if (!selectEl) return;
-    if (!selectEl.querySelector('option[value="All"]')) {
-      const opt = document.createElement("option");
-      opt.value = "All";
-      opt.textContent = "All";
-      opt.selected = true;
-      selectEl.prepend(opt);
+  function buildAssignmentSeg() {
+    if (!assignmentSeg) return;
+    const opts = Array.from(new Set(assignmentOptions.filter(x => String(x || "").trim() !== "")));
+    assignmentSeg.innerHTML = "";
+
+    const allBtn = document.createElement("button");
+    allBtn.className = "seg__btn seg__btn--pay is-active";
+    allBtn.type = "button";
+    allBtn.dataset.assign = "All";
+    allBtn.textContent = "All";
+    assignmentSeg.appendChild(allBtn);
+
+    opts.forEach((label) => {
+      const places = Array.isArray(areaPlacesGrouped[label]) ? areaPlacesGrouped[label] : [];
+      const wrap = document.createElement("div");
+      wrap.className = "seg__btn-wrap";
+
+      const btn = document.createElement("button");
+      btn.className = "seg__btn seg__btn--pay";
+      btn.type = "button";
+      btn.dataset.assign = label;
+      btn.textContent = label;
+      if (places.length) {
+        const chev = document.createElement("span");
+        chev.className = "seg__chevron";
+        chev.textContent = "▾";
+        btn.appendChild(chev);
+      }
+      wrap.appendChild(btn);
+
+      const dropdown = document.createElement("div");
+      dropdown.className = "seg__dropdown";
+      dropdown.dataset.group = label;
+      dropdown.style.display = "none";
+      dropdown.innerHTML = places.map(p =>
+        `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+      ).join("");
+      wrap.appendChild(dropdown);
+
+      assignmentSeg.appendChild(wrap);
+    });
+
+    segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn--pay"));
+  }
+
+  function bindAssignmentSeg() {
+    if (!assignmentSeg) return;
+    const contentScroller = document.querySelector(".content");
+    let rafId = 0;
+    function positionDropdown(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const rect = btn.getBoundingClientRect();
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const desiredMin = Math.round(rect.width);
+      const maxWidth = Math.min(320, Math.max(200, viewportW - 16));
+      const dropdownW = Math.max(desiredMin, maxWidth);
+      let left = Math.round(rect.left);
+      if (left + dropdownW > viewportW - 8) {
+        left = Math.max(8, viewportW - dropdownW - 8);
+      }
+      const top = Math.round(rect.bottom + 8);
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.minWidth = `${desiredMin}px`;
+      dropdown.style.maxWidth = `${maxWidth}px`;
     }
+
+    function refreshOpenDropdownPosition() {
+      if (!openDropdown || !openDropdownBtn) return;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        positionDropdown(openDropdownBtn, openDropdown);
+      });
+    }
+
+    segBtns.forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        if (isLocked()) return;
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+        const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+        const wasOpen = dropdown && dropdown.style.display === "block";
+
+        const isAlreadyActive = btn.classList.contains("is-active");
+        closeAllDropdowns();
+
+        segBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        assignmentFilter = group;
+        areaPlaceFilter = "";
+        payPage = 1;
+        renderTable();
+        renderRunSummary();
+        refreshAll().catch(err => alert(err.message || "Failed to refresh."));
+
+        if (dropdown) {
+          if (isAlreadyActive && wasOpen) {
+            dropdown.classList.remove("is-open");
+            dropdown.style.display = "none";
+            openDropdown = null;
+            openDropdownBtn = null;
+            return;
+          }
+          positionDropdown(btn, dropdown);
+          dropdown.style.display = "block";
+          dropdown.classList.add("is-open");
+          openDropdown = dropdown;
+          openDropdownBtn = btn;
+        }
+      });
+    });
+
+    assignmentSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        if (isLocked()) return;
+        e.stopPropagation();
+        const place = item.getAttribute("data-place") || "";
+        const dropdown = item.closest(".seg__dropdown");
+        const group = dropdown?.getAttribute("data-group") || "";
+
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+
+        assignmentFilter = group || assignmentFilter;
+        areaPlaceFilter = place;
+        closeAllDropdowns();
+        payPage = 1;
+        renderTable();
+        renderRunSummary();
+        refreshAll().catch(err => alert(err.message || "Failed to refresh."));
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!assignmentSeg.contains(e.target)) closeAllDropdowns();
+    }, { capture: true });
+    window.addEventListener("resize", refreshOpenDropdownPosition);
+    window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+    contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
   }
 
-  if (areaPlaceFilter) {
-    populateAreaFilter(areaPlaceFilter);
-    areaPlaceFilter.addEventListener("change", () => refreshAll().catch(err => alert(err.message || "Failed to refresh.")));
+  function syncSegButtons() {
+    segBtns.forEach(b => {
+      const matchAssign = (b.dataset.assign || "") === assignmentFilter;
+      const isActive = matchAssign;
+      b.classList.toggle("is-active", isActive);
+      b.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    if (assignmentSeg) {
+      assignmentSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+        const dropdown = item.closest(".seg__dropdown");
+        const group = dropdown?.getAttribute("data-group") || "";
+        const isActive = group === assignmentFilter && (item.getAttribute("data-place") || "") === (areaPlaceFilter || "");
+        item.classList.toggle("is-active", isActive);
+      });
+    }
+    runTypeBtns.forEach(b => {
+      const isActive = (b.dataset.runType || "External") === runType;
+      b.classList.toggle("is-active", isActive);
+      b.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
   }
-  setAreaFilterVisibility(assignmentFilter === "Area");
+
+  function syncRunTypeUI() {
+    if (!runTypeEnabled) return;
+    const isInternal = runType === "Internal";
+    const allBtn = document.getElementById("assignAllBtn");
+    if (allBtn) allBtn.style.display = isInternal ? "" : "none";
+    // External runs cannot use "All" — reset to Tagum if needed
+    if (assignmentFilterEnabled) {
+      if (!isInternal && assignmentFilter === "All") {
+        const firstAssign = segBtns.find(b => (b.dataset.assign || "") !== "All");
+        assignmentFilter = firstAssign?.dataset.assign || "All";
+        areaPlaceFilter = "";
+      }
+    }
+    syncSegButtons();
+  }
 
   // filters changes (blocked when locked via disabled attribute, but we guard anyway)
   [monthInput, cutoffSelect].forEach(el => {
@@ -1412,27 +1633,19 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRunSummary();
   });
 
-  function bindAssignmentButtons() {
-    segBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        if (isLocked()) return;
-        segBtns.forEach(b => b.classList.remove("is-active"));
-        btn.classList.add("is-active");
-        segBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
-        assignmentFilter = btn.dataset.assign || "All";
-        if (assignmentFilter === "Area") {
-          setAreaFilterVisibility(true);
-          if (areaPlaceFilter) populateAreaFilter(areaPlaceFilter);
-        } else {
-          setAreaFilterVisibility(false);
-          if (areaPlaceFilter) areaPlaceFilter.value = "All";
-        }
-        refreshAll().catch(err => alert(err.message || "Failed to refresh."));
-      });
-    });
-  }
+  // assignment seg is bound after loadFilterOptions
 
-  bindAssignmentButtons();
+  runTypeBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (isLocked()) return;
+      runType = btn.dataset.runType || "External";
+      syncRunTypeUI();
+      payPage = 1;
+      renderTable();
+      renderRunSummary();
+      refreshAll().catch(err => alert(err.message || "Failed to refresh."));
+    });
+  });
 
   payoutBtns.forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1441,7 +1654,9 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("is-active");
       payoutBtns.forEach(b => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
       payoutFilter = btn.dataset.pay || "All";
-      refreshAll().catch(err => alert(err.message || "Failed to refresh."));
+      payPage = 1;
+      renderTable();
+      renderRunSummary();
     });
   });
 
@@ -1517,5 +1732,3 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(() => renderRuns())
     .catch(err => alert(err.message || "Failed to initialize payroll processing."));
 });
-
-

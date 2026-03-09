@@ -73,23 +73,7 @@
                 </div>
 
                 <div class="filterbar__right">
-                    <div class="seg" role="tablist" aria-label="Assignment filter">
-                        <button class="seg__btn is-active" type="button" data-assign="All"
-                            aria-selected="true">All</button>
-                        <button class="seg__btn" type="button" data-assign="Tagum" aria-selected="false">Tagum</button>
-                        <button class="seg__btn" type="button" data-assign="Davao" aria-selected="false">Davao</button>
-                        <button class="seg__btn" type="button" data-assign="Area" aria-selected="false">Area</button>
-                    </div>
-
-                    <div class="f" id="areaPlaceWrap" style="display:none; margin-left: 10px;">
-                        <label>Area Place</label>
-                        <select id="areaPlaceSelect">
-                            <option value="All" selected>All</option>
-                            <option>Laak</option>
-                            <option>Pantukan</option>
-                            <option>Maragusan</option>
-                        </select>
-                    </div>
+                    <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Assignment filter"></div>
                 </div>
             </div>
         </section>

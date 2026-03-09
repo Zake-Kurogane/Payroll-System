@@ -110,13 +110,7 @@
             </div>
 
             <div class="filterbar__right">
-                <div class="seg" id="assignmentSeg" role="tablist" aria-label="Assignment filter"></div>
-                <div class="f f--area" id="areaPlaceFilterWrap" hidden style="display:none;">
-                    <label>Area Place</label>
-                    <select id="areaPlaceFilter">
-                        <option value="All" selected>All</option>
-                    </select>
-                </div>
+                <div class="seg seg--pill" id="assignmentSeg" role="group" aria-label="Assignment filter"></div>
             </div>
         </section>
 

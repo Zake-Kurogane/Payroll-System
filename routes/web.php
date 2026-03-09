@@ -7,6 +7,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\PayrollRunController;
 use App\Http\Controllers\PayslipController;
+use App\Http\Controllers\DeductionCaseController;
 
 Route::get('/', fn () => redirect()->route('login'));
 
@@ -25,6 +26,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
     Route::get('/employees/heartbeat', [EmployeeController::class, 'heartbeat'])->name('employees.heartbeat');
+    Route::get('/employees/next-id', [EmployeeController::class, 'nextId'])->name('employees.nextId');
     Route::get('/employees/filters', [EmployeeController::class, 'filters'])->name('employees.filters');
     Route::get('/employees/suggest', [EmployeeController::class, 'suggest'])->name('employees.suggest');
     Route::get('/employees/pl-balances', [EmployeeController::class, 'paidLeaveBalances'])->name('employees.plBalances');
@@ -90,4 +92,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/overtime-rules', [SettingsController::class, 'saveOvertimeRules'])->name('settings.overtime.save');
     Route::get('/settings/attendance-codes', [SettingsController::class, 'getAttendanceCodes'])->name('settings.attendance_codes.get');
     Route::post('/settings/attendance-codes', [SettingsController::class, 'saveAttendanceCodes'])->name('settings.attendance_codes.save');
+
+    // Deduction Cases (Charges / Shortages)
+    Route::get('/employees/{emp_no}/deduction-cases', [DeductionCaseController::class, 'index']);
+    Route::post('/employees/{emp_no}/deduction-cases', [DeductionCaseController::class, 'store']);
+    Route::put('/employees/{emp_no}/deduction-cases/{case}', [DeductionCaseController::class, 'update']);
+    Route::post('/employees/{emp_no}/deduction-cases/{case}/close', [DeductionCaseController::class, 'close']);
+    Route::get('/employees/{emp_no}/deduction-cases/{case}/schedules', [DeductionCaseController::class, 'schedules']);
 });

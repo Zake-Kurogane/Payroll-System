@@ -196,27 +196,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const deptSelect = $("deptSelect");
   const statusSelect = $("statusSelect");
 
-  const segBtns = $$(".seg__btn");
-  const areaPlaceWrap = $("areaPlaceWrap");
-  const areaPlaceSelect = $("areaPlaceSelect");
+  const assignmentSeg = $("assignSeg");
+  let segBtns = [];
 
-  function populateAreaPlaces() {
-    if (!areaPlaceSelect) return;
-    const current = areaPlaceSelect.value || "All";
-    const places = Array.from(
-      new Set(
-        REGISTER.filter((r) => r.assignmentType === "Area" && r.areaPlace)
-          .map((r) => r.areaPlace)
-      )
-    ).sort();
-    const options = places.length ? places : ["Laak", "Pantukan", "Maragusan"];
-    areaPlaceSelect.innerHTML =
-      `<option value="All" selected>All</option>` +
-      options.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
-    if (current && (current === "All" || options.includes(current))) {
-      areaPlaceSelect.value = current;
-    }
-  }
+  let areaPlaces = {};
+  let areaSubFilter = "";
 
   const viewRunBtn = $("viewRunBtn");
   const exportCsvBtn = $("exportCsvBtn");
@@ -263,7 +247,12 @@ document.addEventListener("DOMContentLoaded", () => {
     monthInput.value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
   }
   if (cutoffSelect && !cutoffSelect.value) cutoffSelect.value = "All";
-  if (areaPlaceWrap) areaPlaceWrap.style.display = "none";
+  function closeAllDropdowns() {
+    if (!assignmentSeg) return;
+    assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
+      dd.style.display = "none";
+    });
+  }
 
   // =========================================================
   // RUN SELECT INIT
@@ -291,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // PIPELINE: FILTERS
   // =========================================================
   function assignmentText(r) {
-    if (r.assignmentType === "Area") return `Area (${r.areaPlace || "—"})`;
+    if (r.areaPlace) return `${r.assignmentType || "—"} (${r.areaPlace})`;
     return r.assignmentType || "—";
   }
 
@@ -311,8 +300,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const deptVal = deptSelect?.value || "All";
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
-    const areaPlaceVal = areaPlaceSelect?.value || "All";
-
     return list
       .filter((r) => (!selectedRunId ? true : r.runId === selectedRunId))
       .filter((r) => (!monthVal ? true : getRun(r.runId)?.month === monthVal))
@@ -320,9 +307,8 @@ document.addEventListener("DOMContentLoaded", () => {
       .filter((r) => (deptVal === "All" ? true : (r.department || "") === deptVal))
       .filter((r) => (assignmentFilter === "All" ? true : r.assignmentType === assignmentFilter))
       .filter((r) => {
-        if (assignmentFilter !== "Area") return true;
-        if (areaPlaceVal === "All") return true;
-        return (r.areaPlace || "") === areaPlaceVal;
+        if (!areaSubFilter) return true;
+        return (r.areaPlace || "") === areaSubFilter;
       })
       .filter((r) => {
         if (!q) return true;
@@ -659,24 +645,96 @@ document.addEventListener("DOMContentLoaded", () => {
 
   searchInput && searchInput.addEventListener("input", renderAll);
 
-  // Assignment segmented
-  populateAreaPlaces();
+  function buildAssignmentSeg(assignments) {
+    if (!assignmentSeg) return;
+    assignmentSeg.innerHTML = "";
 
-  segBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      segBtns.forEach((b) => b.classList.remove("is-active"));
-      btn.classList.add("is-active");
+    const allBtn = document.createElement("button");
+    allBtn.className = "seg__btn seg__btn--emp is-active";
+    allBtn.type = "button";
+    allBtn.dataset.assign = "All";
+    allBtn.textContent = "All";
+    assignmentSeg.appendChild(allBtn);
 
-      assignmentFilter = btn.dataset.assign || "All";
-      segBtns.forEach((b) => b.setAttribute("aria-selected", b === btn ? "true" : "false"));
+    assignments.forEach((label) => {
+      const places = Array.isArray(areaPlaces[label]) ? areaPlaces[label] : [];
+      const wrap = document.createElement("div");
+      wrap.className = "seg__btn-wrap";
 
-      if (areaPlaceWrap) areaPlaceWrap.style.display = assignmentFilter === "Area" ? "" : "none";
-      if (assignmentFilter === "Area") populateAreaPlaces();
-      renderAll();
+      const btn = document.createElement("button");
+      btn.className = "seg__btn seg__btn--emp";
+      btn.type = "button";
+      btn.dataset.assign = label;
+      btn.textContent = label;
+      if (places.length) {
+        const chev = document.createElement("span");
+        chev.className = "seg__chevron";
+        chev.textContent = "▾";
+        btn.appendChild(chev);
+      }
+      wrap.appendChild(btn);
+
+      const dropdown = document.createElement("div");
+      dropdown.className = "seg__dropdown";
+      dropdown.dataset.group = label;
+      dropdown.style.display = "none";
+      dropdown.innerHTML = places.map(p =>
+        `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+      ).join("");
+      wrap.appendChild(dropdown);
+
+      assignmentSeg.appendChild(wrap);
     });
-  });
 
-  areaPlaceSelect && areaPlaceSelect.addEventListener("change", renderAll);
+    segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn--emp"));
+    bindAssignmentButtons();
+  }
+
+  function bindAssignmentButtons() {
+    if (!assignmentSeg) return;
+    segBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+        const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+
+        const isAlreadyActive = btn.classList.contains("is-active");
+        closeAllDropdowns();
+
+        segBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        assignmentFilter = group;
+        areaSubFilter = "";
+        renderAll();
+
+        if (dropdown && !isAlreadyActive) {
+          dropdown.style.display = "block";
+        }
+      });
+    });
+
+    assignmentSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const place = item.getAttribute("data-place");
+        const dropdown = item.closest(".seg__dropdown");
+        const group = dropdown?.getAttribute("data-group") || "";
+
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+
+        assignmentFilter = group || assignmentFilter;
+        areaSubFilter = place || "";
+        closeAllDropdowns();
+        renderAll();
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!assignmentSeg.contains(e.target)) closeAllDropdowns();
+    }, { capture: true });
+  }
 
   // Run selector
   runSelect && runSelect.addEventListener("change", () => {
@@ -866,12 +924,27 @@ document.addEventListener("DOMContentLoaded", () => {
       if (action === "downloadPayslip") alert(`Download payslip for ${emp} (demo)`);
     });
 
+  function loadFilterOptions() {
+    return apiFetch("/employees/filters")
+      .then((data) => {
+        const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+        areaPlaces = (data.area_places && typeof data.area_places === "object" && !Array.isArray(data.area_places))
+          ? data.area_places
+          : {};
+        buildAssignmentSeg(assignments);
+      })
+      .catch(() => {
+        areaPlaces = {};
+        buildAssignmentSeg(["Davao", "Tagum", "Field"]);
+      });
+  }
+
   // =========================================================
   // First render (no run selected)
   // =========================================================
   setRunUI(null);
   setActiveTab("register");
-  renderAll();
+  loadFilterOptions().finally(renderAll);
 });
 
 
@@ -879,3 +952,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  async function apiFetch(url) {
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        ...(csrfToken ? { "X-CSRF-TOKEN": csrfToken } : {}),
+      },
+      credentials: "same-origin",
+    });
+    if (!res.ok) throw new Error("Request failed.");
+    return res.json();
+  }

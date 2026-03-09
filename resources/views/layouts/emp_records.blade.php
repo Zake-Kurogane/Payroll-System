@@ -44,27 +44,23 @@
                         </select>
                     </div>
 
-                    <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Assignment filter">
-                        <button type="button" class="seg__btn seg__btn--emp {{ request('assignment') ? '' : 'is-active' }}"
-                            data-assign="">All</button>
-                        @foreach ($assignments as $a)
-                            <button type="button"
-                                class="seg__btn seg__btn--emp {{ request('assignment') == $a ? 'is-active' : '' }}"
-                                data-assign="{{ $a }}">{{ $a }}</button>
-                        @endforeach
-                        <input type="hidden" name="assignment" id="assignmentInput" value="{{ request('assignment') }}" />
-                    </div>
-
-                    <div class="field field--area" id="areaPlaceFilterWrap"
-                        style="{{ request('assignment') === 'Area' ? '' : 'display:none;' }}">
-                        <label class="field__label">Area Place</label>
-                        <select id="areaPlaceFilter" name="area_place" class="field__control">
-                            <option value="">All</option>
-                            @foreach ($areaPlaces as $ap)
-                                <option value="{{ $ap }}" @selected(request('area_place') == $ap)>{{ $ap }}
-                                </option>
+                    <div class="field field--assign-group">
+                        <label class="field__label">Assignment</label>
+                        <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Filter by assignment">
+                            <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
+                            @foreach ($assignments as $a)
+                                <div class="seg__btn-wrap">
+                                    <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
+                                        {{ $a }} <span class="seg__chevron">▾</span>
+                                    </button>
+                                    <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                        @foreach ($groupedAreaPlaces[$a] ?? [] as $ap)
+                                            <button type="button" class="seg__dropdown-item" data-place="{{ $ap }}">{{ $ap }}</button>
+                                        @endforeach
+                                    </div>
+                                </div>
                             @endforeach
-                        </select>
+                        </div>
                     </div>
 
                 </div>
@@ -127,6 +123,8 @@
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
+                            <th class="sortable" data-sort="external">External <span class="sortIcon"
+                                    aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="salary">Salary <span class="sortIcon"
                                     aria-hidden="true"></span></th>
                             <th>Payroll Required</th>
@@ -148,19 +146,19 @@
                                 <td>
                                     @php
                                         $assign = $emp->assignment_type ?: '';
-                                        $isRegularArea =
-                                            $assign === 'Area' &&
+                                        $isRegularField =
+                                            $assign === 'Field' &&
                                             strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
-                                        if ($assign === 'Area') {
-                                            $assignText = "Area ({$emp->area_place})";
-                                            if ($isRegularArea && $emp->external_area) {
-                                                $assignText .= " — Ext: {$emp->external_area}";
-                                            }
+                                        if ($emp->area_place) {
+                                            $assignText = "{$assign} ({$emp->area_place})";
                                         } else {
                                             $assignText = $assign;
                                         }
                                     @endphp
                                     {{ $assignText ?: '-' }}
+                                </td>
+                                <td>
+                                    {{ $emp->external_area ? $emp->external_area : '—' }}
                                 </td>
                                 <td>
                                     <div class="salaryVal">&#8369;
@@ -177,13 +175,13 @@
                                         if ($assignType === '') {
                                             $missing[] = 'Assignment';
                                         }
-                                        if ($assignType === 'Area' && trim((string) ($emp->area_place ?? '')) === '') {
+                                        if ($assignType !== '' && trim((string) ($emp->area_place ?? '')) === '') {
                                             $missing[] = 'Area Place';
                                         }
-                                        $isRegularArea =
-                                            $assignType === 'Area' &&
+                                        $isRegularField =
+                                            $assignType === 'Field' &&
                                             strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
-                                        if ($isRegularArea && trim((string) ($emp->external_area ?? '')) === '') {
+                                        if ($isRegularField && trim((string) ($emp->external_area ?? '')) === '') {
                                             $missing[] = 'External Area';
                                         }
                                         $govRequired = ['sss', 'philhealth', 'pagibig', 'tin'];
@@ -216,7 +214,7 @@
                                             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
                                         </svg>
                                     </button>
-                                    @if ($emp->assignment_type === 'Area')
+                                    @if ($emp->assignment_type === 'Field')
                                         <button class="iconbtn" type="button" data-action="history"
                                             data-id="{{ $emp->emp_no }}" title="Area History"
                                             aria-label="Area History">
@@ -302,7 +300,7 @@
         <script>
             window.__serverRender = true;
             window.__serverEmployees = @json($employees->items());
-            window.__areaPlaces = @json($areaPlaces);
+            window.__areaPlaces = @json($groupedAreaPlaces);
         </script>
 
         <div class="toast" id="toast" aria-live="polite" aria-atomic="true"></div>
@@ -326,9 +324,10 @@
                     <div class="sectionTitle">Basic Information</div>
                     <div class="grid2">
                         <div class="field">
-                            <label>Employee ID *</label>
-                            <input type="number" id="f_empId" required placeholder="e.g. 1044" inputmode="numeric"
-                                pattern="\\d{4}" min="0" max="9999" />
+                            <label>Employee ID</label>
+                            <input type="text" id="f_empId" required placeholder="Auto-generated"
+                                inputmode="numeric" pattern="\d{4}" maxlength="4" readonly
+                                style="background:var(--surface-2,#f5f5f5);cursor:default;" />
                         </div>
 
                         <div class="field">
@@ -372,9 +371,27 @@
                             <label>Email</label>
                             <input type="email" id="f_email" placeholder="name@email.com" />
                         </div>
-                        <div class="field field--full">
-                            <label>Address</label>
-                            <input type="text" id="f_address" placeholder="Complete address" />
+                        <div class="field">
+                            <label>Province</label>
+                            <select id="f_addrProvince">
+                                <option value="">— Select Province —</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>City / Municipality</label>
+                            <select id="f_addrCity" disabled>
+                                <option value="">— Select City / Municipality —</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Barangay</label>
+                            <select id="f_addrBarangay" disabled>
+                                <option value="">— Select Barangay —</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Street / House No.</label>
+                            <input type="text" id="f_addrStreet" placeholder="e.g. 123 Rizal St." />
                         </div>
                     </div>
 
@@ -497,8 +514,10 @@
                             <label>Location (Area Place)</label>
                             <select id="f_areaPlace" name="areaPlace" disabled>
                                 <option value="">-- Select area place --</option>
-                                @foreach ($areaPlaces as $ap)
-                                    <option value="{{ $ap }}">{{ $ap }}</option>
+                                @foreach ($groupedAreaPlaces as $group => $places)
+                                    @foreach ($places as $ap)
+                                        <option value="{{ $ap }}">{{ $ap }}</option>
+                                    @endforeach
                                 @endforeach
                             </select>
                         </div>
@@ -507,8 +526,10 @@
                             <label>External Area <span class="hint">(fixed deduction attribution)</span></label>
                             <select id="f_externalArea" name="externalArea" disabled>
                                 <option value="">-- Select external area --</option>
-                                @foreach ($areaPlaces as $ap)
-                                    <option value="{{ $ap }}">{{ $ap }}</option>
+                                @foreach ($groupedAreaPlaces as $group => $places)
+                                    @foreach ($places as $ap)
+                                        <option value="{{ $ap }}">{{ $ap }}</option>
+                                    @endforeach
                                 @endforeach
                             </select>
                         </div>
@@ -565,6 +586,82 @@
                         <div class="field field--full">
                             <label>Payout Method (auto)</label>
                             <input type="text" id="f_payoutMethod" readonly />
+                        </div>
+                    </div>
+
+                    <div class="sectionTitle">Charges / Shortages</div>
+                    <div id="chargesCasesWrap">
+                        <div class="tablewrap tablewrap--preview" style="margin-bottom:10px;">
+                            <table class="table table--preview" id="chargesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Description</th>
+                                        <th class="num">Total</th>
+                                        <th class="num">Remaining</th>
+                                        <th>Plan</th>
+                                        <th>Status</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="chargesTbody">
+                                    <tr>
+                                        <td colspan="7" class="muted small">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn--soft" type="button" id="addChargeBtn">+ Add Charge / Shortage</button>
+                    </div>
+
+                    <!-- Add Charge Form (hidden by default) -->
+                    <div id="chargeFormWrap"
+                        style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
+                        <div class="sectionTitle" style="margin-top:0;">New Charge / Shortage</div>
+                        <div class="grid2">
+                            <div class="field">
+                                <label>Type</label>
+                                <select id="cf_type">
+                                    <option value="shortage">Shortage</option>
+                                    <option value="charge">Charge</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>Amount (Total)</label>
+                                <input type="number" id="cf_amount" min="0.01" step="0.01"
+                                    placeholder="e.g. 3000" />
+                            </div>
+                            <div class="field field--full">
+                                <label>Description / Notes</label>
+                                <input type="text" id="cf_description" placeholder="Reason or details (optional)" />
+                            </div>
+                            <div class="field">
+                                <label>Payment Plan</label>
+                                <select id="cf_planType">
+                                    <option value="one_time">One-time (next cutoff)</option>
+                                    <option value="installment">Installment</option>
+                                </select>
+                            </div>
+                            <div class="field" id="cf_installmentWrap" style="display:none;">
+                                <label>No. of Cutoffs</label>
+                                <input type="number" id="cf_installmentCount" min="2" max="24"
+                                    placeholder="e.g. 3" />
+                            </div>
+                            <div class="field">
+                                <label>Start Month</label>
+                                <input type="month" id="cf_startMonth" />
+                            </div>
+                            <div class="field">
+                                <label>Start Cutoff</label>
+                                <select id="cf_startCutoff">
+                                    <option value="11-25">11–25</option>
+                                    <option value="26-10">26–10</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:10px;">
+                            <button class="btn btn--soft" type="button" id="cancelChargeBtn">Cancel</button>
+                            <button class="btn btn--maroon" type="button" id="saveChargeBtn">Save</button>
                         </div>
                     </div>
 

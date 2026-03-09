@@ -219,10 +219,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const monthInput = $("monthInput");
   const cutoffInput = $("cutoffInput");
   const searchInput = $("searchInput");
-  const assignmentSeg = document.querySelector(".filterbar__right .seg[aria-label='Assignment filter']");
-  let segBtns = $$(".filterbar__right .seg__btn[data-assign]");
-  const areaFilterWrap = $("areaFilterWrap");
-  const areaPlaceFilter = $("areaPlaceFilter");
+  const assignmentSeg = $("assignSeg");
+  let segBtns = [];
 
   const runSelect = $("runSelect");
   const runEmployees = $("runEmployees");
@@ -281,6 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   let selectedRunId = "";
   let assignmentFilter = "All";
+  let areaSubFilter = "";
+  let areaPlaces = {};
   let sortKey = "empName";
   let sortDir = "asc";
 
@@ -296,12 +296,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const d = new Date();
     monthInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
-  function setAreaFilterVisibility(isArea) {
-    if (!areaFilterWrap) return;
-    areaFilterWrap.hidden = !isArea;
-    areaFilterWrap.style.display = isArea ? "" : "none";
+  function closeAllDropdowns() {
+    if (!assignmentSeg) return;
+    assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
+      dd.style.display = "none";
+    });
   }
-  setAreaFilterVisibility(false);
 
   // =========================================================
   // ENABLE/DISABLE TOP ACTIONS
@@ -374,45 +374,53 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const data = await apiFetch("/employees/filters");
       const assignments = Array.isArray(data.assignments) ? data.assignments : [];
-      const areaPlaces = Array.isArray(data.area_places) ? data.area_places : [];
+      const grouped = (data.area_places && typeof data.area_places === "object" && !Array.isArray(data.area_places))
+        ? data.area_places
+        : {};
+      areaPlaces = grouped;
 
       if (assignmentSeg) {
         assignmentSeg.innerHTML = "";
+
         const allBtn = document.createElement("button");
-        allBtn.className = "seg__btn is-active";
+        allBtn.className = "seg__btn seg__btn--emp is-active";
         allBtn.type = "button";
         allBtn.dataset.assign = "All";
-        allBtn.setAttribute("aria-selected", "true");
         allBtn.textContent = "All";
         assignmentSeg.appendChild(allBtn);
 
         assignments.forEach((label) => {
+          const places = Array.isArray(areaPlaces[label]) ? areaPlaces[label] : [];
+          const wrap = document.createElement("div");
+          wrap.className = "seg__btn-wrap";
+
           const btn = document.createElement("button");
-          btn.className = "seg__btn";
+          btn.className = "seg__btn seg__btn--emp";
           btn.type = "button";
           btn.dataset.assign = label;
-          btn.setAttribute("aria-selected", "false");
           btn.textContent = label;
-          assignmentSeg.appendChild(btn);
+          if (places.length) {
+            const chev = document.createElement("span");
+            chev.className = "seg__chevron";
+            chev.textContent = "▾";
+            btn.appendChild(chev);
+          }
+          wrap.appendChild(btn);
+
+          const dropdown = document.createElement("div");
+          dropdown.className = "seg__dropdown";
+          dropdown.dataset.group = label;
+          dropdown.style.display = "none";
+          dropdown.innerHTML = places.map(p =>
+            `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+          ).join("");
+          wrap.appendChild(dropdown);
+
+          assignmentSeg.appendChild(wrap);
         });
 
-        segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn[data-assign]"));
+        segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn--emp"));
         bindAssignmentButtons();
-      }
-
-      if (areaPlaceFilter) {
-        areaPlaceFilter.innerHTML = "";
-        const allOpt = document.createElement("option");
-        allOpt.value = "All";
-        allOpt.textContent = "All";
-        allOpt.selected = true;
-        areaPlaceFilter.appendChild(allOpt);
-        areaPlaces.forEach((label) => {
-          const opt = document.createElement("option");
-          opt.value = label;
-          opt.textContent = label;
-          areaPlaceFilter.appendChild(opt);
-        });
       }
     } catch {
       // keep defaults
@@ -443,7 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // SORTING + FILTERING
   // =========================================================
   function assignmentText(p) {
-    if (p.assignmentType === "Area") return `Area (${p.areaPlace || "-"})`;
+    if (p.areaPlace) return `${p.assignmentType || "-"} (${p.areaPlace})`;
     return p.assignmentType || "-";
   }
 
@@ -499,16 +507,13 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyFilters(list) {
     const q = normalize(searchInput?.value || "");
     const monthVal = monthInput?.value || "";
-    const areaPlaceVal = areaPlaceFilter?.value || "All";
-
     return list
       .filter((p) => !selectedRunId || p.runId === selectedRunId)
       .filter((p) => !monthVal || p.periodMonth === monthVal)
       .filter((p) => assignmentFilter === "All" || p.assignmentType === assignmentFilter)
       .filter((p) => {
-        if (assignmentFilter !== "Area") return true;
-        if (areaPlaceVal === "All") return true;
-        return (p.areaPlace || "") === areaPlaceVal;
+        if (!areaSubFilter) return true;
+        return (p.areaPlace || "") === areaSubFilter;
       })
       .filter((p) => {
         if (!q) return true;
@@ -919,18 +924,53 @@ document.addEventListener("DOMContentLoaded", () => {
   // SEGMENT FILTER
   // =========================================================
   function bindAssignmentButtons() {
+    if (!assignmentSeg) return;
+
     segBtns.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        segBtns.forEach((b) => b.classList.remove("is-active"));
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+        const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+
+        const isAlreadyActive = btn.classList.contains("is-active");
+        closeAllDropdowns();
+
+        segBtns.forEach(b => b.classList.remove("is-active"));
         btn.classList.add("is-active");
-        assignmentFilter = btn.dataset.assign || "All";
-        setAreaFilterVisibility(assignmentFilter === "Area");
+        assignmentFilter = group;
+        areaSubFilter = "";
+        page = 1;
+        render();
+
+        if (dropdown && !isAlreadyActive) {
+          dropdown.style.display = "block";
+        }
+      });
+    });
+
+    assignmentSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const place = item.getAttribute("data-place");
+        const dropdown = item.closest(".seg__dropdown");
+        const group = dropdown?.getAttribute("data-group") || "";
+
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+
+        assignmentFilter = group || assignmentFilter;
+        areaSubFilter = place || "";
+        closeAllDropdowns();
         page = 1;
         render();
       });
     });
+
+    document.addEventListener("click", (e) => {
+      if (!assignmentSeg.contains(e.target)) closeAllDropdowns();
+    }, { capture: true });
   }
-  bindAssignmentButtons();
 
   // filters
   monthInput && monthInput.addEventListener("change", () => {
@@ -945,7 +985,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
   searchInput && searchInput.addEventListener("input", () => { page = 1; render(); });
-  areaPlaceFilter && areaPlaceFilter.addEventListener("change", () => { page = 1; render(); });
+  // area place selection handled by dropdowns
 
   // run change
   runSelect &&

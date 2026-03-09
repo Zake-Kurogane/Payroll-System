@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class AreaPlace extends Model
 {
-    protected $fillable = ['code', 'label', 'is_active', 'sort_order'];
+    protected $fillable = ['code', 'label', 'parent_assignment', 'is_active', 'sort_order'];
 }

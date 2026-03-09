@@ -13,9 +13,9 @@ class AssignmentSeeder extends Seeder
     public function run(): void
     {
         DB::table('assignments')->insert([
-            ['code' => 'tagum', 'label' => 'Tagum', 'sort_order' => 1],
-            ['code' => 'davao', 'label' => 'Davao', 'sort_order' => 2],
-            ['code' => 'area', 'label' => 'Area', 'sort_order' => 3],
+            ['code' => 'davao', 'label' => 'Davao', 'sort_order' => 1],
+            ['code' => 'tagum', 'label' => 'Tagum', 'sort_order' => 2],
+            ['code' => 'field', 'label' => 'Field', 'sort_order' => 3],
         ]);
     }
 }

@@ -1,8 +1,5 @@
 const form = document.getElementById("loginForm");
-if (!form) {
-  // Script loaded on a page without the login form.
-  return;
-}
+if (form) {
 
 const username = document.getElementById("username");
 const password = document.getElementById("password");
@@ -52,3 +49,4 @@ form.addEventListener("submit", (e) => {
   if (statusEl) statusEl.textContent = "Logging in...";
   if (submitBtn) submitBtn.disabled = true;
 });
+}
