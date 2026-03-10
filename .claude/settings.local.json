@@ -3,7 +3,8 @@
     "allow": [
       "Bash(php artisan migrate)",
       "Bash(php -r \"require ''c:/Users/G5-00009/PAYROLL_SYSTEM/vendor/autoload.php''; echo ''ok'';\")",
-      "Bash(php artisan migrate:status)"
+      "Bash(php artisan migrate:status)",
+      "Bash(npx vite build --filter emp_records)"
     ]
   }
 }

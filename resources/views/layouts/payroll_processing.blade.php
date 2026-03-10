@@ -159,6 +159,7 @@
                                     <th class="num">OT Pay</th>
                                     <th class="num">Attendance Deduction</th>
                                     <th class="num">Charges</th>
+                                    <th class="num">Loans</th>
                                     <th class="num">Statutory + Tax (EE)</th>
                                     <th class="num">Employer Share (ER)</th>
                                     <th class="num">Net Pay</th>

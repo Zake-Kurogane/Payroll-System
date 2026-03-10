@@ -83,11 +83,18 @@ document.addEventListener("DOMContentLoaded", () => {
       attendanceDeductionTotal: Number(p.attendance_deduction || 0),
       sssEe: Number(p.sss_ee || 0),
       philhealthEe: Number(p.philhealth_ee || 0),
-      pagibigEe: Number(p.pagibig_ee || 0),
-      withholdingTax: Number(p.tax || 0),
-      otherDeductionTotal: 0,
-      cashAdvance: Number(p.cash_advance || 0),
-      sssEr: Number(p.sss_er || 0),
+        pagibigEe: Number(p.pagibig_ee || 0),
+        withholdingTax: Number(p.tax || 0),
+        otherDeductionTotal: 0,
+        cashAdvance: Number(p.cash_advance || 0),
+        loanDeduction: Number(p.loan_deduction || 0),
+      loanDetails: Array.isArray(p.loan_details) ? p.loan_details.map(l => ({
+        loanNo: l.loan_no || "",
+        loanType: l.loan_type || "",
+        perCutoff: Number(l.per_cutoff || 0),
+        status: l.status || "",
+      })) : [],
+        sssEr: Number(p.sss_er || 0),
       philhealthEr: Number(p.philhealth_er || 0),
       pagibigEr: Number(p.pagibig_er || 0),
       gross: Number(p.gross || 0),
@@ -267,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // new: adjustment containers in preview
   const psEarnAdjRows = $("psEarnAdjRows");
   const psDedAdjRows = $("psDedAdjRows");
+  const psLoanDetailPlaceholder = $("psLoanDetailPlaceholder");
 
   // =========================================================
   // DATA (backend-driven)
@@ -804,9 +812,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const piEe = Number(p.pagibigEe || 0);
     const tax = Number(p.withholdingTax || 0);
 
-    const attendanceDed = Number(p.attendanceDeductionTotal || 0);
-    const cashAdv = Number(p.cashAdvance || 0);
-    const otherDed = Number(p.otherDeductionTotal || 0);
+      const attendanceDed = Number(p.attendanceDeductionTotal || 0);
+      const cashAdv = Number(p.cashAdvance || 0);
+      const loanDed = Number(p.loanDeduction || 0);
+      const otherDed = Number(p.otherDeductionTotal || 0);
 
     const statutoryEeTotal = sssEe + phEe + piEe + tax;
     setMoney("psAttDedTotal", attendanceDed);
@@ -814,17 +823,31 @@ document.addEventListener("DOMContentLoaded", () => {
     setMoney("psPhEe", phEe);
     setMoney("psPiEe", piEe);
     setMoney("psTax", tax);
-    setMoney("psStatEeTotal", statutoryEeTotal);
+      setMoney("psStatEeTotal", statutoryEeTotal);
 
-    setMoney("psCashAdv", cashAdv);
-    setMoney("psOtherDedTotal", otherDed);
+      setMoney("psCashAdv", cashAdv);
+      setMoney("psLoanDed", loanDed);
+      if (psLoanDetailPlaceholder) {
+        document.querySelectorAll(".loan-detail-row").forEach(el => el.remove());
+        if (Array.isArray(p.loanDetails) && p.loanDetails.length) {
+          const rowsHtml = p.loanDetails.map((l) => `
+            <tr class="loan-detail-row">
+              <td>Loan - ${escapeHtml(l.loanType || "Loan")}</td>
+              <td class="num">${escapeHtml(l.status || "")}</td>
+              <td class="num">${escapeHtml(peso(l.perCutoff || 0))}</td>
+            </tr>
+          `).join("");
+          psLoanDetailPlaceholder.insertAdjacentHTML("afterend", rowsHtml);
+        }
+      }
+      setMoney("psOtherDedTotal", otherDed);
 
     // - totals (computed to ensure correctness)
     const totalEarnAdj = sumAmounts(earnAdj);
     const totalDedAdj = sumAmounts(dedAdj);
 
     const baseGross = Number(p.basicPay || 0) + Number(p.allowancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
-    const baseDed = attendanceDed + statutoryEeTotal + cashAdv + otherDed + totalDedAdj;
+      const baseDed = attendanceDed + statutoryEeTotal + cashAdv + loanDed + otherDed + totalDedAdj;
     const computedNet = baseGross - baseDed;
 
     setMoney("psGross", baseGross);

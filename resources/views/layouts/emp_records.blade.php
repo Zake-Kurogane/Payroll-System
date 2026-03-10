@@ -55,7 +55,8 @@
                                     </button>
                                     <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
                                         @foreach ($groupedAreaPlaces[$a] ?? [] as $ap)
-                                            <button type="button" class="seg__dropdown-item" data-place="{{ $ap }}">{{ $ap }}</button>
+                                            <button type="button" class="seg__dropdown-item"
+                                                data-place="{{ $ap }}">{{ $ap }}</button>
                                         @endforeach
                                     </div>
                                 </div>
@@ -114,8 +115,7 @@
                             <th class="col-check">
                                 <input type="checkbox" id="selectAll" aria-label="Select all" />
                             </th>
-                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
-                                    aria-hidden="true"></span>
+                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon" aria-hidden="true"></span>
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>

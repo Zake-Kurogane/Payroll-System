@@ -274,12 +274,12 @@
                             <th class="num">Current</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td>Attendance Deductions (Late/UT/Absent)</td>
-                            <td class="num">-</td>
-                            <td class="num" id="psAttDedTotal">&#8369; 0.00</td>
-                        </tr>
+                        <tbody id="psDedBody">
+                            <tr>
+                                <td>Attendance Deductions (Late/UT/Absent)</td>
+                                <td class="num">-</td>
+                                <td class="num" id="psAttDedTotal">&#8369; 0.00</td>
+                            </tr>
 
                         <tr>
                             <td>SSS (EE)</td>
@@ -312,6 +312,13 @@
                             <td class="num">-</td>
                             <td class="num" id="psCashAdv">&#8369; 0.00</td>
                         </tr>
+
+                        <tr id="psLoanDedRow">
+                            <td>Loan Deductions</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psLoanDed">&#8369; 0.00</td>
+                        </tr>
+                        <tr id="psLoanDetailPlaceholder"></tr>
 
                         <tr>
                             <td>Other Deductions (manual/recurring)</td>

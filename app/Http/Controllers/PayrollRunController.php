@@ -11,6 +11,10 @@ use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
 use App\Models\AttendanceSummary;
 use App\Models\DeductionSchedule;
+use App\Models\EmployeeLoanSchedule;
+use App\Models\EmployeeLoan;
+use App\Models\EmployeeLoanHistory;
+use App\Models\PayrollRunLoanItem;
 use App\Services\Payroll\PayrollCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -128,7 +132,9 @@ class PayrollRunController extends Controller
         $payload = $calculator->compute($run->period_month, $run->cutoff, $run->assignment_filter, $run->area_place_filter, $overrides, $run->run_type ?? 'External');
 
         PayrollRunRow::query()->where('payroll_run_id', $run->id)->delete();
+        PayrollRunLoanItem::query()->where('payroll_run_id', $run->id)->delete();
         $rows = [];
+        $loanItems = [];
         foreach ($payload['rows'] as $row) {
             $rows[] = [
                 'payroll_run_id' => $run->id,
@@ -144,6 +150,7 @@ class PayrollRunController extends Controller
                 'tax' => $row['tax'],
                 'attendance_deduction' => $row['attendance_deduction'],
                 'cash_advance' => $row['cash_advance'],
+                'loan_deduction' => $row['loan_deduction'] ?? 0,
                 'deductions_total' => $row['deductions_total'],
                 'net_pay' => $row['net_pay'],
                 'sss_er' => $row['sss_er'],
@@ -153,9 +160,27 @@ class PayrollRunController extends Controller
                 'pay_method' => $row['payout_method'] ?? 'CASH',
                 'bank_account_masked' => $row['account_masked'],
             ];
+
+            foreach (($row['loan_items'] ?? []) as $item) {
+                if (empty($item['loan_id'])) continue;
+                $loanItems[] = [
+                    'payroll_run_id' => $run->id,
+                    'employee_id' => $row['employee_id'],
+                    'employee_loan_id' => $item['loan_id'],
+                    'employee_loan_schedule_id' => $item['schedule_id'] ?? null,
+                    'scheduled_amount' => (float) ($item['scheduled_amount'] ?? 0),
+                    'deducted_amount' => (float) ($item['deducted_amount'] ?? 0),
+                    'balance_before' => (float) ($item['balance_before'] ?? 0),
+                    'balance_after' => (float) ($item['balance_after'] ?? 0),
+                    'status' => (string) ($item['status'] ?? 'scheduled'),
+                ];
+            }
         }
         if ($rows) {
             PayrollRunRow::query()->insert($rows);
+        }
+        if ($loanItems) {
+            PayrollRunLoanItem::query()->insert($loanItems);
         }
 
         return response()->json($payload);
@@ -168,11 +193,17 @@ class PayrollRunController extends Controller
             ->get()
             ->keyBy('employee_id');
 
+        $loanItems = PayrollRunLoanItem::query()
+            ->with('loan')
+            ->where('payroll_run_id', $run->id)
+            ->get()
+            ->groupBy('employee_id');
+
         $rows = PayrollRunRow::query()
             ->where('payroll_run_id', $run->id)
             ->with(['employee'])
             ->get()
-            ->map(function (PayrollRunRow $r) use ($overrides) {
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
@@ -202,6 +233,7 @@ class PayrollRunController extends Controller
                     'gross' => (float) $r->gross,
                     'attendance_deduction' => (float) $r->attendance_deduction,
                     'cash_advance' => (float) $r->cash_advance,
+                    'loan_deduction' => (float) $r->loan_deduction,
                     'sss_ee' => (float) $r->sss_ee,
                     'philhealth_ee' => (float) $r->philhealth_ee,
                     'pagibig_ee' => (float) $r->pagibig_ee,
@@ -215,6 +247,16 @@ class PayrollRunController extends Controller
                     'pay_method' => $r->pay_method,
                     'bank_account_masked' => $r->bank_account_masked,
                     'override' => $ov,
+                    'loan_items' => $loanItems->get($r->employee_id, collect())->map(fn ($i) => [
+                        'loan_id' => $i->employee_loan_id,
+                        'loan_type' => $i->loan?->loan_type,
+                        'schedule_id' => $i->employee_loan_schedule_id,
+                        'scheduled_amount' => (float) $i->scheduled_amount,
+                        'deducted_amount' => (float) $i->deducted_amount,
+                        'balance_before' => (float) $i->balance_before,
+                        'balance_after' => (float) $i->balance_after,
+                        'status' => $i->status,
+                    ])->values(),
                 ];
             });
 
@@ -285,8 +327,19 @@ class PayrollRunController extends Controller
             ->where('status', 'Active')
             ->get()
             ->groupBy('employee_id');
+        $loanSchedules = EmployeeLoanSchedule::query()
+            ->where('employee_id', $emp->id)
+            ->where('due_month', $run->period_month)
+            ->where('due_cutoff', $run->cutoff)
+            ->where('status', 'scheduled')
+            ->whereHas('loan', function ($q) {
+                $q->where('status', 'active')
+                  ->where('auto_deduct', true);
+            })
+            ->get()
+            ->groupBy('employee_id');
 
-        $row = $calculator->computeForEmployee($emp, $start, $end, $run->cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $run->run_type ?? 'External');
+        $row = $calculator->computeForEmployee($emp, $start, $end, $run->cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $loanSchedules, $run->run_type ?? 'External');
 
         PayrollRunRow::updateOrCreate(
             [
@@ -305,6 +358,7 @@ class PayrollRunController extends Controller
                 'tax' => $row['tax'],
                 'attendance_deduction' => $row['attendance_deduction'],
                 'cash_advance' => $row['cash_advance'],
+                'loan_deduction' => $row['loan_deduction'] ?? 0,
                 'deductions_total' => $row['deductions_total'],
                 'net_pay' => $row['net_pay'],
                 'sss_er' => $row['sss_er'],
@@ -315,6 +369,32 @@ class PayrollRunController extends Controller
                 'bank_account_masked' => $row['account_masked'],
             ]
         );
+
+        PayrollRunLoanItem::query()
+            ->where('payroll_run_id', $run->id)
+            ->where('employee_id', $emp->id)
+            ->delete();
+
+        $loanItems = [];
+        foreach (($row['loan_items'] ?? []) as $item) {
+            if (empty($item['loan_id'])) continue;
+            $loanItems[] = [
+                'payroll_run_id' => $run->id,
+                'employee_id' => $emp->id,
+                'employee_loan_id' => $item['loan_id'],
+                'employee_loan_schedule_id' => $item['schedule_id'] ?? null,
+                'scheduled_amount' => (float) ($item['scheduled_amount'] ?? 0),
+                'deducted_amount' => (float) ($item['deducted_amount'] ?? 0),
+                'balance_before' => (float) ($item['balance_before'] ?? 0),
+                'balance_after' => (float) ($item['balance_after'] ?? 0),
+                'status' => (string) ($item['status'] ?? 'scheduled'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        if ($loanItems) {
+            PayrollRunLoanItem::query()->insert($loanItems);
+        }
 
         return response()->json($row);
     }
@@ -347,6 +427,86 @@ class PayrollRunController extends Controller
                     'payroll_run_id' => $run->id,
                     'applied_at' => now(),
                 ]);
+
+            EmployeeLoanHistory::query()
+                ->where('payroll_run_id', $run->id)
+                ->delete();
+
+            $loanItems = PayrollRunLoanItem::query()
+                ->where('payroll_run_id', $run->id)
+                ->whereIn('employee_id', $employeeIds)
+                ->get()
+                ->groupBy('employee_loan_id');
+
+            foreach ($loanItems as $loanId => $items) {
+                $loan = EmployeeLoan::query()->find($loanId);
+                if (!$loan) continue;
+
+                $amountDeducted = (float) ($loan->amount_deducted ?? 0);
+                $balanceRemaining = (float) ($loan->balance_remaining ?? 0);
+
+                foreach ($items as $item) {
+                    $scheduled = (float) $item->scheduled_amount;
+                    $deducted = (float) $item->deducted_amount;
+                    $balanceBefore = (float) $item->balance_before;
+                    $balanceAfter = (float) $item->balance_after;
+
+                    $status = $item->status;
+                    if ($deducted <= 0) $status = 'skipped';
+                    elseif ($deducted < $scheduled) $status = 'partial';
+                    else $status = 'applied';
+
+                    if ($item->employee_loan_schedule_id) {
+                        EmployeeLoanSchedule::query()
+                            ->where('id', $item->employee_loan_schedule_id)
+                            ->update([
+                                'status' => $status,
+                                'payroll_run_id' => $run->id,
+                                'applied_at' => now(),
+                            ]);
+
+                        if ($loan->carry_forward && $deducted < $scheduled) {
+                            $remaining = round($scheduled - $deducted, 2);
+                            if ($remaining > 0) {
+                                [$nextMonth, $nextCutoff] = $this->nextCutoff($run->period_month, $run->cutoff);
+                                EmployeeLoanSchedule::query()->create([
+                                    'employee_loan_id' => $loan->id,
+                                    'employee_id' => $loan->employee_id,
+                                    'due_month' => $nextMonth,
+                                    'due_cutoff' => $nextCutoff,
+                                    'amount' => $remaining,
+                                    'status' => 'scheduled',
+                                ]);
+                            }
+                        }
+                    }
+
+                    EmployeeLoanHistory::query()->create([
+                        'employee_loan_id' => $loan->id,
+                        'employee_id' => $loan->employee_id,
+                        'payroll_run_id' => $run->id,
+                        'period_month' => $run->period_month,
+                        'cutoff' => $run->cutoff,
+                        'scheduled_amount' => $scheduled,
+                        'deducted_amount' => $deducted,
+                        'balance_before' => $balanceBefore,
+                        'balance_after' => $balanceAfter,
+                        'status' => $status,
+                        'posted_by' => $run->created_by,
+                        'posted_at' => now(),
+                    ]);
+
+                    $amountDeducted += $deducted;
+                    $balanceRemaining = max(0.0, $balanceRemaining - $deducted);
+                }
+
+                $loan->amount_deducted = $amountDeducted;
+                $loan->balance_remaining = $balanceRemaining;
+                if ($loan->stop_on_zero && $balanceRemaining <= 0) {
+                    $loan->status = 'completed';
+                }
+                $loan->save();
+            }
         }
 
         $this->generatePayslipsForRun($run);
@@ -475,5 +635,16 @@ class PayrollRunController extends Controller
             $i++;
         }
         return $candidate;
+    }
+
+    private function nextCutoff(string $month, string $cutoff): array
+    {
+        if ($cutoff === '11-25') {
+            return [$month, '26-10'];
+        }
+        [$y, $m] = array_map('intval', explode('-', $month));
+        $m++;
+        if ($m > 12) { $m = 1; $y++; }
+        return [sprintf('%04d-%02d', $y, $m), '11-25'];
     }
 }

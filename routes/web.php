@@ -8,6 +8,7 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\PayrollRunController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\DeductionCaseController;
+use App\Http\Controllers\EmployeeLoanController;
 
 Route::get('/', fn () => redirect()->route('login'));
 
@@ -40,6 +41,15 @@ Route::middleware('auth')->group(function () {
     Route::view('/index', 'layouts.dashboard')->name('index');
     Route::get('/employee-records', [EmployeeController::class, 'page'])->name('employee.records');
     Route::view('/attendance', 'layouts.attendance')->name('attendance');
+    Route::get('/loans', [EmployeeLoanController::class, 'page'])->name('loans');
+    Route::get('/loans/list', [EmployeeLoanController::class, 'list'])->name('loans.list');
+    Route::get('/loans/{loan}', [EmployeeLoanController::class, 'show'])->name('loans.show');
+    Route::get('/loans/{loan}/history', [EmployeeLoanController::class, 'history'])->name('loans.history');
+    Route::post('/loans', [EmployeeLoanController::class, 'store'])->name('loans.store');
+    Route::put('/loans/{loan}', [EmployeeLoanController::class, 'update'])->name('loans.update');
+    Route::post('/loans/{loan}/pause', [EmployeeLoanController::class, 'pause'])->name('loans.pause');
+    Route::post('/loans/{loan}/resume', [EmployeeLoanController::class, 'resume'])->name('loans.resume');
+    Route::post('/loans/{loan}/close', [EmployeeLoanController::class, 'close'])->name('loans.close');
 
     Route::get('/attendance/area', [AttendanceController::class, 'resolveArea'])->name('attendance.area');
     Route::get('/attendance/template', [AttendanceController::class, 'downloadTemplate'])->name('attendance.template');
@@ -99,4 +109,6 @@ Route::middleware('auth')->group(function () {
     Route::put('/employees/{emp_no}/deduction-cases/{case}', [DeductionCaseController::class, 'update']);
     Route::post('/employees/{emp_no}/deduction-cases/{case}/close', [DeductionCaseController::class, 'close']);
     Route::get('/employees/{emp_no}/deduction-cases/{case}/schedules', [DeductionCaseController::class, 'schedules']);
+
+    // Employee Loans (global module)
 });

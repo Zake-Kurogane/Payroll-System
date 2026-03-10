@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
 use App\Models\Employee;
+use App\Models\EmployeeLoan;
 use App\Models\CompanySetup;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
@@ -146,6 +147,7 @@ class PayslipController extends Controller
             'Pag-IBIG (EE)',
             'Tax',
             'Cash Advance',
+            'Loan Deductions',
             'Total Deductions',
             'Net Pay',
             'Release Status',
@@ -176,6 +178,7 @@ class PayslipController extends Controller
                 $p['pagibig_ee'],
                 $p['tax'],
                 $p['cash_advance'],
+                $p['loan_deduction'],
                 $p['deductions_total'],
                 $p['net_pay'],
                 $p['release_status'],
@@ -465,6 +468,25 @@ class PayslipController extends Controller
                 'pagibig_ee' => (float) ($row?->pagibig_ee ?? 0),
                 'tax' => (float) ($row?->tax ?? 0),
                 'cash_advance' => (float) ($row?->cash_advance ?? 0),
+                'loan_deduction' => (float) ($row?->loan_deduction ?? 0),
+                'loan_details' => EmployeeLoan::query()
+                    ->where('employee_id', $p->employee_id)
+                    ->orderByDesc('id')
+                    ->get()
+                    ->map(function (EmployeeLoan $loan) {
+                        $perCutoff = $loan->per_cutoff_amount;
+                        if (!$perCutoff) {
+                            $perCutoff = $loan->deduction_frequency === 'every_cutoff'
+                                ? ($loan->monthly_amortization / 2)
+                                : $loan->monthly_amortization;
+                        }
+                        return [
+                            'loan_no' => $loan->loan_no,
+                            'loan_type' => $loan->loan_type,
+                            'per_cutoff' => (float) ($perCutoff ?? 0),
+                            'status' => $loan->status,
+                        ];
+                    })->values(),
                 'deductions_total' => (float) ($row?->deductions_total ?? 0),
                 'net_pay' => (float) ($row?->net_pay ?? 0),
                 'sss_er' => (float) ($row?->sss_er ?? 0),

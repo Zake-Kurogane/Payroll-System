@@ -344,6 +344,8 @@ document.addEventListener("DOMContentLoaded", () => {
       adjustments: Array.isArray(r.adjustments) ? r.adjustments : (ov.adjustments || []),
       cashAdvance: Number(r.cash_advance || 0),
       chargesDeduction: Number(r.charges_deduction || 0),
+      loanDeduction: Number(r.loan_deduction || 0),
+      loanItems: Array.isArray(r.loan_items) ? r.loan_items : [],
       status: r.status || "Ready",
     };
   }
@@ -763,6 +765,16 @@ document.addEventListener("DOMContentLoaded", () => {
           ? `<details class="dd"><summary>${money(r.chargesDeduction)}</summary><div class="dd__body"><div>This cutoff: ${money(r.chargesDeduction)}</div></div></details>`
           : `<span class="muted">—</span>`
         }</td>
+        <td class="num">${r.loanDeduction > 0
+          ? `<details class="dd"><summary>${money(r.loanDeduction)}</summary><div class="dd__body">${(r.loanItems || []).map(li => {
+              const name = li.loan_type || 'Loan';
+              const amt = money(li.deducted_amount || 0);
+              const sched = money(li.scheduled_amount || 0);
+              const status = li.status || 'scheduled';
+              return `<div>${name}: ${amt} <span class=\"muted\">(sched ${sched}, ${status})</span></div>`;
+            }).join('') || `<div>This cutoff: ${money(r.loanDeduction)}</div>`}</div></details>`
+          : `<span class="muted">—</span>`
+        }</td>
 
         <td class="num">
           <details class="dd">
@@ -1018,13 +1030,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const cash = Number(adjCashAdvance?.value || 0);
 
     const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + finalOtAmount + earn;
-    const dedPreview = Number(row.attendanceDeduction || 0) + ded + cash + Number(row.sss || 0) + Number(row.ph || 0) + Number(row.pagibig || 0) + Number(row.tax || 0);
+      const dedPreview = Number(row.attendanceDeduction || 0)
+        + ded
+        + cash
+        + Number(row.chargesDeduction || 0)
+        + Number(row.loanDeduction || 0)
+        + Number(row.sss || 0)
+        + Number(row.ph || 0)
+        + Number(row.pagibig || 0)
+        + Number(row.tax || 0);
     const netPreview = grossPreview - dedPreview;
 
     if (sumBase) sumBase.textContent = money(Number(row.halfBasic || 0) + Number(row.halfAllowance || 0));
     if (sumOt) sumOt.textContent = money(finalOtAmount);
     if (sumOtherEarn) sumOtherEarn.textContent = money(earn);
-    if (sumOtherDed) sumOtherDed.textContent = money(ded + cash);
+      if (sumOtherDed) sumOtherDed.textContent = money(ded + cash + Number(row.chargesDeduction || 0) + Number(row.loanDeduction || 0));
     if (sumNetPreview) sumNetPreview.textContent = money(netPreview);
   }
 

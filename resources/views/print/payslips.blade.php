@@ -278,6 +278,14 @@
                             <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{{ $money($p['tax'] ?? 0) }}</td></tr>
                             <tr><td>Total Statutory + Tax (EE)</td><td class="num">-</td><td class="num">{{ $money($statEE) }}</td></tr>
                             <tr><td>Cash Advance</td><td class="num">-</td><td class="num">{{ $money($p['cash_advance'] ?? 0) }}</td></tr>
+                            <tr><td>Loan Deductions</td><td class="num">-</td><td class="num">{{ $money($p['loan_deduction'] ?? 0) }}</td></tr>
+                            @foreach(($p['loan_details'] ?? []) as $loan)
+                                <tr>
+                                    <td>Loan - {{ $loan['loan_type'] ?? 'Loan' }}</td>
+                                    <td class="num">{{ $loan['status'] ?? '-' }}</td>
+                                    <td class="num">{{ $money($loan['per_cutoff'] ?? 0) }}</td>
+                                </tr>
+                            @endforeach
                             @foreach($dedAdj as $a)
                                 <tr>
                                     <td>{{ $a['name'] ?? 'Adjustment' }}</td>

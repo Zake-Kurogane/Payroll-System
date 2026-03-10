@@ -476,7 +476,7 @@
                     </thead>
                     <tbody id="empTbody"></tbody>
                 </table>
-            </div>
+            </div>0
         </div>
 
         <div class="drawer__foot">

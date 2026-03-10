@@ -9,6 +9,7 @@ use App\Models\CashAdvance;
 use App\Models\CashAdvancePolicy;
 use App\Models\DeductionSchedule;
 use App\Models\Employee;
+use App\Models\EmployeeLoanSchedule;
 use App\Models\OvertimeRule;
 use App\Models\PayrollCalendarSetting;
 use App\Models\SalaryProrationRule;
@@ -61,7 +62,20 @@ class PayrollCalculator
             ->get()
             ->groupBy('employee_id');
 
-        $rows = $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $runType);
+        $loanSchedules = EmployeeLoanSchedule::query()
+            ->with('loan')
+            ->whereIn('employee_id', $employeeIds)
+            ->where('due_month', $periodMonth)
+            ->where('due_cutoff', $cutoff)
+            ->where('status', 'scheduled')
+            ->whereHas('loan', function ($q) {
+                $q->where('status', 'active')
+                  ->where('auto_deduct', true);
+            })
+            ->get()
+            ->groupBy('employee_id');
+
+        $rows = $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
 
         return [
             'period' => [
@@ -72,7 +86,7 @@ class PayrollCalculator
         ];
     }
 
-    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, string $runType = 'External'): array
+    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
     {
         $summary = $this->summaryFromAggregate($summaries->get($emp->id));
         $workdaysInMonth = 26;
@@ -165,7 +179,7 @@ class PayrollCalculator
             ->where('status', 'scheduled')
             ->sum('amount');
 
-        $deductionsTotal = $attendanceDeduction
+        $baseDeductions = $attendanceDeduction
             + $dedAdj
             + $cashAdvance
             + $sss['ee']
@@ -173,6 +187,14 @@ class PayrollCalculator
             + $pagibig['ee']
             + $withholding
             + $chargesDeduction;
+
+        [$loanDeduction, $loanItems] = $this->computeLoanDeductions(
+            $loanSchedules->get($emp->id, collect()),
+            $gross,
+            $baseDeductions
+        );
+
+        $deductionsTotal = $baseDeductions + $loanDeduction;
 
         $net = $gross - $deductionsTotal;
 
@@ -206,6 +228,8 @@ class PayrollCalculator
             'gross' => $this->roundMoney($gross, $proration),
             'cash_advance' => $this->roundMoney($cashAdvance, $proration),
             'charges_deduction' => $this->roundMoney($chargesDeduction, $proration),
+            'loan_deduction' => $this->roundMoney($loanDeduction, $proration),
+            'loan_items' => $loanItems,
             'deductions_total' => $this->roundMoney($deductionsTotal, $proration),
             'net_pay' => $this->roundMoney($net, $proration),
             'employer_share_total' => $this->roundMoney($sss['er'] + $philhealth['er'] + $pagibig['er'], $proration),
@@ -218,11 +242,11 @@ class PayrollCalculator
         ];
     }
 
-    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, string $runType = 'External'): array
+    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
     {
         $rows = [];
         foreach ($employees as $emp) {
-            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $runType);
+            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
         }
         return $rows;
     }
@@ -763,6 +787,81 @@ class PayrollCalculator
         if ($rule === 'cutoff2_only') return $isFirst ? 0.0 : $amount;
         if ($rule === 'split_cutoffs') return $amount / 2;
         return $amount;
+    }
+
+    private function computeLoanDeductions(Collection $loanSchedules, float $gross, float $baseDeductions): array
+    {
+        $available = max(0.0, $gross - $baseDeductions);
+        if ($loanSchedules->isEmpty()) {
+            return [0.0, []];
+        }
+
+        $ordered = $loanSchedules->sortBy(function ($s) {
+            $priority = (int) ($s->loan?->priority_order ?? 100);
+            $loanId = (int) ($s->employee_loan_id ?? 0);
+            $cutoffWeight = ($s->due_cutoff ?? '') === '11-25' ? 1 : 2;
+            return [$priority, $loanId, $cutoffWeight, $s->id];
+        });
+
+        $balances = [];
+        $items = [];
+        $total = 0.0;
+
+        foreach ($ordered as $s) {
+            $loan = $s->loan;
+            if (!$loan || $loan->status !== 'active' || !$loan->auto_deduct) {
+                $items[] = [
+                    'loan_id' => $loan?->id,
+                    'loan_type' => $loan?->loan_type ?? 'Loan',
+                    'schedule_id' => $s->id,
+                    'scheduled_amount' => (float) $s->amount,
+                    'deducted_amount' => 0.0,
+                    'balance_before' => (float) ($loan?->balance_remaining ?? 0),
+                    'balance_after' => (float) ($loan?->balance_remaining ?? 0),
+                    'status' => 'skipped',
+                ];
+                continue;
+            }
+
+            $balance = $balances[$loan->id] ?? (float) ($loan->balance_remaining ?? 0);
+            $scheduled = (float) $s->amount;
+            $capped = $loan->stop_on_zero ? min($scheduled, max(0.0, $balance)) : $scheduled;
+
+            if ($capped <= 0) {
+                $items[] = [
+                    'loan_id' => $loan->id,
+                    'loan_type' => $loan->loan_type,
+                    'schedule_id' => $s->id,
+                    'scheduled_amount' => 0.0,
+                    'deducted_amount' => 0.0,
+                    'balance_before' => $balance,
+                    'balance_after' => $balance,
+                    'status' => 'skipped',
+                ];
+                continue;
+            }
+
+            $deducted = $loan->allow_partial ? min($capped, $available) : ($available >= $capped ? $capped : 0.0);
+            $status = $deducted <= 0 ? 'skipped' : ($deducted < $capped ? 'partial' : 'deducted');
+            $balanceAfter = max(0.0, $balance - $deducted);
+
+            $available = max(0.0, $available - $deducted);
+            $total += $deducted;
+            $balances[$loan->id] = $balanceAfter;
+
+            $items[] = [
+                'loan_id' => $loan->id,
+                'loan_type' => $loan->loan_type,
+                'schedule_id' => $s->id,
+                'scheduled_amount' => $capped,
+                'deducted_amount' => $deducted,
+                'balance_before' => $balance,
+                'balance_after' => $balanceAfter,
+                'status' => $status,
+            ];
+        }
+
+        return [$total, $items];
     }
 
     private function normalizeSplitRule(?string $rule): string

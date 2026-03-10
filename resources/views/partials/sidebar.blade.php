@@ -54,6 +54,17 @@
             <span>PAYROLL<br />PROCESSING</span>
         </a>
 
+        <a class="menu__item {{ request()->routeIs('loans') ? 'is-active' : '' }}"
+            href="{{ route('loans') }}">
+            <span class="menu__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="ico">
+                    <path d="M4 7h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v8h16V9H4z" />
+                    <path d="M7 13h6v2H7v-2z" />
+                </svg>
+            </span>
+            <span>LOANS</span>
+        </a>
+
         <a class="menu__item {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
             href="{{ route('payslip') }}">
             <span class="menu__icon" aria-hidden="true">

@@ -1,0 +1,254 @@
+﻿.suggest {
+  position: absolute;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 6px;
+}
+
+.suggest__item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.suggest__item:hover,
+.suggest__item:focus {
+  background: #f4f4f4;
+}
+
+.field {
+  position: relative;
+}
+
+.drawer--wide {
+  max-width: 980px;
+}
+
+.summaryLines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin-bottom: 16px;
+}
+
+.summaryLines .summaryLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.filterbar {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.filterbar__left,
+.filterbar__right {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+}
+
+.filterbar__left {
+  flex: 1 1 auto;
+  column-gap: 8px;
+  grid-template-columns:
+    minmax(260px, 1.5fr)
+    minmax(160px, 1fr)
+    minmax(220px, 1fr);
+  grid-template-areas:
+    "search status assign"
+    "startmonth loanType .";
+}
+
+.filterbar__left .f,
+.filterbar__right .f {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.filterbar__left .f--search { grid-area: search; }
+.filterbar__left .f--startmonth { grid-area: startmonth; }
+.filterbar__left .f--loantype { grid-area: loanType; }
+.filterbar__left .f--status { grid-area: status; }
+.filterbar__left .f--assign-group { grid-area: assign; }
+
+.filterbar__left .f {
+  align-self: end;
+}
+
+/* Keep second-row fields compact */
+.f--startmonth input {
+  width: 200px;
+  min-width: 180px;
+  max-width: 220px;
+}
+.f--loantype select {
+  width: 220px;
+  min-width: 200px;
+  max-width: 240px;
+}
+
+.filterbar .seg {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  height: 44px;
+  flex: 0 0 auto;
+}
+
+.filterbar .seg--pill {
+  overflow: visible;
+}
+
+.filterbar .seg--pill .seg__btn:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.filterbar .seg--pill .seg__btn:last-child,
+.filterbar .seg--pill .seg__btn-wrap:last-child .seg__btn {
+  border-radius: 0 999px 999px 0;
+}
+
+.filterbar .seg__btn {
+  border: none;
+  background: #fff;
+  padding: 0 18px;
+  font-weight: 1000;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  line-height: 1;
+}
+.filterbar .seg__btn:hover {
+  background: rgba(156, 29, 60, 0.06);
+  color: var(--maroon);
+}
+.filterbar .seg__btn.is-active {
+  background: rgba(156, 29, 60, 0.14);
+  color: var(--maroon);
+}
+
+.filterbar .seg__btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.filterbar .seg__chevron {
+  font-size: 0.7em;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
+.filterbar .seg__dropdown {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: #fff;
+  border: 1px solid rgba(156, 29, 60, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 14px 28px rgba(156, 29, 60, 0.18);
+  z-index: 200;
+  min-width: 220px;
+  padding: 6px 0;
+  white-space: normal;
+  display: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.filterbar .seg__dropdown.is-open {
+  opacity: 1;
+  transform: translateY(0);
+}
+.filterbar .seg__dropdown-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 16px 8px 28px;
+  text-align: left;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--maroon);
+  position: relative;
+  word-break: break-word;
+  line-height: 1.35;
+}
+.filterbar .seg__dropdown-item::before {
+  content: "\2022";
+  position: absolute;
+  left: 14px;
+  top: 7px;
+  color: var(--maroon);
+  opacity: 0.9;
+}
+.filterbar .seg__dropdown-item:hover {
+  background: rgba(156, 29, 60, 0.08);
+  color: var(--maroon);
+}
+.filterbar .seg__dropdown-item.is-active {
+  background: rgba(156, 29, 60, 0.14);
+  color: var(--maroon);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .drawer--wide {
+    max-width: 100%;
+  }
+  .summaryLines {
+    grid-template-columns: 1fr;
+  }
+  .filterbar__left {
+    grid-template-columns: 1fr;
+  }
+  .filterbar__left {
+    grid-template-areas:
+      "search"
+      "status"
+      "assign"
+      "startmonth"
+      "loanType"
+      ;
+  }
+}
+
+.f--assign-group {
+  align-self: end;
+}
+.f--assign-group .seg {
+  width: 200px;
+  max-width: 100%;
+  box-shadow: none;
+}
+
+/* Loans table tweaks */
+.table td {
+  vertical-align: middle;
+}
+.actions-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  white-space: nowrap;
+}
