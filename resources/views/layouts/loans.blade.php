@@ -7,6 +7,14 @@
 @endsection
 
 @section('content')
+@php
+    $assignments = $assignments ?? collect();
+    $groupedAreaPlaces = $groupedAreaPlaces ?? [];
+@endphp
+<script>
+    window.__assignments = @json($assignments);
+    window.__areaPlaces = @json($groupedAreaPlaces);
+</script>
 <section class="content">
     <div class="headline headline--withActions">
         <div>
@@ -43,6 +51,24 @@
                 <label>Assignment</label>
                 <div class="seg seg--pill" id="loanAssignSeg" role="group" aria-label="Filter by assignment">
                     <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
+                    @foreach ($assignments as $a)
+                        <div class="seg__btn-wrap">
+                            <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
+                                {{ $a }}
+                                @if (!empty($groupedAreaPlaces[$a] ?? []))
+                                    <span class="seg__chevron">▾</span>
+                                @endif
+                            </button>
+                            @if (!empty($groupedAreaPlaces[$a] ?? []))
+                                <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                    @foreach ($groupedAreaPlaces[$a] as $ap)
+                                        <button type="button" class="seg__dropdown-item"
+                                            data-place="{{ $ap }}">{{ $ap }}</button>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
                 </div>
                 <input type="hidden" id="loanAssignFilter" value="All" />
             </div>
@@ -90,6 +116,38 @@
                     </tr>
                 </thead>
                 <tbody id="loanTbody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card__head">
+            <div>
+                <div class="card__title">Employee Cash Advance Entry</div>
+                <div class="muted small">Transactions</div>
+            </div>
+            <div>
+                <button class="btn btn--maroon" type="button" id="newCaBtn">+ New Cash Advance</button>
+            </div>
+        </div>
+
+        <div class="notice notice--success" id="cashAdvanceTxnNotice" hidden></div>
+        <div class="notice notice--info" id="caActionBanner" hidden></div>
+
+        <div class="tablewrap">
+            <table class="table" aria-label="Cash advances table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Amount</th>
+                        <th>Term</th>
+                        <th>Start payroll month</th>
+                        <th>Per-cutoff deduction</th>
+                        <th>Status</th>
+                        <th style="width:160px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="caTbody"></tbody>
             </table>
         </div>
     </section>
@@ -347,6 +405,110 @@
         </div>
         <div class="drawer__foot">
             <button class="btn" type="button" id="closeLoanDetailFooter">Close</button>
+        </div>
+    </aside>
+
+    <!-- Cash Advance Drawer -->
+    <aside class="drawer" id="caDrawer" aria-hidden="true">
+        <div class="drawer__overlay" id="caDrawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="caDrawerTitle">
+            <div class="drawer__head">
+                <div>
+                    <div class="drawer__title" id="caDrawerTitle">New Cash Advance</div>
+                    <div class="muted small">Create a cash advance entry.</div>
+                </div>
+                <button class="iconbtn" id="closeCaDrawer" type="button" aria-label="Close">✕</button>
+            </div>
+
+            <form class="form" id="caForm">
+                <div class="grid2">
+                    <div class="field">
+                        <label>Employee</label>
+                        <div class="typeahead" id="caEmployeeTypeahead">
+                            <input type="text" id="caEmployeeInput" placeholder="Type to search employee..."
+                                autocomplete="off" required />
+                            <input type="hidden" id="caEmployeeId" />
+                            <div class="typeahead__list" id="caEmployeeList" hidden></div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Amount</label>
+                        <div class="moneyInput moneyInput--inline">
+                            <input type="text" id="caAmount" inputmode="decimal" autocomplete="off"
+                                placeholder="&#8369;0.00" required />
+                            <input type="hidden" id="caAmountValue" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Term (months)</label>
+                        <input type="number" id="caTerm" min="1" value="3" required />
+                    </div>
+
+                    <div class="field">
+                        <label>Start month</label>
+                        <input type="month" id="caStartMonth" required />
+                    </div>
+
+                    <div class="field field--full">
+                        <label>Method</label>
+                        <select id="caMethodTxn" required>
+                            <option value="salary_deduction" selected>Salary deduction</option>
+                            <option value="manual_payment">Manual payment</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="actionsRow">
+                    <button class="btn btn--soft" type="button" id="cancelCaBtn">Cancel</button>
+                    <div class="spacer"></div>
+                    <button class="btn btn--maroon" type="submit">Save</button>
+                </div>
+            </form>
+        </div>
+    </aside>
+
+    <!-- Cash Advance View Drawer -->
+    <aside class="drawer" id="caViewDrawer" aria-hidden="true">
+        <div class="drawer__overlay" id="caViewDrawerOverlay"></div>
+        <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="caViewDrawerTitle">
+            <div class="drawer__head">
+                <div>
+                    <div class="drawer__title" id="caViewDrawerTitle">Cash Advance Details</div>
+                    <div class="muted small" id="caViewDrawerSubtitle">View cash advance entry.</div>
+                </div>
+                <button class="iconbtn" id="closeCaViewDrawer" type="button" aria-label="Close">✕</button>
+            </div>
+
+            <form class="form" id="caViewForm">
+                <div class="grid2">
+                    <div class="field">
+                        <label>Employee</label>
+                        <input type="text" id="caViewEmployee" readonly />
+                    </div>
+                    <div class="field">
+                        <label>Amount</label>
+                        <input type="text" id="caViewAmount" readonly />
+                    </div>
+                    <div class="field">
+                        <label>Term (months)</label>
+                        <input type="number" id="caViewTerm" readonly />
+                    </div>
+                    <div class="field">
+                        <label>Start month</label>
+                        <input type="month" id="caViewStart" readonly />
+                    </div>
+                    <div class="field">
+                        <label>Status</label>
+                        <input type="text" id="caViewStatus" readonly />
+                    </div>
+                </div>
+
+                <div class="actionsRow">
+                    <button class="btn btn--soft" type="button" id="closeCaViewBtn">Close</button>
+                </div>
+            </form>
         </div>
     </aside>
 @endsection

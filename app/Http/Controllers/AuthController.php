@@ -30,6 +30,10 @@ class AuthController extends Controller
 
         if (Auth::attempt(['name' => $validated['username'], 'password' => $validated['password']])) {
             $request->session()->regenerate();
+            $user = Auth::user();
+            if (($user->role ?? 'admin') === 'hr') {
+                return redirect()->intended(route('employee.records'));
+            }
             return redirect()->intended(route('index'));
         }
 

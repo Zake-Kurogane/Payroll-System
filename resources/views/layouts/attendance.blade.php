@@ -229,22 +229,25 @@
         <div class="drawer__head">
             <div>
                 <div class="drawer__title" id="drawerTitle">Add Attendance</div>
-                <div class="drawer__sub muted small" id="drawerSub">Fill up the details below.</div>
+                <div class="drawer__sub" id="drawerSub">Fill in the attendance details below.</div>
             </div>
-
             <button class="iconx" type="button" id="closeDrawerBtn" aria-label="Close drawer">✕</button>
         </div>
 
         <form id="attForm" class="drawer__body" autocomplete="off" novalidate>
+
+            <div class="sectionTitle">Attendance Details</div>
             <div class="grid2">
                 <div class="field">
-                    <label>Employee</label>
+                    <label>Employee *</label>
+                    <small class="att-hint">Select the employee for this record.</small>
                     <select id="f_employee" required></select>
                     <small class="err" id="errEmployee"></small>
                 </div>
 
                 <div class="field">
-                    <label>Date</label>
+                    <label>Date *</label>
+                    <small class="att-hint">Date the attendance applies to.</small>
                     <input id="f_date" type="date" required />
                     <small class="err" id="errDate"></small>
                 </div>
@@ -252,7 +255,8 @@
 
             <div class="grid2">
                 <div class="field">
-                    <label>Status</label>
+                    <label>Status *</label>
+                    <small class="att-hint">Attendance code (e.g. P, L, A).</small>
                     <select id="f_status" required>
                         <option value="">—</option>
                     </select>
@@ -261,6 +265,7 @@
 
                 <div class="field">
                     <label>Assignment Type</label>
+                    <small class="att-hint">Auto-filled from employee profile.</small>
                     <select id="f_assignType" required disabled>
                         <option value="">—</option>
                     </select>
@@ -274,6 +279,7 @@
 
             <div class="field" id="areaWrap" hidden>
                 <label>Area Place</label>
+                <small class="att-hint">Required for Field employees.</small>
                 <select id="f_areaPlace">
                     <option value="">—</option>
                 </select>
@@ -281,8 +287,24 @@
                 <small class="err" id="errAreaPlace"></small>
             </div>
 
+            <div class="sectionTitle">Time</div>
+            <div class="grid2">
+                <div class="field">
+                    <label>Clock In <span
+                            style="font-weight:400;font-size:11px;color:var(--muted)">(optional)</span></label>
+                    <input id="f_clockIn" type="time" step="60" />
+                </div>
+                <div class="field">
+                    <label>Clock Out <span
+                            style="font-weight:400;font-size:11px;color:var(--muted)">(optional)</span></label>
+                    <input id="f_clockOut" type="time" step="60" />
+                </div>
+            </div>
+
+            <div class="sectionTitle">Notes</div>
             <div class="field">
-                <label>Notes (optional)</label>
+                <label>Notes <span style="font-weight:400;font-size:11px;color:var(--muted)">(optional)</span></label>
+                <small class="att-hint">Any additional remarks for this record.</small>
                 <textarea id="f_notes" rows="3" placeholder="Add short note…"></textarea>
             </div>
 
@@ -407,6 +429,7 @@
                             <th>Name</th>
                             <th>Department</th>
                             <th>In/Out</th>
+                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody id="kpiPreviewTbody"></tbody>
@@ -476,7 +499,7 @@
                     </thead>
                     <tbody id="empTbody"></tbody>
                 </table>
-            </div>0
+            </div>
         </div>
 
         <div class="drawer__foot">

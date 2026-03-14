@@ -1,7 +1,7 @@
 ﻿import { initClock } from "./settings/clock";
 import { initTabs } from "./settings/tabs";
 import { initAttendanceCodes } from "./settings/attendanceCodes";
-import { initCashAdvance } from "./settings/cashAdvance";
+import { initCashAdvancePolicy } from "./settings/cashAdvance";
 import { initTimekeeping } from "./settings/timekeeping";
 import { toast } from "./settings/toast";
 import { initUserMenuDropdown } from "./shared/userMenu";
@@ -52,7 +52,128 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const notifySettingsUpdated = () => broadcastSettingsUpdate();
   initTimekeeping(toast, apiFetch, document.getElementById("timekeepingNotice"), notifySettingsUpdated);
-  initCashAdvance(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
+  initCashAdvancePolicy(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
+
+  // ===== HR Accounts list (admin-only UI) =====
+  const hrUsersTbody = document.getElementById("hrUsersTbody");
+  const hrUserDrawer = document.getElementById("hrUserDrawer");
+  const hrUserDrawerOverlay = document.getElementById("hrUserDrawerOverlay");
+  const closeHrUserDrawer = document.getElementById("closeHrUserDrawer");
+  const cancelHrUserBtn = document.getElementById("cancelHrUserBtn");
+  const hrUserForm = document.getElementById("hrUserForm");
+  const hrUserNotice = document.getElementById("hrUserNotice");
+
+  const hrUserId = document.getElementById("hrUserId");
+  const hrUserName = document.getElementById("hrUserName");
+  const hrUserEmail = document.getElementById("hrUserEmail");
+  const hrUserFirst = document.getElementById("hrUserFirst");
+  const hrUserMiddle = document.getElementById("hrUserMiddle");
+  const hrUserLast = document.getElementById("hrUserLast");
+  const hrUserPassword = document.getElementById("hrUserPassword");
+
+  let hrUsersCache = [];
+
+  function openHrUserDrawer(user) {
+    if (!hrUserDrawer || !user) return;
+    hrUserId && (hrUserId.value = String(user.id || ""));
+    hrUserName && (hrUserName.value = user.username || "");
+    hrUserEmail && (hrUserEmail.value = user.email || "");
+    hrUserFirst && (hrUserFirst.value = user.first_name || "");
+    hrUserMiddle && (hrUserMiddle.value = user.middle_name || "");
+    hrUserLast && (hrUserLast.value = user.last_name || "");
+    hrUserPassword && (hrUserPassword.value = "");
+    hrUserNotice && (hrUserNotice.hidden = true);
+    hrUserDrawer.classList.add("is-open");
+    hrUserDrawer.setAttribute("aria-hidden", "false");
+    document.body.classList.add("drawer-open");
+  }
+
+  function closeHrUserDrawerUI() {
+    if (!hrUserDrawer) return;
+    hrUserDrawer.classList.remove("is-open");
+    hrUserDrawer.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("drawer-open");
+  }
+
+  closeHrUserDrawer?.addEventListener("click", closeHrUserDrawerUI);
+  cancelHrUserBtn?.addEventListener("click", closeHrUserDrawerUI);
+  hrUserDrawerOverlay?.addEventListener("click", closeHrUserDrawerUI);
+
+  function showHrUserNotice(message) {
+    if (!hrUserNotice) return;
+    hrUserNotice.textContent = message;
+    hrUserNotice.hidden = false;
+    clearTimeout(hrUserNotice._hideTimer);
+    hrUserNotice._hideTimer = setTimeout(() => { hrUserNotice.hidden = true; }, 2500);
+  }
+
+  async function loadHrUsers() {
+    if (!hrUsersTbody) return;
+    hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">Loading...</td></tr>`;
+    try {
+      const rows = await apiFetch("/admin/users/hr");
+      const list = Array.isArray(rows) ? rows : [];
+      hrUsersCache = list;
+      if (!list.length) {
+        hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">No HR accounts yet.</td></tr>`;
+        return;
+      }
+      hrUsersTbody.innerHTML = list.map((u) => {
+        const created = u.created_at ? new Date(u.created_at).toLocaleString() : "—";
+        const createdBy = u.created_by || "—";
+        return `
+          <tr>
+            <td>${String(u.username || "—")}</td>
+            <td>${String(u.full_name || "—")}</td>
+            <td>${String(u.email || "—")}</td>
+            <td>${String(createdBy)}</td>
+            <td>${created}</td>
+            <td><button type="button" class="btn btn--soft btn--sm" data-hr-edit="${u.id}">Edit</button></td>
+          </tr>
+        `;
+      }).join("");
+    } catch (err) {
+      hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">Failed to load.</td></tr>`;
+      toast(err.message || "Failed to load HR accounts.", "error");
+    }
+  }
+  loadHrUsers();
+
+  hrUsersTbody?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-hr-edit]");
+    if (!btn) return;
+    const id = Number(btn.getAttribute("data-hr-edit"));
+    const user = hrUsersCache.find((x) => Number(x.id) === id);
+    openHrUserDrawer(user);
+  });
+
+  hrUserForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = Number(hrUserId?.value || 0);
+    if (!id) return;
+
+    const payload = {
+      name: hrUserName?.value || "",
+      email: hrUserEmail?.value || "",
+      first_name: hrUserFirst?.value || "",
+      middle_name: hrUserMiddle?.value || "",
+      last_name: hrUserLast?.value || "",
+    };
+    const pw = (hrUserPassword?.value || "").trim();
+    if (pw) payload.password = pw;
+
+    try {
+      await apiFetch(`/admin/users/hr/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      showHrUserNotice("Saved.");
+      await loadHrUsers();
+      closeHrUserDrawerUI();
+    } catch (err) {
+      toast(err.message || "Failed to save HR account.", "error");
+    }
+  });
 
   // ===== Company Setup =====
   const companyName = document.getElementById("companyName");

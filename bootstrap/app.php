@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.simple' => \App\Http\Middleware\SimpleAuth::class,
             'guest.simple' => \App\Http\Middleware\SimpleGuest::class,
+            'role' => \App\Http\Middleware\Role::class,
         ]);
 
     })

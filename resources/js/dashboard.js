@@ -1,4 +1,4 @@
-﻿import { initClock } from "./shared/clock";
+import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { initSettingsSync } from "./shared/settingsSync";
@@ -12,8 +12,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ── DOM refs ────────────────────────────────────────────
   const cutoffMonthInput  = document.getElementById("cutoffMonth");
   const cutoffSelect      = document.getElementById("cutoffSelect");
-  const cutoffRangeLabel  = document.getElementById("cutoffRangeLabel");
-  const assignmentSeg     = document.getElementById("assignmentSeg");
+  const assignSeg         = document.getElementById("assignSeg");
 
   // ── Helpers ─────────────────────────────────────────────
   function parseYM(val) {
@@ -31,18 +30,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!Number.isFinite(from) || from <= 0) from = isA ? 11 : 26;
     if (!Number.isFinite(to)   || to   <= 0) to   = isA ? 25 : lastDay;
     return { from, to };
-  }
-
-  function getCutoffRange(year, month, cutoffType, cal) {
-    const { from, to } = resolveCutoffDays(year, month, cutoffType, cal);
-    const start = new Date(year, month - 1, from);
-    const end   = from > to ? new Date(year, month, to) : new Date(year, month - 1, to);
-    return { start, end };
-  }
-
-  function formatRangeLabel(range) {
-    const opts = { month: "short", day: "numeric", year: "numeric" };
-    return `${range.start.toLocaleDateString("en-PH", opts)} – ${range.end.toLocaleDateString("en-PH", opts)}`;
   }
 
   // ── Load payroll calendar from DB ────────────────────────
@@ -81,67 +68,134 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // ── Update cutoff range label ────────────────────────────
-  function updateRangeLabel() {
-    if (!cutoffRangeLabel) return;
-    const ym = parseYM(cutoffMonthInput?.value);
-    const ct = cutoffSelect?.value;
-    if (!ym || !ct || ct === "all") { cutoffRangeLabel.textContent = "—"; return; }
-    const range = getCutoffRange(ym.y, ym.m, ct, payrollCalendar);
-    cutoffRangeLabel.textContent = formatRangeLabel(range);
-  }
 
   // ── Load assignments from DB → build seg ─────────────────
-  let openDropdown = null, openDropdownBtn = null;
+  let openDropdown = null;
+  let openDropdownBtn = null;
+  let assignBtns = [];
 
   function closeAllDropdowns() {
-    document.querySelectorAll(".seg__dropdown.is-open").forEach(d => {
+    if (!assignSeg) return;
+    assignSeg.querySelectorAll(".seg__dropdown").forEach(d => {
       d.classList.remove("is-open");
       d.style.display = "none";
     });
-    openDropdown = null; openDropdownBtn = null;
+    openDropdown = null;
+    openDropdownBtn = null;
   }
 
-  document.addEventListener("click", closeAllDropdowns);
+  function wireAssignButtons() {
+    if (!assignSeg) return;
+    assignBtns = Array.from(assignSeg.querySelectorAll(".seg__btn--emp"));
 
-  function positionDropdown(btn, dropdown) {
-    const rect = btn.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const w = Math.max(Math.round(rect.width), 200);
-    let left = Math.round(rect.left);
-    if (left + w > vw - 8) left = Math.max(8, vw - w - 8);
-    dropdown.style.left = `${left}px`;
-    dropdown.style.top  = `${Math.round(rect.bottom + 8)}px`;
-    dropdown.style.minWidth = `${w}px`;
+    const contentScroller = document.querySelector(".content");
+    let rafId = 0;
+
+    function positionDropdown(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const rect = btn.getBoundingClientRect();
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const desiredMin = Math.round(rect.width);
+      const maxWidth = Math.min(320, Math.max(200, viewportW - 16));
+      const dropdownW = Math.max(desiredMin, maxWidth);
+      let left = Math.round(rect.left);
+      if (left + dropdownW > viewportW - 8) {
+        left = Math.max(8, viewportW - dropdownW - 8);
+      }
+      const top = Math.round(rect.bottom + 8);
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.minWidth = `${desiredMin}px`;
+      dropdown.style.maxWidth = `${maxWidth}px`;
+    }
+
+    function refreshOpenDropdownPosition() {
+      if (!openDropdown || !openDropdownBtn) return;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        positionDropdown(openDropdownBtn, openDropdown);
+      });
+    }
+
+    assignBtns.forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawAssign = btn.getAttribute("data-assign");
+        const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+
+        const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+        const wasOpen = dropdown && dropdown.style.display === "block";
+        const isAlreadyActive = btn.classList.contains("is-active");
+
+        closeAllDropdowns();
+
+        assignBtns.forEach(b => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+
+        if (assignSeg) {
+          assignSeg.dataset.assign = group;
+          assignSeg.dataset.place = "";
+        }
+
+        if (dropdown) {
+          if (isAlreadyActive && wasOpen) return;
+          positionDropdown(btn, dropdown);
+          dropdown.style.display = "block";
+          dropdown.classList.add("is-open");
+          openDropdown = dropdown;
+          openDropdownBtn = btn;
+        }
+      });
+    });
+
+    assignSeg.querySelectorAll(".seg__dropdown-item").forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const place = item.getAttribute("data-place") || "";
+        const dropdown = item.closest(".seg__dropdown");
+        dropdown?.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
+        item.classList.add("is-active");
+        if (assignSeg) assignSeg.dataset.place = place;
+        closeAllDropdowns();
+      });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!assignSeg.contains(e.target)) closeAllDropdowns();
+    }, { capture: true });
+
+    window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+    window.addEventListener("resize", refreshOpenDropdownPosition);
+    contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
   }
 
   try {
     const data = await fetch("/employees/filters").then(r => r.json());
-    const assignments   = data.assignments  || [];
-    const areaGrouped   = data.area_places  || {};
+    const assignments = Array.isArray(data.assignments) ? data.assignments : [];
+    const areaPlaces = (data.area_places && typeof data.area_places === "object" && !Array.isArray(data.area_places))
+      ? data.area_places
+      : {};
 
-    if (assignmentSeg) {
-      assignmentSeg.innerHTML = "";
+    if (assignSeg) {
+      assignSeg.innerHTML = "";
 
-      // All button
       const allBtn = document.createElement("button");
       allBtn.type = "button";
-      allBtn.className = "seg__btn is-active";
-      allBtn.dataset.assign = "All";
+      allBtn.className = "seg__btn seg__btn--emp is-active";
+      allBtn.setAttribute("data-assign", "");
       allBtn.textContent = "All";
-      assignmentSeg.appendChild(allBtn);
+      assignSeg.appendChild(allBtn);
 
-      // One button per assignment, with sub-place dropdown
-      assignments.forEach(a => {
-        const places = Array.isArray(areaGrouped[a.name]) ? areaGrouped[a.name] : [];
+      assignments.forEach((label) => {
+        const places = Array.isArray(areaPlaces[label]) ? areaPlaces[label] : [];
         const wrap = document.createElement("div");
         wrap.className = "seg__btn-wrap";
 
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "seg__btn";
-        btn.dataset.assign = a.name;
-        btn.textContent = a.name;
+        btn.className = "seg__btn seg__btn--emp";
+        btn.setAttribute("data-assign", label);
+        btn.textContent = label;
         if (places.length) {
           const chev = document.createElement("span");
           chev.className = "seg__chevron";
@@ -150,50 +204,25 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         wrap.appendChild(btn);
 
-        if (places.length) {
-          const dd = document.createElement("div");
-          dd.className = "seg__dropdown";
-          dd.dataset.group = a.name;
-          dd.style.display = "none";
-          dd.innerHTML = places.map(p =>
-            `<button type="button" class="seg__dropdown-item" data-place="${p}">${p}</button>`
-          ).join("");
-          wrap.appendChild(dd);
-
-          dd.querySelectorAll(".seg__dropdown-item").forEach(item => {
-            item.addEventListener("click", e => {
-              e.stopPropagation();
-              dd.querySelectorAll(".seg__dropdown-item").forEach(i => i.classList.remove("is-active"));
-              item.classList.add("is-active");
-              closeAllDropdowns();
-            });
-          });
-        }
-
-        assignmentSeg.appendChild(wrap);
-      });
-
-      // Button click logic
-      assignmentSeg.querySelectorAll(".seg__btn").forEach(btn => {
-        btn.addEventListener("click", e => {
-          e.stopPropagation();
-          const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
-          const wasOpen  = dropdown && dropdown.style.display === "block";
-          const wasActive = btn.classList.contains("is-active");
-          closeAllDropdowns();
-          assignmentSeg.querySelectorAll(".seg__btn").forEach(b => b.classList.remove("is-active"));
-          btn.classList.add("is-active");
-          if (dropdown) {
-            if (wasActive && wasOpen) return;
-            positionDropdown(btn, dropdown);
-            dropdown.style.display = "block";
-            dropdown.classList.add("is-open");
-            openDropdown = dropdown; openDropdownBtn = btn;
-          }
+        const dropdown = document.createElement("div");
+        dropdown.className = "seg__dropdown";
+        dropdown.setAttribute("data-group", label);
+        dropdown.style.display = "none";
+        places.forEach((p) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "seg__dropdown-item";
+          item.setAttribute("data-place", p);
+          item.textContent = p;
+          dropdown.appendChild(item);
         });
+        wrap.appendChild(dropdown);
+
+        assignSeg.appendChild(wrap);
       });
     }
   } catch { /* silent */ }
+  wireAssignButtons();
 
   // ── Default month to current ─────────────────────────────
   if (cutoffMonthInput && !cutoffMonthInput.value) {
@@ -201,10 +230,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     cutoffMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   }
   syncCutoffOptions();
-  updateRangeLabel();
 
-  cutoffMonthInput?.addEventListener("change", () => { syncCutoffOptions(); updateRangeLabel(); });
-  cutoffSelect?.addEventListener("change", updateRangeLabel);
+  cutoffMonthInput?.addEventListener("change", () => { syncCutoffOptions(); });
 
   // ── Chart (static placeholder) ───────────────────────────
   const chartMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
@@ -242,16 +269,4 @@ document.addEventListener("DOMContentLoaded", async () => {
       chart.appendChild(wrap);
     }
   }
-
-  // ── Global search ────────────────────────────────────────
-  const globalSearch = document.getElementById("globalSearch");
-  const tbody = document.getElementById("tableBody");
-
-  globalSearch?.addEventListener("input", () => {
-    if (!tbody) return;
-    const q = globalSearch.value.trim().toLowerCase();
-    Array.from(tbody.querySelectorAll("tr")).forEach(tr => {
-      tr.style.display = tr.innerText.toLowerCase().includes(q) ? "" : "none";
-    });
-  });
 });

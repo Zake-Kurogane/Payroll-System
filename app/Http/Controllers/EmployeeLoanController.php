@@ -6,6 +6,8 @@ use App\Models\Employee;
 use App\Models\EmployeeLoan;
 use App\Models\EmployeeLoanHistory;
 use App\Models\EmployeeLoanSchedule;
+use App\Models\Assignment;
+use App\Models\AreaPlace;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -13,7 +15,32 @@ class EmployeeLoanController extends Controller
 {
     public function page()
     {
-        return view('layouts.loans');
+        $assignments = Assignment::where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('label');
+
+        $assignmentOrder = $assignments->all();
+        $rows = AreaPlace::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['label', 'parent_assignment']);
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $parent = $row->parent_assignment ?? 'Field';
+            $grouped[$parent][] = $row->label;
+        }
+
+        $groupedAreaPlaces = [];
+        foreach ($assignmentOrder as $label) {
+            if (isset($grouped[$label])) {
+                $groupedAreaPlaces[$label] = $grouped[$label];
+            }
+        }
+
+        return view('layouts.loans', [
+            'assignments' => $assignments,
+            'groupedAreaPlaces' => $groupedAreaPlaces,
+        ]);
     }
 
     public function list(Request $request)

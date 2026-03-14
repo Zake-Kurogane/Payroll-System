@@ -78,6 +78,91 @@
   max-width: 100%;
 }
 
+/* Cash Advance (moved from Settings) */
+.typeahead {
+  position: relative;
+}
+.typeahead__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.12);
+  z-index: 20;
+  max-height: 220px;
+  overflow: auto;
+  padding: 6px;
+}
+.typeahead__item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.typeahead__item:hover,
+.typeahead__item.is-active {
+  background: rgba(156, 29, 60, 0.08);
+}
+.typeahead__empty {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.moneyInput {
+  position: relative;
+}
+.moneyInput input {
+  padding-left: 46px;
+}
+.moneyInput--inline input {
+  padding-left: 12px;
+}
+
+.miniRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.miniBtn {
+  height: 38px;
+  width: 38px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  cursor: pointer;
+  color: #9c1d3c;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
+}
+.miniBtn__icon {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.miniBtn:hover {
+  background: rgba(156, 29, 60, 0.06);
+  border-color: rgba(156, 29, 60, 0.35);
+  box-shadow: 0 6px 14px rgba(17, 24, 39, 0.12);
+  transform: translateY(-1px);
+}
+.miniBtn--danger {
+  color: #dc2626;
+}
+.miniBtn--danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
 .filterbar__left .f--search { grid-area: search; }
 .filterbar__left .f--startmonth { grid-area: startmonth; }
 .filterbar__left .f--loantype { grid-area: loanType; }
@@ -100,6 +185,7 @@
   max-width: 240px;
 }
 
+/* Assignment pills (copied from Employee Records) */
 .filterbar .seg {
   background: #fff;
   border: 1px solid var(--line);
@@ -109,7 +195,6 @@
   height: 44px;
   flex: 0 0 auto;
 }
-
 .filterbar .seg--pill {
   overflow: visible;
 }
@@ -129,24 +214,27 @@
   font-weight: 1000;
   cursor: pointer;
   color: var(--muted);
+  height: 100%;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 44px;
-  line-height: 1;
 }
 .filterbar .seg__btn:hover {
   background: rgba(156, 29, 60, 0.06);
   color: var(--maroon);
 }
 .filterbar .seg__btn.is-active {
-  background: rgba(156, 29, 60, 0.14);
   color: var(--maroon);
+  background: rgba(156, 29, 60, 0.12);
+}
+.filterbar .seg__btn.is-active:hover {
+  background: rgba(156, 29, 60, 0.16);
 }
 
 .filterbar .seg__btn-wrap {
   position: relative;
   display: inline-flex;
+  height: 100%;
+  align-items: stretch;
 }
 .filterbar .seg__chevron {
   font-size: 0.7em;
@@ -190,7 +278,6 @@
   color: var(--maroon);
   position: relative;
   word-break: break-word;
-  line-height: 1.35;
 }
 .filterbar .seg__dropdown-item::before {
   content: "\2022";
@@ -233,11 +320,15 @@
 
 .f--assign-group {
   align-self: end;
+  justify-self: start;
 }
 .f--assign-group .seg {
-  width: 200px;
+  min-width: 0;
+  width: auto;
   max-width: 100%;
-  box-shadow: none;
+  display: inline-flex;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Loans table tweaks */
@@ -246,9 +337,13 @@
 }
 .actions-cell {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   justify-content: flex-start;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   white-space: nowrap;
+}
+.table .col-actions {
+  width: 200px;
+  min-width: 200px;
 }

@@ -3,7 +3,7 @@
 @section('title', 'Dashboard')
 
 @section('vite')
-    @vite(['resources/css/index.css', 'resources/js/index.js'])
+    @vite(['resources/css/index.css', 'resources/css/dashboard.css', 'resources/js/dashboard.js'])
 @endsection
 
 @section('content')
@@ -15,71 +15,75 @@
         </div>
 
         <!-- FILTERS -->
-        <div class="filters card">
-            <div class="f">
-                <label>Month:</label>
-                <select id="month">
-                    <option>Jan 2026</option>
-                    <option>Dec 2025</option>
-                    <option>Nov 2025</option>
-                </select>
-            </div>
+        <section class="card cutoffbar">
+            <div class="cutoffbar__left">
+                <div class="f">
+                    <label>Payroll Month</label>
+                    <input id="cutoffMonth" type="month" />
+                </div>
 
-            <div class="f">
-                <label>Cut-off:</label>
-                <select id="cutoff">
-                    <option value="1-15">1&ndash;15</option>
-                    <option value="16-30">16&ndash;30</option>
-                </select>
-            </div>
+                <div class="f">
+                    <label>Cut-off</label>
+                    <select id="cutoffSelect"></select>
+                </div>
 
-            <div class="f">
-                <label>Dept:</label>
-                <select id="dept">
-                    <option>All</option>
-                    <option>Admin</option>
-                    <option>HR</option>
-                    <option>IT</option>
-                </select>
-            </div>
+                <div style="display:grid;gap:8px;">
+                    <label style="font-weight:600;font-size:14px;color:var(--muted);">Assignment</label>
+                    <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Filter by assignment">
+                        <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
+                        @foreach ($assignments ?? [] as $a)
+                            <div class="seg__btn-wrap">
+                                <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
+                                    {{ $a }} <span class="seg__chevron">▾</span>
+                                </button>
+                                <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                    @foreach ($groupedAreaPlaces[$a] ?? [] as $ap)
+                                        <button type="button" class="seg__dropdown-item"
+                                            data-place="{{ $ap }}">{{ $ap }}</button>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
 
-            <div class="f">
-                <label>Place:</label>
-                <select id="place">
-                    <option>All</option>
-                    <option>Tagum</option>
-                    <option>Davao</option>
-                </select>
             </div>
-        </div>
+        </section>
 
         <!-- KPI CARDS -->
         <div class="kpis">
+            <a class="kpi kpi--link" href="{{ route('employee.records') }}" aria-label="View employee records">
+                <div class="kpi__meta">
+                    <div class="kpi__value" id="kpiEmployees">{{ number_format($totalEmployees ?? 0) }}</div>
+                    <div class="kpi__label">TOTAL EMPLOYEE</div>
+                </div>
+            </a>
+
             <article class="kpi">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiEmployees">50</div>
-                    <div class="kpi__label">TOTAL EMPLOYEES</div>
+                    <div class="kpi__value" id="kpiGross">₱ 0</div>
+                    <div class="kpi__label">GROSS</div>
                 </div>
             </article>
 
             <article class="kpi">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiPending">12</div>
-                    <div class="kpi__label">PENDING PAYROLL</div>
+                    <div class="kpi__value" id="kpiDed">₱ 0</div>
+                    <div class="kpi__label">DEDUCTIONS</div>
                 </div>
             </article>
 
             <article class="kpi">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiNet">₱ 412,500</div>
-                    <div class="kpi__label">TOTAL NET PAY</div>
+                    <div class="kpi__value" id="kpiNet">₱ 0</div>
+                    <div class="kpi__label">NET PAY</div>
                 </div>
             </article>
 
             <article class="kpi">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiDed">₱ 412,500</div>
-                    <div class="kpi__label">TOTAL DEDUCTIONS</div>
+                    <div class="kpi__value" id="kpiUnclaimed">0</div>
+                    <div class="kpi__label">UNCLAIMED PAYSLIP</div>
                 </div>
             </article>
         </div>

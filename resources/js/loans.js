@@ -2,6 +2,7 @@
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
+import { initCashAdvanceTransactions } from "./settings/cashAdvance";
 
 document.addEventListener("DOMContentLoaded", () => {
   initClock();
@@ -34,6 +35,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (res.status === 204) return null;
     return res.json();
   }
+
+  const toast = (message) => {
+    if (message) alert(message);
+  };
+  initCashAdvanceTransactions(toast, apiFetch, document.getElementById("cashAdvanceTxnNotice"));
 
   // Elements
   const loanSearch = document.getElementById("loanSearch");
@@ -102,11 +108,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let loans = [];
   let assignmentFilter = "All";
-  let areaPlaces = {};
+  let areaPlaces = (window.__areaPlaces && typeof window.__areaPlaces === "object" && !Array.isArray(window.__areaPlaces))
+    ? window.__areaPlaces
+    : {};
   let areaSubFilter = "";
   let editingLoanId = null;
   let openDropdown = null;
   let openDropdownBtn = null;
+  let assignDropdownEventsBound = false;
 
   function currentAssignmentFilter() {
     if (!loanAssignSeg) return assignmentFilter || "All";
@@ -188,12 +197,14 @@ document.addEventListener("DOMContentLoaded", () => {
           loanAssignSeg.appendChild(wrap);
         });
       }
+      assignmentFilter = currentAssignmentFilter();
+      if (loanAssignFilter) loanAssignFilter.value = areaSubFilter ? `${assignmentFilter}|${areaSubFilter}` : assignmentFilter;
       wireAssignButtons();
       if (loanDeptFilter && data.departments) {
         loanDeptFilter.innerHTML = `<option value="All">All</option>` + data.departments.map(d => `<option value="${d}">${d}</option>`).join("");
       }
     } catch {
-      // ignore
+      wireAssignButtons();
     }
   }
 
@@ -355,13 +366,16 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    document.addEventListener("click", (e) => {
-      if (!loanAssignSeg.contains(e.target)) closeAllDropdowns();
-    }, { capture: true });
+    if (!assignDropdownEventsBound) {
+      document.addEventListener("click", (e) => {
+        if (!loanAssignSeg.contains(e.target)) closeAllDropdowns();
+      }, { capture: true });
 
-    window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
-    window.addEventListener("resize", refreshOpenDropdownPosition);
-    contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+      window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+      window.addEventListener("resize", refreshOpenDropdownPosition);
+      contentScroller && contentScroller.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+      assignDropdownEventsBound = true;
+    }
   }
 
   function resetLoanForm() {
@@ -645,7 +659,12 @@ document.addEventListener("DOMContentLoaded", () => {
   loanMethod && loanMethod.addEventListener("change", updateMonthlyFromTotal);
 
   // Init
-  loadFilters().then(loadLoans);
+  assignmentFilter = currentAssignmentFilter();
+  if (loanAssignFilter) {
+    loanAssignFilter.value = areaSubFilter ? `${assignmentFilter}|${areaSubFilter}` : assignmentFilter;
+  }
+  wireAssignButtons();
+  loadFilters().then(loadLoans).catch(() => loadLoans());
 });
 
 

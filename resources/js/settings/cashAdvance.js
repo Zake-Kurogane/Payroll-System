@@ -1,7 +1,69 @@
 import { esc } from "./utils";
 import { createDrawer } from "./drawer";
 
-export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
+export function initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange) {
+  const caEnabled = document.getElementById("caEnabled");
+  const caMethod = document.getElementById("caMethod");
+  const caDefaultTermMonths = document.getElementById("caDefaultTermMonths");
+  const caMaxPaybackMonths = document.getElementById("caMaxPaybackMonths");
+  const caDeductTiming = document.getElementById("caDeductTiming");
+  const caPriority = document.getElementById("caPriority");
+  const caDeductionMethod = document.getElementById("caDeductionMethod");
+  const caPolicySave = document.getElementById("caPolicySave");
+
+  if (!caPolicySave && !caEnabled && !caMethod) return;
+
+  function showNotice(message) {
+    if (!noticeEl) return false;
+    noticeEl.textContent = message;
+    noticeEl.hidden = false;
+    clearTimeout(noticeEl._hideTimer);
+    noticeEl._hideTimer = setTimeout(() => {
+      noticeEl.hidden = true;
+    }, 3500);
+    return true;
+  }
+
+  async function loadCashAdvancePolicy() {
+    try {
+      const row = await apiFetch("/settings/cash-advance-policy");
+      caEnabled && (caEnabled.checked = !!row.enabled);
+      caMethod && (caMethod.value = row.default_method ?? "salary_deduction");
+      caDefaultTermMonths && (caDefaultTermMonths.value = row.default_term_months ?? 3);
+      caMaxPaybackMonths && (caMaxPaybackMonths.value = row.max_payback_months ?? 6);
+      caDeductTiming && (caDeductTiming.value = row.deduct_timing ?? "split");
+      caPriority && (caPriority.value = row.priority ?? 1);
+      caDeductionMethod && (caDeductionMethod.value = row.deduction_method ?? "equal_amortization");
+    } catch (err) {
+      toast(err.message || "Failed to load Cash Advance Policy.", "error");
+    }
+  }
+
+  caPolicySave?.addEventListener("click", async () => {
+    try {
+      await apiFetch("/settings/cash-advance-policy", {
+        method: "POST",
+        body: JSON.stringify({
+          enabled: !!caEnabled?.checked,
+          default_method: caMethod?.value || "salary_deduction",
+          default_term_months: Number(caDefaultTermMonths?.value || 3),
+          max_payback_months: Number(caMaxPaybackMonths?.value || 6),
+          deduct_timing: caDeductTiming?.value || "split",
+          priority: Number(caPriority?.value || 1),
+          deduction_method: caDeductionMethod?.value || "equal_amortization",
+        }),
+      });
+      if (!showNotice("Cash advance policy saved.")) toast("Saved Cash Advance Policy.");
+      if (typeof onChange === "function") onChange();
+    } catch (err) {
+      toast(err.message || "Failed to save Cash Advance Policy.", "error");
+    }
+  });
+
+  loadCashAdvancePolicy();
+}
+
+export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange) {
   const caTbody = document.getElementById("caTbody");
   const newCaBtn = document.getElementById("newCaBtn");
 
@@ -10,10 +72,12 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   const closeCaDrawer = document.getElementById("closeCaDrawer");
   const cancelCaBtn = document.getElementById("cancelCaBtn");
   const caForm = document.getElementById("caForm");
+
   const caViewDrawer = document.getElementById("caViewDrawer");
   const caViewDrawerOverlay = document.getElementById("caViewDrawerOverlay");
   const closeCaViewDrawer = document.getElementById("closeCaViewDrawer");
   const closeCaViewBtn = document.getElementById("closeCaViewBtn");
+
   const caViewTitle = document.getElementById("caViewDrawerTitle");
   const caViewSubtitle = document.getElementById("caViewDrawerSubtitle");
   const caViewEmployee = document.getElementById("caViewEmployee");
@@ -21,17 +85,16 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   const caViewTerm = document.getElementById("caViewTerm");
   const caViewStart = document.getElementById("caViewStart");
   const caViewStatus = document.getElementById("caViewStatus");
+
   const caActionBanner = document.getElementById("caActionBanner");
   const caEmployeeInput = document.getElementById("caEmployeeInput");
   const caEmployeeId = document.getElementById("caEmployeeId");
   const caEmployeeList = document.getElementById("caEmployeeList");
 
-  if (caDrawer && caDrawer.parentElement !== document.body) {
-    document.body.appendChild(caDrawer);
-  }
-  if (caViewDrawer && caViewDrawer.parentElement !== document.body) {
-    document.body.appendChild(caViewDrawer);
-  }
+  if (!caTbody && !newCaBtn && !caDrawer && !caViewDrawer) return;
+
+  if (caDrawer && caDrawer.parentElement !== document.body) document.body.appendChild(caDrawer);
+  if (caViewDrawer && caViewDrawer.parentElement !== document.body) document.body.appendChild(caViewDrawer);
 
   const drawer = createDrawer(caDrawer, caDrawerOverlay, [closeCaDrawer, cancelCaBtn]);
   const viewDrawer = createDrawer(caViewDrawer, caViewDrawerOverlay, [closeCaViewDrawer, closeCaViewBtn]);
@@ -39,6 +102,8 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   let cashAdvances = [];
   let employees = [];
   let employeeLabelToId = new Map();
+  let defaultTermMonths = 3;
+  let defaultMethod = "salary_deduction";
 
   function showNotice(message) {
     if (!noticeEl) return false;
@@ -62,6 +127,12 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     return true;
   }
 
+  function peso(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "—";
+    return `₱ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
   function openViewDrawer(row, mode) {
     if (!row) return;
     if (caViewTitle) caViewTitle.textContent = mode === "edit" ? "Edit Cash Advance" : "Cash Advance Details";
@@ -74,13 +145,6 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     viewDrawer?.open();
   }
 
-  function peso(n) {
-    const v = Number(n);
-    if (!Number.isFinite(v)) return "â€”";
-    return `₱ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-
-  
   function formatPesoInput(raw) {
     const cleaned = String(raw || "").replace(/[^0-9.]/g, "");
     if (!cleaned) return { display: "", value: 0 };
@@ -90,7 +154,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     const num = Number(`${intPart}.${decPart || ""}`);
     const formattedInt = Number(intPart || 0).toLocaleString();
     const formatted = decPart.length ? `${formattedInt}.${decPart}` : formattedInt;
-    return { display: `\u20B1${formatted}`, value: Number.isFinite(num) ? num : 0 };
+    return { display: `₱${formatted}`, value: Number.isFinite(num) ? num : 0 };
   }
 
   function syncAmountInput() {
@@ -111,18 +175,17 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     const { value } = formatPesoInput(el?.value || "");
     return value;
   }
-  function computePerCutoff(amount, termMonths) {
-    const cutoffsPerMonth = 2;
-    const totalCutoffs = Math.max(1, Number(termMonths) * cutoffsPerMonth);
-    return amount / totalCutoffs;
-  }
 
   function renderCa() {
     if (!caTbody) return;
     caTbody.innerHTML = "";
+    if (!cashAdvances.length) {
+      caTbody.innerHTML = `<tr><td colspan="7" class="muted">No cash advance entries yet.</td></tr>`;
+      return;
+    }
 
     cashAdvances.forEach((row) => {
-      const per = Number(row.per_cutoff_deduction ?? computePerCutoff(row.amount, row.term_months));
+      const per = Number(row.per_cutoff_deduction ?? 0);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${esc(row.employee_name || "—")}</td>
@@ -133,7 +196,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
         <td>${esc(row.status)}</td>
         <td>
           <div class="miniRow">
-            <button class="miniBtn" data-ca="edit" data-id="${row.id}" aria-label="Edit">
+            <button class="miniBtn" data-ca="edit" data-id="${row.id}" aria-label="View">
               <svg class="miniBtn__icon" viewBox="0 0 24 24">
                 <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
               </svg>
@@ -150,8 +213,8 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
 
   function openNewCa() {
     caForm?.reset();
-    document.getElementById("caTerm").value = document.getElementById("caDefaultTermMonths")?.value || "3";
-    document.getElementById("caMethodTxn").value = document.getElementById("caMethod")?.value || "salary_deduction";
+    document.getElementById("caTerm") && (document.getElementById("caTerm").value = String(defaultTermMonths || 3));
+    document.getElementById("caMethodTxn") && (document.getElementById("caMethodTxn").value = defaultMethod || "salary_deduction");
     if (caEmployeeInput) caEmployeeInput.value = "";
     if (caEmployeeId) caEmployeeId.value = "";
     if (caEmployeeList) { caEmployeeList.innerHTML = ""; caEmployeeList.hidden = true; }
@@ -159,7 +222,6 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   }
 
   newCaBtn?.addEventListener("click", openNewCa);
-
   document.getElementById("caAmount")?.addEventListener("input", syncAmountInput);
   document.getElementById("caAmount")?.addEventListener("blur", syncAmountInput);
 
@@ -167,9 +229,9 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     e.preventDefault();
     const resolvedId = Number(caEmployeeId?.value || 0);
     const amount = getAmountValue();
-    const term = Number(document.getElementById("caTerm").value || 1);
-    const start = document.getElementById("caStartMonth").value;
-    const method = document.getElementById("caMethodTxn").value;
+    const term = Number(document.getElementById("caTerm")?.value || 1);
+    const start = document.getElementById("caStartMonth")?.value;
+    const method = document.getElementById("caMethodTxn")?.value;
 
     if (!resolvedId || !start || !Number.isFinite(amount) || amount <= 0) {
       toast("Please fill Employee, Amount, Start month.", "error");
@@ -189,9 +251,8 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
       });
       await loadCashAdvances();
       drawer?.close();
-      if (!showNotice("Cash advance added.")) {
-        toast("Cash advance added.");
-      }
+      if (!showNotice("Cash advance added.")) toast("Cash advance added.");
+      showBanner("Cash advance entry saved.");
       if (typeof onChange === "function") onChange();
     } catch (err) {
       toast(err.message || "Failed to add cash advance.", "error");
@@ -206,9 +267,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     const row = cashAdvances.find((x) => x.id === id);
     if (!row) return;
 
-    if (act === "edit") {
-      openViewDrawer(row, "edit");
-    }
+    if (act === "edit") openViewDrawer(row, "view");
 
     if (act === "close") {
       if (!confirm("Close this cash advance?")) return;
@@ -218,14 +277,13 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
       })
         .then(() => loadCashAdvances())
         .then(() => {
-          if (!showNotice("Cash advance closed.")) {
-            toast("Cash advance closed.");
-          }
+          if (!showNotice("Cash advance closed.")) toast("Cash advance closed.");
           if (typeof onChange === "function") onChange();
         })
         .catch((err) => toast(err.message || "Failed to close cash advance.", "error"));
     }
   });
+
   async function loadEmployees() {
     try {
       const rows = await apiFetch("/employees");
@@ -262,10 +320,7 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
       caEmployeeList.hidden = true;
       return;
     }
-    const filtered = employees.filter((e) => {
-      const label = buildEmployeeLabel(e).toLowerCase();
-      return label.includes(q);
-    });
+    const filtered = employees.filter((e) => buildEmployeeLabel(e).toLowerCase().includes(q));
 
     employeeLabelToId = new Map();
     if (!filtered.length) {
@@ -303,18 +358,13 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     caEmployeeList.hidden = true;
   });
 
-  async function loadCashAdvancePolicy() {
+  async function loadPolicyDefaults() {
     try {
       const row = await apiFetch("/settings/cash-advance-policy");
-      document.getElementById("caEnabled") && (document.getElementById("caEnabled").checked = !!row.enabled);
-      document.getElementById("caMethod") && (document.getElementById("caMethod").value = row.default_method ?? "salary_deduction");
-      document.getElementById("caDefaultTermMonths") && (document.getElementById("caDefaultTermMonths").value = row.default_term_months ?? 3);
-      document.getElementById("caMaxPaybackMonths") && (document.getElementById("caMaxPaybackMonths").value = row.max_payback_months ?? 6);
-      document.getElementById("caDeductTiming") && (document.getElementById("caDeductTiming").value = row.deduct_timing ?? "split");
-      document.getElementById("caPriority") && (document.getElementById("caPriority").value = row.priority ?? 1);
-      document.getElementById("caDeductionMethod") && (document.getElementById("caDeductionMethod").value = row.deduction_method ?? "equal_amortization");
-    } catch (err) {
-      toast(err.message || "Failed to load Cash Advance Policy.", "error");
+      defaultMethod = row.default_method ?? "salary_deduction";
+      defaultTermMonths = row.default_term_months ?? 3;
+    } catch {
+      // optional
     }
   }
 
@@ -328,35 +378,13 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
     }
   }
 
-  document.getElementById("caPolicySave")?.addEventListener("click", async () => {
-    try {
-      await apiFetch("/settings/cash-advance-policy", {
-        method: "POST",
-        body: JSON.stringify({
-          enabled: !!document.getElementById("caEnabled")?.checked,
-          default_method: document.getElementById("caMethod")?.value || "salary_deduction",
-          default_term_months: Number(document.getElementById("caDefaultTermMonths")?.value || 3),
-          max_payback_months: Number(document.getElementById("caMaxPaybackMonths")?.value || 6),
-          deduct_timing: document.getElementById("caDeductTiming")?.value || "split",
-          priority: Number(document.getElementById("caPriority")?.value || 1),
-          deduction_method: document.getElementById("caDeductionMethod")?.value || "equal_amortization",
-        }),
-      });
-      if (!showNotice("Cash advance policy saved.")) {
-        toast("Saved Cash Advance Policy.");
-      }
-      if (typeof onChange === "function") onChange();
-    } catch (err) {
-      toast(err.message || "Failed to save Cash Advance Policy.", "error");
-    }
-  });
-
   loadEmployees();
-  loadCashAdvancePolicy();
+  loadPolicyDefaults();
   loadCashAdvances();
 }
 
-
-
-
+export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
+  initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange);
+  initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange);
+}
 

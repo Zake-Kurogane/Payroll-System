@@ -532,6 +532,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const areaWrap = document.getElementById("areaWrap");
   const f_areaPlace = document.getElementById("f_areaPlace");
   const areaPlaceHint = document.getElementById("areaPlaceHint");
+  const f_clockIn  = document.getElementById("f_clockIn");
+  const f_clockOut = document.getElementById("f_clockOut");
   const f_notes = document.getElementById("f_notes");
   const editingId = document.getElementById("editingId");
   const plBalanceWrap = document.getElementById("plBalanceWrap");
@@ -807,6 +809,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return n.toFixed(2);
   }
 
+  function fmtTime(t) {
+    if (!t) return "—";
+    const [hStr, mStr] = String(t).split(":");
+    const h = parseInt(hStr, 10);
+    const m = mStr || "00";
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12  = h % 12 || 12;
+    return `${h12}:${m} ${ampm}`;
+  }
+
   function selectedIds() {
     return Array.from(document.querySelectorAll(".rowCheck:checked")).map(cb => cb.dataset.id);
   }
@@ -976,7 +988,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.department || "—")}</td>
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
-        <td>${escapeHtml((r.timeIn || "—") + " / " + (r.timeOut || "—"))}</td>
+        <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
         <td>${escapeHtml(formatHours(r.otHours))}</td>
         <td>${chip(r.status)}</td>
         <td class="col-actions">
@@ -1482,6 +1494,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (f_assignType) f_assignType.value = "";
       if (f_areaPlace) f_areaPlace.value = "";
       f_notes.value = "";
+      if (f_clockIn)  f_clockIn.value  = "";
+      if (f_clockOut) f_clockOut.value = "";
       if (areaWrap) areaWrap.hidden = true;
       syncAssignmentFromEmployee();
     } else {
@@ -1493,6 +1507,8 @@ document.addEventListener("DOMContentLoaded", () => {
       f_date.value = record.date;
       f_status.value = record.status;
       f_notes.value = record.notes || "";
+      if (f_clockIn)  f_clockIn.value  = record.timeIn  || "";
+      if (f_clockOut) f_clockOut.value = record.timeOut || "";
 
       const emp = getEmpById(record.employeeId || "");
       if (emp?.assignmentType === "Field") {
@@ -1595,8 +1611,8 @@ document.addEventListener("DOMContentLoaded", () => {
       date: f_date.value,
       status: mapped.status,
       area_place: f_areaPlace?.value || null,
-      clock_in: null,
-      clock_out: null,
+      clock_in:  f_clockIn?.value  || null,
+      clock_out: f_clockOut?.value || null,
       minutes_late: 0,
       minutes_undertime: 0,
       ot_hours: 0,
@@ -1683,7 +1699,7 @@ document.addEventListener("DOMContentLoaded", () => {
     kpiPreviewTbody.innerHTML = "";
     if (!records.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="5" class="muted small">No records to preview.</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">No records to preview.</td>`;
       kpiPreviewTbody.appendChild(tr);
       return;
     }
@@ -1714,7 +1730,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const header = document.createElement("tr");
         header.classList.add("kpiPreviewGroup");
         header.innerHTML = `
-          <td colspan="5">
+          <td colspan="6">
             ${escapeHtml(day)} • ${escapeHtml(assign)}
           </td>
         `;
@@ -1722,13 +1738,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         items.forEach(r => {
           const tr = document.createElement("tr");
-          const inOut = `${r.timeIn || "—"} / ${r.timeOut || "—"}`;
+          const inOut = `${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}`;
           tr.innerHTML = `
             <td>${escapeHtml(r.date || "—")}</td>
             <td>${escapeHtml(assignmentPreviewText(r))}</td>
             <td>${escapeHtml(r.empName || "—")}</td>
             <td>${escapeHtml(r.department || "—")}</td>
             <td>${escapeHtml(inOut)}</td>
+            <td>${chip(r.status)}</td>
           `;
           kpiPreviewTbody.appendChild(tr);
         });
@@ -1960,7 +1977,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.department || "—")}</td>
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
-        <td>${escapeHtml((r.timeIn || "—") + " / " + (r.timeOut || "—"))}</td>
+        <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
         <td>${escapeHtml(formatHours(r.otHours))}</td>
         <td>${chip(r.status)}</td>
       `;

@@ -97,6 +97,14 @@
 
                         <button class="btn btn--maroon" type="button" id="bulkAssignApply" disabled>Apply</button>
                     </div>
+                    <input type="file" id="disciplineFileInput" accept=".xlsx,.xls,.csv" hidden />
+                    <button class="btn btn--soft btn--icon" type="button" id="importDisciplineBtn">
+                        <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
+                            <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
+                        </svg>
+                        IMPORT DISCIPLINE
+                    </button>
                     <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
                         <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                             <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
@@ -123,10 +131,14 @@
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
-                            <th class="sortable" data-sort="external">External <span class="sortIcon"
-                                    aria-hidden="true"></span></th>
-                            <th class="sortable" data-sort="salary">Salary <span class="sortIcon"
-                                    aria-hidden="true"></span></th>
+                            @can('viewCompensation')
+                                <th class="sortable col-basicpay" data-sort="basicPay">Basic Pay <span class="sortIcon"
+                                        aria-hidden="true"></span></th>
+                                <th class="sortable" data-sort="allowance">P/A <span class="sortIcon"
+                                        aria-hidden="true"></span></th>
+                                <th class="sortable" data-sort="salary">Total Salary <span class="sortIcon"
+                                        aria-hidden="true"></span></th>
+                            @endcan
                             <th>Payroll Required</th>
                             <th>Actions</th>
                         </tr>
@@ -157,19 +169,26 @@
                                     @endphp
                                     {{ $assignText ?: '-' }}
                                 </td>
-                                <td>
-                                    {{ $emp->external_area ? $emp->external_area : '—' }}
-                                </td>
-                                <td>
-                                    <div class="salaryVal">&#8369;
-                                        {{ number_format(($emp->basic_pay ?? 0) + ($emp->allowance ?? 0)) }}</div>
-                                </td>
+                                @can('viewCompensation')
+                                    <td class="col-basicpay">
+                                        <div class="salaryVal">&#8369; {{ number_format($emp->basic_pay ?? 0) }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="salaryVal">&#8369; {{ number_format($emp->allowance ?? 0) }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="salaryVal">&#8369;
+                                            {{ number_format(($emp->basic_pay ?? 0) + ($emp->allowance ?? 0)) }}</div>
+                                    </td>
+                                @endcan
                                 <td>
                                     @php
                                         $missing = [];
-                                        $basicPay = (float) ($emp->basic_pay ?? 0);
-                                        if ($basicPay <= 0) {
-                                            $missing[] = 'Basic Pay';
+                                        if (Gate::allows('viewCompensation')) {
+                                            $basicPay = (float) ($emp->basic_pay ?? 0);
+                                            if ($basicPay <= 0) {
+                                                $missing[] = 'Basic Pay';
+                                            }
                                         }
                                         $assignType = trim((string) ($emp->assignment_type ?? ''));
                                         if ($assignType === '') {
@@ -301,6 +320,7 @@
             window.__serverRender = true;
             window.__serverEmployees = @json($employees->items());
             window.__areaPlaces = @json($groupedAreaPlaces);
+            window.__canViewCompensation = @json(Gate::allows('viewCompensation'));
         </script>
 
         <div class="toast" id="toast" aria-live="polite" aria-atomic="true"></div>
@@ -308,19 +328,17 @@
         <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
         <!-- DRAWER -->
-        <aside class="drawer" id="drawer" aria-hidden="true">
-            <div class="drawer__overlay" id="drawerOverlay"></div>
-
-            <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
-                <div class="drawer__head">
-                    <div>
-                        <div class="drawer__title" id="drawerTitle">Employee Details</div>
-                        <div class="muted small" id="drawerSubtitle">View and manage employee record.</div>
-                    </div>
-                    <button class="iconbtn" id="closeDrawerBtn" type="button" aria-label="Close">✕</button>
+        <div class="overlay" id="drawerOverlay" hidden></div>
+        <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+            <div class="drawer__head">
+                <div>
+                    <div class="drawer__title" id="drawerTitle">Employee Details</div>
+                    <div class="drawer__sub" id="drawerSubtitle">View and manage employee record.</div>
                 </div>
+                <button class="iconbtn" id="closeDrawerBtn" type="button" aria-label="Close">✕</button>
+            </div>
 
-                <form class="form" id="empForm">
+            <form class="form" id="empForm">
                     <div class="sectionTitle">Basic Information</div>
                     <div class="grid2">
                         <div class="field">
@@ -416,9 +434,7 @@
                         <div class="field">
                             <label>Employment Type</label>
                             <select id="f_type">
-                                <option>Regular</option>
-                                <option>Contractual</option>
-                                <option>Probationary</option>
+                                <option value="">-- Select --</option>
                             </select>
                         </div>
 
@@ -446,6 +462,7 @@
 
                     </div>
 
+                    @can('viewCompensation')
                     <div class="sectionTitle">Compensation</div>
                     <div class="grid2">
                         <div class="field">
@@ -498,6 +515,7 @@
                             <input type="text" id="f_totalSalary" readonly />
                         </div>
                     </div>
+                    @endcan
 
                     <div class="sectionTitle">Assignment</div>
                     <div class="grid2">
@@ -665,6 +683,45 @@
                         </div>
                     </div>
 
+                    <div class="sectionTitle">Attendance Tardiness (view only)</div>
+                    <div class="tardyGrid">
+                        <div class="metricCard">
+                            <div class="metricCard__label">This Month</div>
+                            <div class="metricCard__value" id="tardyMonth">â€”</div>
+                            <div class="metricCard__sub">minutes late</div>
+                        </div>
+                        <div class="metricCard">
+                            <div class="metricCard__label">This Year</div>
+                            <div class="metricCard__value" id="tardyYear">â€”</div>
+                            <div class="metricCard__sub">minutes late</div>
+                        </div>
+                        <div class="metricCard metricCard--wide">
+                            <div class="metricCard__label">All Time</div>
+                            <div class="metricCard__value" id="tardyTotal">â€”</div>
+                            <div class="metricCard__sub" id="tardyLateDays">â€” late days</div>
+                        </div>
+                    </div>
+
+                    <div class="sectionTitle">Memos / Sanctions / NTE</div>
+                    <div class="tablewrap tablewrap--preview" style="margin-bottom:6px;">
+                        <table class="table table--preview" id="disciplineTable">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody id="disciplineTbody">
+                                <tr>
+                                    <td colspan="4" class="muted small">No records yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns: emp_no, type, date, remarks, reference).</div>
+
                     <div class="form__actions">
                         <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
                         <div class="spacer"></div>
@@ -672,15 +729,12 @@
                         <button class="btn btn--maroon" type="submit" id="saveBtn">Save</button>
                     </div>
                 </form>
-            </div>
         </aside>
 
         <!-- AREA HISTORY DRAWER -->
-        <aside class="drawer" id="historyDrawer" aria-hidden="true">
-            <div class="drawer__overlay" id="historyDrawerOverlay"></div>
-            <div class="drawer__panel drawer__panel--narrow" role="dialog" aria-modal="true"
-                aria-labelledby="historyDrawerTitle">
-                <div class="drawer__head">
+        <div class="overlay" id="historyDrawerOverlay" hidden></div>
+        <aside class="drawer drawer--narrow" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyDrawerTitle" aria-hidden="true">
+            <div class="drawer__head">
                     <div>
                         <div class="drawer__title" id="historyDrawerTitle">Area Assignment History</div>
                         <div class="muted small" id="historyDrawerSubtitle"></div>
@@ -689,6 +743,9 @@
                 </div>
                 <div class="form">
                     <div id="historyDrawerExternal" class="muted small" style="margin-bottom:10px;display:none;"></div>
+                    <div class="field" style="margin-bottom:10px;">
+                        <input type="search" id="historySearch" class="field__control" placeholder="Search area or period…" autocomplete="off" />
+                    </div>
                     <div class="tablewrap tablewrap--preview">
                         <table class="table table--preview" aria-label="Area assignment history table">
                             <thead>
@@ -705,13 +762,12 @@
                         </table>
                     </div>
                 </div>
-            </div>
         </aside>
 
     </section>
 
     <style>
-        .drawer__panel--narrow {
+        .drawer--narrow {
             width: min(360px, 92vw);
         }
 

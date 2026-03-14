@@ -6,17 +6,20 @@ use App\Models\AttendanceRecord;
 use App\Models\Employee;
 use App\Models\EmployeeAreaHistory;
 use App\Models\EmploymentStatus;
+use App\Models\EmploymentType;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
     public function index()
     {
+        $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) request()->query('q', ''));
         $status = request()->query('status');
         $dept = request()->query('department');
@@ -27,6 +30,41 @@ class EmployeeController extends Controller
 
         $employees = Employee::query()
             ->with(['employmentStatus'])
+            ->when(!$canViewComp, function ($query) {
+                $query->select([
+                    'id',
+                    'emp_no',
+                    'first_name',
+                    'middle_name',
+                    'last_name',
+                    'status',
+                    'employment_status_id',
+                    'birthday',
+                    'mobile',
+                    'address',
+                    'address_province',
+                    'address_city',
+                    'address_barangay',
+                    'address_street',
+                    'email',
+                    'department',
+                    'position',
+                    'employment_type',
+                    'pay_type',
+                    'date_hired',
+                    'assignment_type',
+                    'area_place',
+                    'external_area',
+                    'bank_name',
+                    'bank_account_name',
+                    'bank_account_number',
+                    'payout_method',
+                    'sss',
+                    'philhealth',
+                    'pagibig',
+                    'tin',
+                ]);
+            })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($qq) use ($q) {
                     $qq->where('emp_no', 'like', "%{$q}%")
@@ -63,6 +101,7 @@ class EmployeeController extends Controller
 
     public function page(Request $request)
     {
+        $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
         $dept = $request->query('department');
@@ -78,6 +117,41 @@ class EmployeeController extends Controller
 
         $employees = Employee::query()
             ->with(['employmentStatus'])
+            ->when(!$canViewComp, function ($query) {
+                $query->select([
+                    'id',
+                    'emp_no',
+                    'first_name',
+                    'middle_name',
+                    'last_name',
+                    'status',
+                    'employment_status_id',
+                    'birthday',
+                    'mobile',
+                    'address',
+                    'address_province',
+                    'address_city',
+                    'address_barangay',
+                    'address_street',
+                    'email',
+                    'department',
+                    'position',
+                    'employment_type',
+                    'pay_type',
+                    'date_hired',
+                    'assignment_type',
+                    'area_place',
+                    'external_area',
+                    'bank_name',
+                    'bank_account_name',
+                    'bank_account_number',
+                    'payout_method',
+                    'sss',
+                    'philhealth',
+                    'pagibig',
+                    'tin',
+                ]);
+            })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($qq) use ($q) {
                     $qq->where('emp_no', 'like', "%{$q}%")
@@ -211,11 +285,16 @@ class EmployeeController extends Controller
         }
         $areaPlaces = $ordered;
 
+        $employmentTypes = EmploymentType::where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('label');
+
         return response()->json([
             'statuses' => $statuses,
             'departments' => $departments,
             'assignments' => $assignments,
             'area_places' => $areaPlaces,
+            'employment_types' => $employmentTypes,
         ]);
     }
 
@@ -227,7 +306,7 @@ class EmployeeController extends Controller
         }
 
         $rows = Employee::query()
-            ->select(['emp_no', 'first_name', 'last_name', 'middle_name'])
+            ->select(['id', 'emp_no', 'first_name', 'last_name', 'middle_name'])
             ->where(function ($qq) use ($q) {
                 $qq->where('emp_no', 'like', "%{$q}%")
                     ->orWhere('first_name', 'like', "%{$q}%")
@@ -241,9 +320,10 @@ class EmployeeController extends Controller
             ->map(function ($e) {
                 $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
                 return [
+                    'id'     => $e->id,
                     'emp_no' => $e->emp_no,
-                    'name' => $name,
-                    'label' => "{$e->emp_no} — {$name}",
+                    'name'   => $name,
+                    'label'  => "{$e->emp_no} — {$name}",
                 ];
             })
             ->values();

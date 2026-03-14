@@ -3,6 +3,9 @@ require 'vendor/autoload.php';
 $app = require 'bootstrap/app.php';
 $app->make('Illuminate\\Contracts\\Console\\Kernel')->bootstrap();
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+
 $updates = [
     'Aura fortune g5 traders corporation' => 'Aura Fortune G5 Traders Corporation',
     'Buena gold trading' => 'Buena Gold Trading',
@@ -20,8 +23,8 @@ foreach ($updates as $from => $to) {
         ->update(['label' => $to]);
 }
 
-\Illuminate\Support\Facades\Cache::forget('employees.area_places');
-\Illuminate\Support\Facades\Cache::forget('employees.area_places_grouped');
+Cache::forget('employees.area_places');
+Cache::forget('employees.area_places_grouped');
 
 echo "Updated labels:\n";
 $rows = DB::table('area_places')->orderBy('parent_assignment')->orderBy('sort_order')->get(['parent_assignment','label']);

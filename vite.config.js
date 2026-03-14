@@ -20,6 +20,7 @@ export default defineConfig({
                 'resources/js/report.js',
                 'resources/css/emp_records.css',
                 'resources/js/emp_records.js',
+                'resources/js/employee_cases.js',
                 'resources/css/settings.css',
                 'resources/js/settings.js',
                 'resources/css/styles.css',

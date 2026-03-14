@@ -40,6 +40,8 @@
                 aria-controls="tab-withholdingtax" aria-selected="false" tabindex="-1">Withholding Tax (BIR)</button>
             <button type="button" class="tab" data-tab="cashadvance" id="tab-cashadvance-btn" role="tab"
                 aria-controls="tab-cashadvance" aria-selected="false" tabindex="-1">Cash Advance</button>
+            <button type="button" class="tab" data-tab="users" id="tab-users-btn" role="tab"
+                aria-controls="tab-users" aria-selected="false" tabindex="-1">User Accounts</button>
         </div>
 
         <!-- 1) COMPANY SETUP -->
@@ -909,6 +911,8 @@
                     </div>
                 </div>
 
+                {{-- Employee Cash Advance Entry (Transactions) moved to Loans page --}}
+                {{--
                 <div class="card">
                     <div class="card__head">
                         <div>
@@ -1041,6 +1045,146 @@
 
                         <div class="actionsRow">
                             <button class="btn btn--soft" type="button" id="closeCaViewBtn">Close</button>
+                        </div>
+                    </form>
+                </div>
+            </aside>
+                --}}
+        </section>
+
+        <!-- 11) USER ACCOUNTS -->
+        <section class="tabPanel" id="tab-users" role="tabpanel" aria-labelledby="tab-users-btn" hidden>
+            <div class="card">
+                <div class="card__head">
+                    <div>
+                        <div class="card__title">Create HR Account</div>
+                        <div class="muted small">Admin-only. HR accounts can access Employee Records, Attendance,
+                            Loans, and Employee Case Management.</div>
+                    </div>
+                </div>
+
+                @if (session('success'))
+                    <div class="notice notice--success" style="margin-bottom:12px;">{{ session('success') }}</div>
+                @endif
+                @if ($errors->any())
+                    <div class="notice notice--danger" style="margin-bottom:12px;">
+                        @foreach ($errors->all() as $e)
+                            <div>{{ $e }}</div>
+                        @endforeach
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('admin.users.hr.store') }}">
+                    @csrf
+                    <div class="grid2">
+                        <div class="field">
+                            <label>Username</label>
+                            <input name="name" value="{{ old('name') }}" required />
+                        </div>
+                        <div class="field">
+                            <label>Email</label>
+                            <input name="email" type="email" value="{{ old('email') }}" required />
+                        </div>
+                        <div class="field">
+                            <label>First name</label>
+                            <input name="first_name" value="{{ old('first_name') }}" />
+                        </div>
+                        <div class="field">
+                            <label>Middle name</label>
+                            <input name="middle_name" value="{{ old('middle_name') }}" />
+                        </div>
+                        <div class="field field--full">
+                            <label>Last name</label>
+                            <input name="last_name" value="{{ old('last_name') }}" />
+                        </div>
+                        <div class="field">
+                            <label>Password</label>
+                            <input name="password" type="password" autocomplete="new-password" required />
+                        </div>
+                        <div class="field">
+                            <label>Confirm password</label>
+                            <input name="password_confirmation" type="password" autocomplete="new-password" required />
+                        </div>
+                    </div>
+
+                    <div class="actionsRow">
+                        <div class="spacer"></div>
+                        <button class="btn btn--maroon" type="submit">Create HR Account</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card" style="margin-top:14px;">
+                <div class="card__head">
+                    <div>
+                        <div class="card__title">HR Accounts</div>
+                        <div class="muted small">Accounts with role = HR.</div>
+                    </div>
+                </div>
+
+                <div class="tablewrap">
+                    <table class="table" aria-label="HR accounts table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Full name</th>
+                                <th>Email</th>
+                                <th>Created by</th>
+                                <th>Created</th>
+                                <th style="width:120px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hrUsersTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <aside class="drawer" id="hrUserDrawer" aria-hidden="true">
+                <div class="drawer__overlay" id="hrUserDrawerOverlay"></div>
+                <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="hrUserDrawerTitle">
+                    <div class="drawer__head">
+                        <div>
+                            <div class="drawer__title" id="hrUserDrawerTitle">Edit HR Account</div>
+                            <div class="muted small">Update username, email, and optional password.</div>
+                        </div>
+                        <button class="iconbtn" id="closeHrUserDrawer" type="button" aria-label="Close">✕</button>
+                    </div>
+
+                    <div class="notice notice--success" id="hrUserNotice" hidden></div>
+                    <form class="form" id="hrUserForm">
+                        <input type="hidden" id="hrUserId" />
+                        <div class="grid2">
+                            <div class="field">
+                                <label>Username</label>
+                                <input id="hrUserName" required />
+                            </div>
+                            <div class="field">
+                                <label>Email</label>
+                                <input id="hrUserEmail" type="email" required />
+                            </div>
+                            <div class="field">
+                                <label>First name</label>
+                                <input id="hrUserFirst" />
+                            </div>
+                            <div class="field">
+                                <label>Middle name</label>
+                                <input id="hrUserMiddle" />
+                            </div>
+                            <div class="field field--full">
+                                <label>Last name</label>
+                                <input id="hrUserLast" />
+                            </div>
+                            <div class="field field--full">
+                                <label>New password (optional)</label>
+                                <input id="hrUserPassword" type="password" autocomplete="new-password"
+                                    placeholder="Leave blank to keep current password" />
+                            </div>
+                        </div>
+
+                        <div class="actionsRow">
+                            <button class="btn btn--soft" type="button" id="cancelHrUserBtn">Cancel</button>
+                            <div class="spacer"></div>
+                            <button class="btn btn--maroon" type="submit">Save changes</button>
                         </div>
                     </form>
                 </div>

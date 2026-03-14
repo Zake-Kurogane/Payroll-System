@@ -154,7 +154,9 @@ body {
     box-shadow: var(--shadow2);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    transition:
+        opacity 0.15s ease,
+        transform 0.15s ease;
     transform: translateY(-6px);
     z-index: 2000;
 }
@@ -321,6 +323,24 @@ body {
     gap: 12px;
     overflow: auto;
     min-height: calc(100vh - 68px);
+}
+
+.headline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    padding: 0 4px;
+    flex-wrap: wrap;
+}
+.headline__actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    /* Always place actions on their own row, aligned to the right. */
+    flex: 0 0 100%;
 }
 
 h1 {
@@ -544,7 +564,9 @@ h1 {
     display: none;
     opacity: 0;
     transform: translateY(-4px);
-    transition: opacity 0.12s ease, transform 0.12s ease;
+    transition:
+        opacity 0.12s ease,
+        transform 0.12s ease;
     max-height: 260px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -688,18 +710,23 @@ h1 {
 }
 #empTable th,
 #empTable td {
-    overflow: visible;
-    text-overflow: clip;
+    overflow: hidden;
+    text-overflow: ellipsis;
     vertical-align: middle;
     word-break: break-word;
     white-space: normal;
 }
-#empTable th:nth-child(1),
-#empTable td:nth-child(1) { width: 44px; }
-#empTable th:last-child,
-#empTable td:last-child { width: 90px; }
-#empTable th:nth-child(6),
-#empTable td:nth-child(6) { width: 180px; }
+/* 1-checkbox 2-EmpID 3-Name 4-Dept 5-Assignment 6-BasicPay 7-P/A 8-TotalSalary 9-PayrollReq 10-Actions */
+#empTable th:nth-child(1), #empTable td:nth-child(1) { width: 3%; }
+#empTable th:nth-child(2), #empTable td:nth-child(2) { width: 7%; }
+#empTable th:nth-child(3), #empTable td:nth-child(3) { width: 13%; }
+#empTable th:nth-child(4), #empTable td:nth-child(4) { width: 9%; }
+#empTable th:nth-child(5), #empTable td:nth-child(5) { width: 15%; }
+#empTable th:nth-child(6), #empTable td:nth-child(6) { width: 10%; }
+#empTable th:nth-child(7), #empTable td:nth-child(7) { width: 8%; }
+#empTable th:nth-child(8), #empTable td:nth-child(8) { width: 10%; }
+#empTable th:nth-child(9), #empTable td:nth-child(9) { width: 14%; }
+#empTable th:nth-child(10), #empTable td:nth-child(10) { width: 11%; }
 
 thead th {
     position: sticky;
@@ -707,7 +734,7 @@ thead th {
     background: rgba(255, 255, 255, 0.98);
     border-bottom: 1px solid var(--line);
     text-align: left;
-    padding: 12px 10px;
+    padding: 7px 6px;
     font-size: 12px;
     color: var(--muted);
     font-weight: 1000;
@@ -717,12 +744,13 @@ thead th {
 }
 
 tbody td {
-    padding: 12px 10px;
+    padding: 7px 6px;
     border-bottom: 1px solid rgba(17, 24, 39, 0.06);
     font-weight: 700;
     font-size: 13px;
 }
 
+/* Basic Pay column — extra left breathing room */
 tbody tr {
     cursor: pointer;
 }
@@ -928,70 +956,86 @@ th.sortable.is-desc .sortIcon {
 }
 
 /* DRAWER */
-.drawer {
+.overlay {
     position: fixed;
-    inset: 0;
-    z-index: 999;
-    pointer-events: none;
-}
-
-.drawer__overlay {
-    position: absolute;
     inset: 0;
     background: rgba(17, 24, 39, 0.45);
     backdrop-filter: blur(2px);
-    opacity: 0;
-    transition: opacity 0.18s ease;
+    z-index: 1190;
+}
+.overlay[hidden] {
+    display: none;
 }
 
-.drawer__panel {
-    position: absolute;
-    right: 0;
+.drawer {
+    position: fixed;
     top: 0;
-    bottom: 0;
+    right: 0;
+    left: auto;
+    bottom: auto;
     width: min(520px, 92vw);
+    height: 100vh;
     background: #fff;
     border-left: 1px solid var(--line);
-    box-shadow: -20px 0 40px rgba(17, 24, 39, 0.18);
+    z-index: 1200;
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+        transform 0.22s ease,
+        visibility 0s linear 0.22s;
     display: flex;
     flex-direction: column;
-    transform: translateX(100%);
-    transition: transform 0.18s ease;
+    pointer-events: none;
 }
-
+.drawer--wide {
+    width: min(720px, 96vw);
+}
+.drawer--narrow {
+    width: min(360px, 92vw);
+}
 .drawer.is-open {
-    pointer-events: auto;
-}
-.drawer.is-open .drawer__overlay {
-    opacity: 1;
-}
-.drawer.is-open .drawer__panel {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+        transform 0.22s ease,
+        visibility 0s linear 0s;
 }
-
 
 .drawer__head {
-    padding: 14px 16px;
+    padding: 16px 16px 12px;
     border-bottom: 1px solid var(--line);
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
+    flex-shrink: 0;
 }
 
 .drawer__title {
     font-weight: 1000;
     color: var(--maroon);
-    font-size: 16px;
+    font-size: 18px;
 }
 
 .form {
     padding: 14px 16px 18px;
-    overflow: auto;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
+.drawer__sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
 .sectionTitle {
-    margin: 14px 0 10px;
-    font-weight: 1000;
+    margin: 14px 0 6px;
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
     color: var(--maroon);
 }
 
@@ -1122,11 +1166,52 @@ th.sortable.is-desc .sortIcon {
 }
 
 .salaryVal {
-    font-weight: 1000;
+    font-weight: 700;
 }
 .tiny {
     font-size: 11px;
     font-weight: 800;
+}
+
+/* Discipline + Tardiness */
+.tardyGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.metricCard {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #faf7f8;
+    box-shadow: inset 0 1px 0 rgba(156, 29, 60, 0.05);
+}
+
+.metricCard--wide {
+    grid-column: span 2;
+}
+
+.metricCard__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.metricCard__value {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--maroon);
+    margin-top: 4px;
+}
+
+.metricCard__sub {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
 }
 
 /* RESPONSIVE */

@@ -17,6 +17,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     ? window.__areaPlaces
     : {};
 
+  const CAN_VIEW_COMP = window.__canViewCompensation !== undefined ? !!window.__canViewCompensation : true;
+
   // ===== Payroll Required Field Rules =====
   const PAYROLL_REQUIRED = {
     requirePayGroup: false,
@@ -25,6 +27,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     requireGovIds: true, // requires ALL gov ids below
     govRequiredFields: ["sss", "ph", "pagibig", "tin"], // adjust if needed
   };
+  if (!CAN_VIEW_COMP) {
+    PAYROLL_REQUIRED.requireBasicPay = false;
+  }
 
   // ===== API helpers =====
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
@@ -100,7 +105,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function toApi(data) {
-    return {
+    const payload = {
       emp_no: data.empId,
       first_name: data.first,
       middle_name: data.middle || null,
@@ -123,8 +128,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       assignment_type: data.assignmentType || null,
       area_place: data.areaPlace || null,
       external_area: data.externalArea || null,
-      basic_pay: data.rate || 0,
-      allowance: data.allowance || 0,
       bank_name: data.bankName || null,
       bank_account_name: data.accountName || null,
       bank_account_number: data.accountNumber || null,
@@ -134,6 +137,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       pagibig: data.pagibig || null,
       tin: data.tin || null,
     };
+    if (CAN_VIEW_COMP) {
+      payload.basic_pay = data.rate || 0;
+      payload.allowance = data.allowance || 0;
+    }
+    return payload;
   }
 
   async function loadEmployees(params = {}) {
@@ -183,6 +191,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // import/export
   const exportBtn = document.getElementById("exportBtn");
+  const importDisciplineBtn = document.getElementById("importDisciplineBtn");
+  const disciplineFileInput = document.getElementById("disciplineFileInput");
 
 
   // table select all
@@ -258,6 +268,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const historyDrawerSubEl = document.getElementById("historyDrawerSubtitle");
   const historyDrawerExternalEl = document.getElementById("historyDrawerExternal");
   const areaHistoryList = document.getElementById("areaHistoryList");
+  const historySearch = document.getElementById("historySearch");
+  let allHistoryRanges = [];
 
   const plInfoWrap = document.getElementById("plInfoWrap");
   const f_plCount = document.getElementById("f_plCount");
@@ -274,6 +286,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_payoutMethod = F("f_payoutMethod");
 
   const f_caEligible = F("f_caEligible");
+
+  // discipline / tardiness
+  const tardyMonthEl = document.getElementById("tardyMonth");
+  const tardyYearEl = document.getElementById("tardyYear");
+  const tardyTotalEl = document.getElementById("tardyTotal");
+  const tardyLateDaysEl = document.getElementById("tardyLateDays");
+  const disciplineTbody = document.getElementById("disciplineTbody");
 
   // state
   let selectedEmpId = null;
@@ -292,19 +311,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (drawerTitleEl) drawerTitleEl.textContent = title;
     if (drawerSubEl) drawerSubEl.textContent = subtitle;
     if (deleteBtn) deleteBtn.style.display = selectedEmpId ? "inline-flex" : "none";
-    const resetScroll = () => {
-      drawer.scrollTop = 0;
-      const panel = drawer.querySelector(".drawer__panel");
-      if (panel) panel.scrollTop = 0;
-      drawer.querySelectorAll("*").forEach((el) => {
-        if (el.scrollHeight > el.clientHeight) {
-          el.scrollTop = 0;
-        }
-      });
-    };
-    resetScroll();
-    requestAnimationFrame(resetScroll);
-    setTimeout(resetScroll, 50);
+    const form = drawer.querySelector(".form");
+    if (form) form.scrollTop = 0;
   }
 
   function closeDrawer() {
@@ -312,9 +320,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     drawer.classList.remove("is-open");
     drawer.setAttribute("aria-hidden", "true");
     if (drawerOverlay) drawerOverlay.setAttribute("hidden", "");
-    drawer.scrollTop = 0;
-    const panel = drawer.querySelector(".drawer__panel");
-    if (panel) panel.scrollTop = 0;
     selectedEmpId = null;
   }
 
@@ -388,6 +393,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function formatPagibig(value) {
     return formatWithGroups(onlyDigits(value).slice(0, 12), [4, 4, 4]);
+  }
+
+  function formatMinutes(value) {
+    const n = Math.max(0, Number(value || 0));
+    if (!Number.isFinite(n)) return "0m";
+    const hours = Math.floor(n / 60);
+    const mins = Math.round(n % 60);
+    if (hours <= 0) return `${mins}m`;
+    return `${hours}h ${String(mins).padStart(2, "0")}m`;
+  }
+
+  function resetDisciplineUI() {
+    if (tardyMonthEl) tardyMonthEl.textContent = "—";
+    if (tardyYearEl) tardyYearEl.textContent = "—";
+    if (tardyTotalEl) tardyTotalEl.textContent = "—";
+    if (tardyLateDaysEl) tardyLateDaysEl.textContent = "— late days";
+    if (disciplineTbody) {
+      disciplineTbody.innerHTML = `<tr><td colspan="4" class="muted small">No records yet.</td></tr>`;
+    }
   }
 
   // ===== Philippine Address (PSGC) =====
@@ -491,6 +515,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     resetAddressDropdowns();
     if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
     if (plInfoWrap) plInfoWrap.style.display = "none";
+    resetDisciplineUI();
     syncAssignmentUI();
     syncCashAdvanceFields();
     syncSalaryFields();
@@ -540,6 +565,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     syncCashAdvanceFields();
     syncSalaryFields();
     syncPayoutFields();
+    loadTardiness(emp.empId);
+    loadDiscipline(emp.empId);
   }
 
   function collectForm() {
@@ -794,8 +821,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     return toLocalDateStr(d);
   }
 
+  function renderHistoryRows() {
+    if (!areaHistoryList) return;
+    const q = (historySearch ? historySearch.value : "").trim().toLowerCase();
+    const filtered = q
+      ? allHistoryRanges.filter(r =>
+          r.area.toLowerCase().includes(q) || r.period.toLowerCase().includes(q)
+        )
+      : allHistoryRanges;
+    if (!filtered.length) {
+      areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">No results found.</td></tr>';
+      return;
+    }
+    areaHistoryList.innerHTML = filtered.map(r =>
+      `<tr>
+        <td>${r.period}</td>
+        <td style="font-weight:600;">${r.area}</td>
+      </tr>`
+    ).join('');
+  }
+
   async function loadAreaHistory(empNo) {
     if (!areaHistoryList) return;
+    allHistoryRanges = [];
+    if (historySearch) historySearch.value = "";
     areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Loading...</td></tr>';
     try {
       const rows = await apiFetch(`/employees/${encodeURIComponent(empNo)}/area-history`);
@@ -804,11 +853,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Sort ASC to compute date ranges
       const asc = [...rows].sort((a, b) => a.effective_date.localeCompare(b.effective_date));
       const todayStr = toLocalDateStr(new Date());
 
-      // Each entry's period: from its effective_date to the day before the next change (or today)
       const ranges = asc.map((entry, i) => {
         const start = entry.effective_date;
         const end = i < asc.length - 1 ? dayBefore(asc[i + 1].effective_date) : todayStr;
@@ -818,13 +865,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         return { period, area: entry.area_place };
       });
 
-      ranges.reverse(); // most recent first
-      areaHistoryList.innerHTML = ranges.map(r =>
-        `<tr>
-          <td>${r.period}</td>
-          <td style="font-weight:600;">${r.area}</td>
-        </tr>`
-      ).join('');
+      allHistoryRanges = ranges.reverse(); // most recent first
+      renderHistoryRows();
     } catch {
       areaHistoryList.innerHTML = '<tr><td colspan="2" class="muted small">Failed to load history.</td></tr>';
     }
@@ -931,9 +973,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function applySort(list) {
     const copy = [...list];
-    const key = sortState.key;
+    let key = sortState.key;
     const dir = sortState.dir;
     const sign = dir === "asc" ? 1 : -1;
+
+    if (!CAN_VIEW_COMP && (key === "basicPay" || key === "allowance" || key === "salary")) {
+      key = "name";
+    }
 
     copy.sort((a, b) => {
       let res = 0;
@@ -943,7 +989,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       else if (key === "position") res = String(a.position || "").localeCompare(String(b.position || "")) || fullName(a).localeCompare(fullName(b));
       else if (key === "type") res = String(a.type || "").localeCompare(String(b.type || "")) || fullName(a).localeCompare(fullName(b));
         else if (key === "assignment") res = String(assignmentText(a)).localeCompare(String(assignmentText(b))) || fullName(a).localeCompare(fullName(b));
-        else if (key === "external") res = String(a.externalArea || "").localeCompare(String(b.externalArea || "")) || fullName(a).localeCompare(fullName(b));
+        else if (key === "basicPay") res = (Number(a.rate || 0) - Number(b.rate || 0)) || fullName(a).localeCompare(fullName(b));
+        else if (key === "allowance") res = (Number(a.allowance || 0) - Number(b.allowance || 0)) || fullName(a).localeCompare(fullName(b));
       else if (key === "salary") res = (salaryTotal(a) - salaryTotal(b)) || fullName(a).localeCompare(fullName(b));
       else res = fullName(a).localeCompare(fullName(b));
       return res * sign;
@@ -1035,6 +1082,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const tr = document.createElement("tr");
       if (isChecked) tr.classList.add("is-selected");
+
+      const compCols = CAN_VIEW_COMP ? `
+          <td class="col-basicpay"><div class="salaryVal">${money(emp.rate || 0)}</div></td>
+          <td><div class="salaryVal">${money(emp.allowance || 0)}</div></td>
+        <td>
+          <div class="salaryVal">${money(salaryTotal(emp))}</div>
+        </td>
+      ` : "";
+
       tr.innerHTML = `
         <td class="col-check">
           <input class="empCheck" type="checkbox" data-id="${emp.empId}" ${isChecked ? "checked" : ""} aria-label="Select employee ${emp.empId}">
@@ -1043,10 +1099,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td>${fullName(emp)}</td>
         <td>${emp.dept || "-"}</td>
           <td>${assignmentText(emp)}</td>
-          <td>${emp.externalArea ? emp.externalArea : "—"}</td>
-        <td>
-          <div class="salaryVal">${money(salaryTotal(emp))}</div>
-        </td>
+        ${compCols}
 
         <!-- ? NEW -->
         <td>${payrollBadgeHTML(emp)}</td>
@@ -1431,6 +1484,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // import discipline records
+  importDisciplineBtn && importDisciplineBtn.addEventListener("click", () => {
+    disciplineFileInput?.click();
+  });
+
+  disciplineFileInput && disciplineFileInput.addEventListener("change", async () => {
+    const file = disciplineFileInput.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/employees/discipline-import", {
+        method: "POST",
+        headers: csrfToken ? { "X-CSRF-TOKEN": csrfToken } : {},
+        body: fd,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = data?.message || "Import failed.";
+        const errs = Array.isArray(data?.errors) ? `\n- ${data.errors.join("\n- ")}` : "";
+        alert(`${msg}${errs}`);
+      } else {
+        showToast(data?.message || "Imported successfully.");
+        if (selectedEmpId) {
+          await loadDiscipline(selectedEmpId);
+        }
+      }
+    } catch (err) {
+      alert(err.message || "Import failed.");
+    } finally {
+      disciplineFileInput.value = "";
+    }
+  });
+
   // export
   exportBtn && exportBtn.addEventListener("click", () => {
     if (selectedIds.size === 0) {
@@ -1463,6 +1550,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
   closeHistoryDrawerBtn && closeHistoryDrawerBtn.addEventListener("click", closeHistoryDrawer);
   historyDrawerOverlay && historyDrawerOverlay.addEventListener("click", closeHistoryDrawer);
+  historySearch && historySearch.addEventListener("input", renderHistoryRows);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closeDrawer();
@@ -1581,13 +1669,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       alert("Please fill required fields (Employee ID, First, Last, Department, Position).");
       return;
     }
-    if (!Number.isFinite(data.rate) || data.rate < 0) {
-      alert("Basic Pay must be a valid number.");
-      return;
-    }
-    if (!Number.isFinite(data.allowance) || data.allowance < 0) {
-      alert("Allowance must be a valid number.");
-      return;
+    if (CAN_VIEW_COMP) {
+      if (!Number.isFinite(data.rate) || data.rate < 0) {
+        alert("Basic Pay must be a valid number.");
+        return;
+      }
+      if (!Number.isFinite(data.allowance) || data.allowance < 0) {
+        alert("Allowance must be a valid number.");
+        return;
+      }
     }
     if (data.accountNumber) {
       if (!data.bankName || !data.accountName) {
@@ -1654,6 +1744,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         f_status.innerHTML = (data.statuses || []).map(s => `<option value="${s.id}">${s.label}</option>`).join("");
       }
       statusLabelMap = new Map((data.statuses || []).map(s => [String(s.id), s.label]));
+      if (f_type && (data.employment_types || []).length) {
+        f_type.innerHTML = `<option value="">-- Select --</option>` +
+          (data.employment_types || []).map(t => `<option value="${t}">${t}</option>`).join("");
+      }
       if (data.area_places && typeof data.area_places === 'object' && !Array.isArray(data.area_places)) {
         areaPlaces = data.area_places;
         // Rebuild assignment segment from API data to ensure dropdowns are populated
@@ -1741,6 +1835,48 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (AUTO_REFRESH_MS > 0) {
     setInterval(runAutoRefresh, AUTO_REFRESH_MS);
+  }
+
+  // ===== Discipline & Tardiness =====
+  async function loadTardiness(empId) {
+    if (!empId) return;
+    try {
+      const data = await apiFetch(`/employees/${encodeURIComponent(empId)}/tardiness`);
+      if (tardyMonthEl) tardyMonthEl.textContent = formatMinutes(data.month_minutes);
+      if (tardyYearEl) tardyYearEl.textContent = formatMinutes(data.year_minutes);
+      if (tardyTotalEl) tardyTotalEl.textContent = formatMinutes(data.total_minutes);
+      if (tardyLateDaysEl) tardyLateDaysEl.textContent = `${data.late_days ?? 0} late days`;
+    } catch (err) {
+      resetDisciplineUI();
+    }
+  }
+
+  async function loadDiscipline(empId) {
+    if (!disciplineTbody || !empId) return;
+    disciplineTbody.innerHTML = `<tr><td colspan="4" class="muted small">Loading...</td></tr>`;
+    try {
+      const rows = await apiFetch(`/employees/${encodeURIComponent(empId)}/discipline-records`);
+      if (!rows || !rows.length) {
+        disciplineTbody.innerHTML = `<tr><td colspan="4" class="muted small">No records yet.</td></tr>`;
+        return;
+      }
+      const label = (t) => {
+        if (t === "memo") return "Memo";
+        if (t === "sanction") return "Sanction";
+        if (t === "nte") return "NTE";
+        return t || "—";
+      };
+      disciplineTbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${label(r.type)}</td>
+          <td>${r.issued_at || "—"}</td>
+          <td>${r.reference || "—"}</td>
+          <td class="muted small">${r.remarks || "—"}</td>
+        </tr>
+      `).join("");
+    } catch (err) {
+      disciplineTbody.innerHTML = `<tr><td colspan="4" class="muted small">Failed to load.</td></tr>`;
+    }
   }
 
   // ===== Charges / Shortages =====

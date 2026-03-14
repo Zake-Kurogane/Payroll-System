@@ -84,4 +84,9 @@ class Employee extends Model
             ->first();
         return $history?->area_place ?? $this->area_place;
     }
+
+    public function disciplinaryRecords(): HasMany
+    {
+        return $this->hasMany(EmployeeDisciplinaryRecord::class)->latest('issued_at')->latest('id');
+    }
 }

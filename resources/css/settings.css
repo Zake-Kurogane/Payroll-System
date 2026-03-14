@@ -409,6 +409,13 @@ h1 {
     color: var(--text);
     box-shadow: 0 6px 12px rgba(17, 24, 39, 0.12);
 }
+.btn--sm {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 800;
+}
 .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
@@ -729,6 +736,11 @@ tbody tr:hover {
     background: #eef2ff;
     border-color: #c7d2fe;
     color: #3730a3;
+}
+.notice--danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #7f1d1d;
 }
 
 /* lock scroll when drawer open */
