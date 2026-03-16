@@ -11,8 +11,16 @@
         </div>
     </div>
 
-    <nav class="menu">
+    <nav class="menu" id="sidebarMenu">
         <style>
+            /* Keep sidebar footer (time/date) visible by scrolling the nav area only when Employee Records dropdown is open. */
+            .side > .menu.menu--scroll {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
+            }
+
             /* local submenu styling to avoid touching other pages' CSS bundles */
             .menu__group {
                 border: none;
@@ -83,7 +91,8 @@
             </a>
         @endcan
 
-        <details class="menu__group {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-open' : '' }}"
+        <details id="employeeRecordsGroup"
+            class="menu__group {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-open' : '' }}"
             {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'open' : '' }}>
             <summary class="menu__item menu__item--parent {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-active' : '' }}">
                 <span class="menu__icon" aria-hidden="true">
@@ -119,6 +128,18 @@
             </div>
         </details>
 
+        <script>
+            (function() {
+                const menu = document.getElementById('sidebarMenu');
+                const group = document.getElementById('employeeRecordsGroup');
+                if (!menu || !group) return;
+
+                const sync = () => menu.classList.toggle('menu--scroll', !!group.open);
+                sync();
+                group.addEventListener('toggle', sync);
+            })();
+        </script>
+
         <a class="menu__item {{ request()->routeIs('attendance') ? 'is-active' : '' }}"
             href="{{ route('attendance') }}">
             <span class="menu__icon" aria-hidden="true">
@@ -128,6 +149,17 @@
                 </svg>
             </span>
             <span>ATTENDANCE</span>
+        </a>
+
+        <a class="menu__item {{ request()->routeIs('loans') ? 'is-active' : '' }}"
+            href="{{ route('loans') }}">
+            <span class="menu__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="ico">
+                    <path d="M4 7h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v8h16V9H4z" />
+                    <path d="M7 13h6v2H7v-2z" />
+                </svg>
+            </span>
+            <span>LOANS</span>
         </a>
 
         @can('admin')
@@ -142,17 +174,6 @@
                 <span>PAYROLL<br />PROCESSING</span>
             </a>
         @endcan
-
-        <a class="menu__item {{ request()->routeIs('loans') ? 'is-active' : '' }}"
-            href="{{ route('loans') }}">
-            <span class="menu__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" class="ico">
-                    <path d="M4 7h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v8h16V9H4z" />
-                    <path d="M7 13h6v2H7v-2z" />
-                </svg>
-            </span>
-            <span>LOANS</span>
-        </a>
 
         @can('admin')
             <a class="menu__item {{ request()->routeIs('payslip') ? 'is-active' : '' }}"

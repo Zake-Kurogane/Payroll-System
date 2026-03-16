@@ -5,6 +5,11 @@ export function initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange) {
   const caEnabled = document.getElementById("caEnabled");
   const caMethod = document.getElementById("caMethod");
   const caDefaultTermMonths = document.getElementById("caDefaultTermMonths");
+  const caRegularTermMonths = document.getElementById("caRegularTermMonths");
+  const caProbationaryTermMonths = document.getElementById("caProbationaryTermMonths");
+  const caTraineeTermMonths = document.getElementById("caTraineeTermMonths");
+  const caTraineeForceFullDeduct = document.getElementById("caTraineeForceFullDeduct");
+  const caAllowFullDeduct = document.getElementById("caAllowFullDeduct");
   const caMaxPaybackMonths = document.getElementById("caMaxPaybackMonths");
   const caDeductTiming = document.getElementById("caDeductTiming");
   const caPriority = document.getElementById("caPriority");
@@ -30,6 +35,11 @@ export function initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange) {
       caEnabled && (caEnabled.checked = !!row.enabled);
       caMethod && (caMethod.value = row.default_method ?? "salary_deduction");
       caDefaultTermMonths && (caDefaultTermMonths.value = row.default_term_months ?? 3);
+      caRegularTermMonths && (caRegularTermMonths.value = row.regular_default_term_months ?? row.default_term_months ?? 3);
+      caProbationaryTermMonths && (caProbationaryTermMonths.value = row.probationary_term_months ?? 1);
+      caTraineeTermMonths && (caTraineeTermMonths.value = row.trainee_term_months ?? 1);
+      caTraineeForceFullDeduct && (caTraineeForceFullDeduct.checked = row.trainee_force_full_deduct !== false);
+      caAllowFullDeduct && (caAllowFullDeduct.checked = row.allow_full_deduct !== false);
       caMaxPaybackMonths && (caMaxPaybackMonths.value = row.max_payback_months ?? 6);
       caDeductTiming && (caDeductTiming.value = row.deduct_timing ?? "split");
       caPriority && (caPriority.value = row.priority ?? 1);
@@ -47,6 +57,11 @@ export function initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange) {
           enabled: !!caEnabled?.checked,
           default_method: caMethod?.value || "salary_deduction",
           default_term_months: Number(caDefaultTermMonths?.value || 3),
+          regular_default_term_months: Number(caRegularTermMonths?.value || caDefaultTermMonths?.value || 3),
+          probationary_term_months: Number(caProbationaryTermMonths?.value || 1),
+          trainee_term_months: Number(caTraineeTermMonths?.value || 1),
+          trainee_force_full_deduct: !!caTraineeForceFullDeduct?.checked,
+          allow_full_deduct: !!caAllowFullDeduct?.checked,
           max_payback_months: Number(caMaxPaybackMonths?.value || 6),
           deduct_timing: caDeductTiming?.value || "split",
           priority: Number(caPriority?.value || 1),
@@ -104,6 +119,63 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
   let employeeLabelToId = new Map();
   let defaultTermMonths = 3;
   let defaultMethod = "salary_deduction";
+  let regularTermMonths = 3;
+  let probationaryTermMonths = 1;
+  let traineeTermMonths = 1;
+  let traineeForceFullDeduct = true;
+  let allowFullDeduct = true;
+
+  const caTermEl = document.getElementById("caTerm");
+  const caFullDeductEl = document.getElementById("caFullDeduct");
+  const caPerCutoffPreviewEl = document.getElementById("caPerCutoffPreview");
+  const caCutoffMetaEl = document.getElementById("caCutoffMeta");
+
+  function normalizeEmploymentType(raw) {
+    const v = String(raw || "").trim().toLowerCase();
+    if (v === "trainee" || v === "trainees") return "trainees";
+    if (v === "probationary" || v === "probi") return "probationary";
+    return "regular";
+  }
+
+  function getEmployeeById(id) {
+    return employees.find((e) => Number(e.id) === Number(id)) || null;
+  }
+
+  function applyRulesForEmployeeId(id) {
+    if (!caTermEl || !caFullDeductEl) return;
+    const emp = getEmployeeById(id);
+    const et = normalizeEmploymentType(emp?.employment_type);
+
+    if (et === "trainees") {
+      caTermEl.value = String(traineeTermMonths || 1);
+      caFullDeductEl.checked = !!traineeForceFullDeduct;
+      caFullDeductEl.disabled = true;
+      caTermEl.disabled = caFullDeductEl.checked;
+      updatePerCutoffPreview();
+      return;
+    }
+
+    if (et === "probationary") {
+      caTermEl.value = String(probationaryTermMonths || 1);
+      caFullDeductEl.checked = false;
+      caFullDeductEl.disabled = true;
+      caTermEl.disabled = false;
+      updatePerCutoffPreview();
+      return;
+    }
+
+    // regular
+    caFullDeductEl.disabled = !allowFullDeduct;
+    if (!allowFullDeduct) caFullDeductEl.checked = false;
+    if (caFullDeductEl.checked) {
+      caTermEl.value = "1";
+      caTermEl.disabled = true;
+    } else {
+      caTermEl.value = String(regularTermMonths || defaultTermMonths || 3);
+      caTermEl.disabled = false;
+    }
+    updatePerCutoffPreview();
+  }
 
   function showNotice(message) {
     if (!noticeEl) return false;
@@ -166,6 +238,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     hidden.value = value ? String(value) : "";
     const len = el.value.length;
     el.setSelectionRange(len, len);
+    updatePerCutoffPreview();
   }
 
   function getAmountValue() {
@@ -174,6 +247,35 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     const el = document.getElementById("caAmount");
     const { value } = formatPesoInput(el?.value || "");
     return value;
+  }
+
+  function updatePerCutoffPreview() {
+    if (!caPerCutoffPreviewEl) return;
+
+    const amount = getAmountValue();
+    const termMonths = Math.max(1, Number(caTermEl?.value || 1));
+    const fullDeduct = !!caFullDeductEl?.checked;
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      caPerCutoffPreviewEl.value = "";
+      if (caCutoffMetaEl) {
+        caCutoffMetaEl.textContent = fullDeduct
+          ? "Full deduct: next cutoff will attempt to deduct the full amount."
+          : "Auto-calculated from Amount ÷ (Term × 2 cutoffs).";
+      }
+      return;
+    }
+
+    if (fullDeduct) {
+      caPerCutoffPreviewEl.value = peso(amount);
+      if (caCutoffMetaEl) caCutoffMetaEl.textContent = "Full deduct: next cutoff will attempt to deduct the full amount (remainder carries forward).";
+      return;
+    }
+
+    const cutoffs = termMonths * 2;
+    const per = amount / cutoffs;
+    caPerCutoffPreviewEl.value = peso(per);
+    if (caCutoffMetaEl) caCutoffMetaEl.textContent = `Auto-calculated: ${peso(amount)} ÷ (${termMonths} mo × 2 = ${cutoffs} cutoffs) = ${peso(per)} per cutoff.`;
   }
 
   function renderCa() {
@@ -213,11 +315,17 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
 
   function openNewCa() {
     caForm?.reset();
-    document.getElementById("caTerm") && (document.getElementById("caTerm").value = String(defaultTermMonths || 3));
+    caTermEl && (caTermEl.value = String(regularTermMonths || defaultTermMonths || 3));
     document.getElementById("caMethodTxn") && (document.getElementById("caMethodTxn").value = defaultMethod || "salary_deduction");
+    if (caFullDeductEl) {
+      caFullDeductEl.checked = false;
+      caFullDeductEl.disabled = !allowFullDeduct;
+    }
+    if (caTermEl) caTermEl.disabled = false;
     if (caEmployeeInput) caEmployeeInput.value = "";
     if (caEmployeeId) caEmployeeId.value = "";
     if (caEmployeeList) { caEmployeeList.innerHTML = ""; caEmployeeList.hidden = true; }
+    updatePerCutoffPreview();
     drawer?.open();
   }
 
@@ -232,6 +340,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     const term = Number(document.getElementById("caTerm")?.value || 1);
     const start = document.getElementById("caStartMonth")?.value;
     const method = document.getElementById("caMethodTxn")?.value;
+    const fullDeduct = !!document.getElementById("caFullDeduct")?.checked;
 
     if (!resolvedId || !start || !Number.isFinite(amount) || amount <= 0) {
       toast("Please fill Employee, Amount, Start month.", "error");
@@ -247,6 +356,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
           term_months: term,
           start_month: start,
           method,
+          full_deduct: fullDeduct,
         }),
       });
       await loadCashAdvances();
@@ -356,13 +466,34 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     caEmployeeInput.value = item.dataset.label || "";
     caEmployeeId.value = item.dataset.id || "";
     caEmployeeList.hidden = true;
+    applyRulesForEmployeeId(Number(caEmployeeId.value || 0));
   });
+
+  caFullDeductEl?.addEventListener("change", () => {
+    if (!caTermEl || !caFullDeductEl) return;
+    if (caFullDeductEl.checked) {
+      caTermEl.value = "1";
+      caTermEl.disabled = true;
+    } else {
+      caTermEl.disabled = false;
+      applyRulesForEmployeeId(Number(caEmployeeId?.value || 0));
+    }
+    updatePerCutoffPreview();
+  });
+
+  caTermEl?.addEventListener("input", updatePerCutoffPreview);
+  caTermEl?.addEventListener("change", updatePerCutoffPreview);
 
   async function loadPolicyDefaults() {
     try {
       const row = await apiFetch("/settings/cash-advance-policy");
       defaultMethod = row.default_method ?? "salary_deduction";
       defaultTermMonths = row.default_term_months ?? 3;
+      regularTermMonths = row.regular_default_term_months ?? defaultTermMonths ?? 3;
+      probationaryTermMonths = row.probationary_term_months ?? 1;
+      traineeTermMonths = row.trainee_term_months ?? 1;
+      traineeForceFullDeduct = row.trainee_force_full_deduct !== false;
+      allowFullDeduct = row.allow_full_deduct !== false;
     } catch {
       // optional
     }
@@ -387,4 +518,3 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange);
   initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange);
 }
-

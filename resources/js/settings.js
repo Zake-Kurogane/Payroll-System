@@ -2,6 +2,7 @@
 import { initTabs } from "./settings/tabs";
 import { initAttendanceCodes } from "./settings/attendanceCodes";
 import { initCashAdvancePolicy } from "./settings/cashAdvance";
+import { initPayrollDeductionPolicy } from "./settings/payrollDeductionPolicy";
 import { initTimekeeping } from "./settings/timekeeping";
 import { toast } from "./settings/toast";
 import { initUserMenuDropdown } from "./shared/userMenu";
@@ -53,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const notifySettingsUpdated = () => broadcastSettingsUpdate();
   initTimekeeping(toast, apiFetch, document.getElementById("timekeepingNotice"), notifySettingsUpdated);
   initCashAdvancePolicy(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
+  initPayrollDeductionPolicy(toast, apiFetch, document.getElementById("payrollDeductionNotice"), notifySettingsUpdated);
 
   // ===== HR Accounts list (admin-only UI) =====
   const hrUsersTbody = document.getElementById("hrUsersTbody");

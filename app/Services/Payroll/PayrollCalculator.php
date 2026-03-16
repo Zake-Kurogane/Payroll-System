@@ -11,6 +11,7 @@ use App\Models\DeductionSchedule;
 use App\Models\Employee;
 use App\Models\EmployeeLoanSchedule;
 use App\Models\OvertimeRule;
+use App\Models\PayrollDeductionPolicy;
 use App\Models\PayrollCalendarSetting;
 use App\Models\SalaryProrationRule;
 use App\Models\StatutorySetup;
@@ -34,6 +35,7 @@ class PayrollCalculator
         $wtPolicy = WithholdingTaxPolicy::query()->first() ?? WithholdingTaxPolicy::create([]);
         $wtBrackets = WithholdingTaxBracket::query()->orderBy('sort_order')->get();
         $cashPolicy = CashAdvancePolicy::query()->first();
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
         $attDefaults = AttendanceCodeSetting::query()->first();
 
         $employeeIds = $employees->pluck('id')->all();
@@ -75,7 +77,7 @@ class PayrollCalculator
             ->get()
             ->groupBy('employee_id');
 
-        $rows = $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
+        $rows = $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
 
         return [
             'period' => [
@@ -86,8 +88,11 @@ class PayrollCalculator
         ];
     }
 
-    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
+    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
     {
+        $employmentType = strtolower(trim((string) ($emp->employment_type ?? '')));
+        $isRegular = $employmentType === 'regular';
+
         $summary = $this->summaryFromAggregate($summaries->get($emp->id));
         $workdaysInMonth = 26;
         $dailyRate = (float) $emp->basic_pay / $workdaysInMonth;
@@ -119,6 +124,7 @@ class PayrollCalculator
         $computedCashAdvance = $this->computeCashAdvanceDeduction(
             $cashPolicy,
             $cashAdvances->get($emp->id, collect()),
+            $start->format('Y-m'),
             $cutoff
         );
         $cashAdvance = array_key_exists('cash_advance', $override ?? []) ? (float) ($override['cash_advance'] ?? 0) : $computedCashAdvance;
@@ -133,13 +139,14 @@ class PayrollCalculator
         }
 
         $zeros = ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
-        $sss = ($runType === 'External' && $this->hasGovId($emp->sss))
+        $applyPremiums = $isRegular || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false);
+        $sss = ($applyPremiums && $this->hasGovId($emp->sss))
             ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff)
             : $zeros;
-        $philhealth = ($runType === 'External' && $this->hasGovId($emp->philhealth))
+        $philhealth = ($applyPremiums && $this->hasGovId($emp->philhealth))
             ? $this->computePhilHealth($statutory, (float) $emp->basic_pay, $cutoff)
             : $zeros;
-        $pagibig = ($runType === 'External' && $this->hasGovId($emp->pagibig))
+        $pagibig = ($applyPremiums && $this->hasGovId($emp->pagibig))
             ? $this->computePagibig($statutory, (float) $emp->basic_pay, $cutoff)
             : $zeros;
 
@@ -164,37 +171,44 @@ class PayrollCalculator
             $taxable = max(0, $taxable);
         }
 
-        $withholding = $this->computeWithholdingTax(
-            $wtPolicy,
-            $wtBrackets,
-            $taxable,
-            $cutoff
-        );
+        $applyTax = $isRegular || (bool) ($dedPolicy->apply_tax_to_non_regular ?? false);
+        $withholding = ($applyTax && ($wtPolicy->enabled ?? true))
+            ? $this->computeWithholdingTax($wtPolicy, $wtBrackets, $taxable, $cutoff)
+            : 0.0;
 
         $periodMonth = $start->format('Y-m');
-        $chargesDeduction = (float) DeductionSchedule::query()
+        $chargesScheduled = (float) DeductionSchedule::query()
             ->where('employee_id', $emp->id)
             ->where('due_month', $periodMonth)
             ->where('due_cutoff', $cutoff)
             ->where('status', 'scheduled')
             ->sum('amount');
 
-        $baseDeductions = $attendanceDeduction
+        // Priority order: statutory/tax, then loans, then charges/shortages, then cash advance (capped to avoid negative net).
+        $baseBeforeLoans = $attendanceDeduction
             + $dedAdj
-            + $cashAdvance
             + $sss['ee']
             + $philhealth['ee']
             + $pagibig['ee']
-            + $withholding
-            + $chargesDeduction;
+            + $withholding;
 
         [$loanDeduction, $loanItems] = $this->computeLoanDeductions(
             $loanSchedules->get($emp->id, collect()),
             $gross,
-            $baseDeductions
+            $baseBeforeLoans
         );
 
-        $deductionsTotal = $baseDeductions + $loanDeduction;
+        $availableAfterLoans = max(0.0, $gross - ($baseBeforeLoans + $loanDeduction));
+        $capCharges = (bool) ($dedPolicy->cap_charges_to_net_pay ?? true) && (bool) ($dedPolicy->carry_forward_unpaid_charges ?? true);
+        $chargesDeduction = $capCharges ? min($chargesScheduled, $availableAfterLoans) : $chargesScheduled;
+
+        $availableAfterLoansAndCharges = max(0.0, $availableAfterLoans - $chargesDeduction);
+        $capCa = (bool) ($dedPolicy->cap_cash_advance_to_net_pay ?? true);
+        if ($capCa) {
+            $cashAdvance = min($cashAdvance, $availableAfterLoansAndCharges);
+        }
+
+        $deductionsTotal = $baseBeforeLoans + $loanDeduction + $chargesDeduction + $cashAdvance;
 
         $net = $gross - $deductionsTotal;
 
@@ -242,11 +256,11 @@ class PayrollCalculator
         ];
     }
 
-    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
+    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
     {
         $rows = [];
         foreach ($employees as $emp) {
-            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
+            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
         }
         return $rows;
     }
@@ -270,7 +284,8 @@ class PayrollCalculator
         if ($runType === 'External') {
             $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) = 'regular'");
         } else {
-            $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) = 'probationary'");
+            // Internal runs cover non-regular employees (e.g., probationary, trainees).
+            $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) != 'regular'");
         }
 
         if ($assignment !== 'All') {
@@ -509,15 +524,45 @@ class PayrollCalculator
         return $otHours * $hourlyRate * (float) ($overtime->multiplier ?? 1);
     }
 
-    private function computeCashAdvanceDeduction(?CashAdvancePolicy $policy, Collection $advances, string $cutoff): float
+    private function computeCashAdvanceDeduction(?CashAdvancePolicy $policy, Collection $advances, string $periodMonth, string $cutoff): float
     {
         if (!$policy || !$policy->enabled) return 0.0;
         if ($advances->isEmpty()) return 0.0;
-        $timing = $policy->deduct_timing ?? 'split';
-        $isFirst = $cutoff === '11-25';
-        if ($timing === 'cutoff1' && !$isFirst) return 0.0;
-        if ($timing === 'cutoff2' && $isFirst) return 0.0;
-        return (float) $advances->sum(fn ($a) => (float) ($a->per_cutoff_deduction ?? 0));
+
+        $cutoffOffset = $cutoff === '26-10' ? 1 : 0;
+        $period = Carbon::createFromFormat('Y-m', $periodMonth)->startOfMonth();
+
+        $total = 0.0;
+        foreach ($advances as $a) {
+            $status = strtolower(trim((string) ($a->status ?? '')));
+            if ($status !== 'active') continue;
+
+            $balance = (float) ($a->balance_remaining ?? $a->amount ?? 0);
+            if ($balance <= 0) continue;
+
+            $startMonth = $a->start_month ? Carbon::parse($a->start_month)->startOfMonth() : null;
+            if (!$startMonth || $period->lt($startMonth)) continue;
+
+            $fullDeduct = (bool) ($a->full_deduct ?? false);
+            if ($fullDeduct) {
+                $total += $balance;
+                continue;
+            }
+
+            $termMonths = max(1, (int) ($a->term_months ?? 1));
+            $monthsDiff = $startMonth->diffInMonths($period, false);
+            $cutoffIndex = ($monthsDiff * 2) + $cutoffOffset;
+            $totalCutoffs = $termMonths * 2;
+            $remainingCutoffs = $totalCutoffs - $cutoffIndex;
+            if ($remainingCutoffs < 1) {
+                $remainingCutoffs = 1;
+            }
+
+            $due = round($balance / $remainingCutoffs, 2);
+            $total += min($balance, max(0.0, $due));
+        }
+
+        return $total;
     }
 
     private function computeSss(StatutorySetup $statutory, float $basicPay, string $cutoff): array

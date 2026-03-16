@@ -521,7 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         loanHistoryTbody.innerHTML = history.map(h => `
           <tr>
-            <td>${h.payroll_run_id || "—"}</td>
+            <td>${h.run_code || h.payroll_run_id || "—"}</td>
             <td>${h.period_month || "—"} ${h.cutoff ? `(${h.cutoff})` : ""}</td>
             <td class="num">${money(h.scheduled_amount)}</td>
             <td class="num">${money(h.deducted_amount)}</td>

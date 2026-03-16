@@ -134,6 +134,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/withholding-tax-brackets', [SettingsController::class, 'saveWithholdingTaxBrackets'])->name('settings.withholding_tax.brackets.save');
         Route::get('/settings/cash-advance-policy', [SettingsController::class, 'getCashAdvancePolicy'])->name('settings.cash_advance.policy.get');
         Route::post('/settings/cash-advance-policy', [SettingsController::class, 'saveCashAdvancePolicy'])->name('settings.cash_advance.policy.save');
+        Route::get('/settings/payroll-deduction-policy', [SettingsController::class, 'getPayrollDeductionPolicy'])->name('settings.payroll_deduction.policy.get');
+        Route::post('/settings/payroll-deduction-policy', [SettingsController::class, 'savePayrollDeductionPolicy'])->name('settings.payroll_deduction.policy.save');
         Route::get('/settings/payroll-calendar', [SettingsController::class, 'getPayrollCalendar'])->name('settings.payroll_calendar.get');
         Route::post('/settings/payroll-calendar', [SettingsController::class, 'savePayrollCalendar'])->name('settings.payroll_calendar.save');
         Route::get('/settings/overtime-rules', [SettingsController::class, 'getOvertimeRules'])->name('settings.overtime.get');

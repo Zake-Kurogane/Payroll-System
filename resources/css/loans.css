@@ -218,6 +218,146 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* Loans tables: remove forced min-width to avoid horizontal scrollbar */
+.loans-page .table {
+  min-width: 0;
+}
+
+/* Loans tables: hide horizontal scrollbar (tables are designed to fit the card) */
+.loans-page .tablewrap {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* ==============================
+   Cash Advance Drawer (Loans)
+   ==============================
+   The Loans page uses Payroll Processing drawer styles (.drawer),
+   but Cash Advance drawers use the Settings-style overlay+panel markup.
+   Scope the Settings-style drawer CSS to `.ca-drawer` to avoid conflicts.
+*/
+
+body.drawer-open {
+  overflow: hidden;
+}
+
+.ca-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.ca-drawer.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.ca-drawer .drawer__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.35);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.ca-drawer.is-open .drawer__overlay {
+  opacity: 1;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.ca-drawer .drawer__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 92vw);
+  background: #fff;
+  border-left: 1px solid var(--line);
+  box-shadow: -12px 0 26px rgba(17, 24, 39, 0.18);
+
+  transform: translateX(105%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.ca-drawer.is-open .drawer__panel {
+  transform: translateX(0);
+}
+
+.ca-drawer .drawer__head {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+.ca-drawer .rowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ca-drawer .hint {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.ca-drawer .form {
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.ca-drawer .field--full {
+  grid-column: 1 / -1;
+}
+
+.ca-drawer .actionsRow {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.ca-drawer .actionsRow .spacer {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .ca-drawer .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
 .filterbar .seg__btn:hover {
   background: rgba(156, 29, 60, 0.06);
   color: var(--maroon);

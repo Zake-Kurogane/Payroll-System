@@ -15,7 +15,7 @@
     window.__assignments = @json($assignments);
     window.__areaPlaces = @json($groupedAreaPlaces);
 </script>
-<section class="content">
+<section class="content loans-page">
     <div class="headline headline--withActions">
         <div>
             <h1>EMPLOYEE LOANS</h1>
@@ -121,7 +121,7 @@
     </section>
 
     <section class="card">
-        <div class="card__head">
+        <div class="tablecard__head">
             <div>
                 <div class="card__title">Employee Cash Advance Entry</div>
                 <div class="muted small">Transactions</div>
@@ -409,7 +409,7 @@
     </aside>
 
     <!-- Cash Advance Drawer -->
-    <aside class="drawer" id="caDrawer" aria-hidden="true">
+    <aside class="ca-drawer" id="caDrawer" aria-hidden="true">
         <div class="drawer__overlay" id="caDrawerOverlay"></div>
         <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="caDrawerTitle">
             <div class="drawer__head">
@@ -452,6 +452,20 @@
                     </div>
 
                     <div class="field field--full">
+                        <label>Per-cutoff deduction</label>
+                        <input type="text" id="caPerCutoffPreview" readonly placeholder="₱0.00" />
+                        <div class="hint" id="caCutoffMeta">Auto-calculated from Amount ÷ (Term × 2 cutoffs).</div>
+                    </div>
+
+                    <div class="field field--full">
+                        <label class="rowLabel">
+                            <input type="checkbox" id="caFullDeduct" />
+                            <span>Full deduct on next payday</span>
+                        </label>
+                        <div class="hint">If net pay is not enough, the remaining balance is carried to the next cutoff.</div>
+                    </div>
+
+                    <div class="field field--full">
                         <label>Method</label>
                         <select id="caMethodTxn" required>
                             <option value="salary_deduction" selected>Salary deduction</option>
@@ -470,7 +484,7 @@
     </aside>
 
     <!-- Cash Advance View Drawer -->
-    <aside class="drawer" id="caViewDrawer" aria-hidden="true">
+    <aside class="ca-drawer" id="caViewDrawer" aria-hidden="true">
         <div class="drawer__overlay" id="caViewDrawerOverlay"></div>
         <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="caViewDrawerTitle">
             <div class="drawer__head">

@@ -876,6 +876,35 @@
                         </div>
 
                         <div class="field">
+                            <label>Regular default term (months)</label>
+                            <input type="number" id="caRegularTermMonths" value="3" min="1" />
+                        </div>
+
+                        <div class="field">
+                            <label>Probationary term (months)</label>
+                            <input type="number" id="caProbationaryTermMonths" value="1" min="1" />
+                        </div>
+
+                        <div class="field">
+                            <label>Trainee term (months)</label>
+                            <input type="number" id="caTraineeTermMonths" value="1" min="1" />
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="caTraineeForceFullDeduct" checked />
+                                <span>Trainees are forced to full deduction</span>
+                            </label>
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="caAllowFullDeduct" checked />
+                                <span>Allow “Full deduct” option for regular employees</span>
+                            </label>
+                        </div>
+
+                        <div class="field">
                             <label>Max payback term (months) <span class="hint">Maximum months allowed to pay back a cash advance</span></label>
                             <input type="number" id="caMaxPaybackMonths" value="6" min="1" />
                         </div>
@@ -908,6 +937,62 @@
                         <div class="spacer"></div>
                         <button class="btn btn--maroon" type="button" id="caPolicySave">Save Cash Advance
                             Policy</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card__head">
+                        <div>
+                            <div class="card__title">Payroll Deduction Rules</div>
+                            <div class="muted small">Priority, caps, and carry-forward</div>
+                        </div>
+                    </div>
+
+                    <div class="notice notice--success" id="payrollDeductionNotice" hidden></div>
+
+                    <div class="grid2">
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdApplyPremiumsNonRegular" />
+                                <span>Apply premiums/contributions to probationary/trainees</span>
+                            </label>
+                            <div class="hint">Default: off (no SSS/PH/PI for non-regular).</div>
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdApplyTaxNonRegular" />
+                                <span>Apply withholding tax to probationary/trainees</span>
+                            </label>
+                            <div class="hint">Default: off.</div>
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdCapChargesToNet" checked />
+                                <span>Cap charges/shortages so net pay won’t go negative</span>
+                            </label>
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdCarryForwardCharges" checked />
+                                <span>Carry forward unpaid charges/shortages to next cutoff</span>
+                            </label>
+                        </div>
+
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdCapCashAdvanceToNet" checked />
+                                <span>Cap cash advance so net pay won’t go negative</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="actionsRow">
+                        <div class="spacer"></div>
+                        <button class="btn btn--maroon" type="button" id="payrollDeductionSave">Save Deduction
+                            Rules</button>
                     </div>
                 </div>
 

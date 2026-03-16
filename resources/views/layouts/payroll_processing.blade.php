@@ -233,7 +233,9 @@
                 <div class="sticky__right">
                     <button class="btn btn--soft" type="button" id="computeBtn">Compute / Refresh Preview</button>
                     <button class="btn btn--maroon" type="button" id="processBtn">Process Payroll (Lock)</button>
-                    <button class="btn" type="button" id="payslipBtn" disabled>Generate Payslips</button>
+                    <button class="btn" type="button" id="payslipBtn" data-payslip-url="{{ route('payslip') }}" disabled>
+                        Generate Payslips
+                    </button>
                 </div>
     </footer>
 @endsection

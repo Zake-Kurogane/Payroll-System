@@ -116,10 +116,13 @@ class EmployeeLoanController extends Controller
     {
         $rows = EmployeeLoanHistory::query()
             ->where('employee_loan_id', $loan->id)
+            ->with(['payrollRun:id,run_code'])
             ->orderByDesc('id')
             ->get()
             ->map(fn ($h) => [
                 'id' => $h->id,
+                'payroll_run_id' => $h->payroll_run_id,
+                'run_code' => $h->payrollRun?->run_code,
                 'period_month' => $h->period_month,
                 'cutoff' => $h->cutoff,
                 'scheduled_amount' => (float) $h->scheduled_amount,

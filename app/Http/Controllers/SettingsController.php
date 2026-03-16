@@ -15,6 +15,7 @@ use App\Models\TimekeepingRule;
 use App\Models\WithholdingTaxBracket;
 use App\Models\WithholdingTaxPolicy;
 use App\Models\Employee;
+use App\Models\PayrollDeductionPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -270,11 +271,23 @@ class SettingsController extends Controller
             'enabled' => ['required', 'boolean'],
             'default_method' => ['required', Rule::in(['salary_deduction', 'manual_payment'])],
             'default_term_months' => ['required', 'integer', 'min:1'],
+            'regular_default_term_months' => ['nullable', 'integer', 'min:1'],
+            'probationary_term_months' => ['nullable', 'integer', 'min:1'],
+            'trainee_term_months' => ['nullable', 'integer', 'min:1'],
+            'trainee_force_full_deduct' => ['nullable', 'boolean'],
+            'allow_full_deduct' => ['nullable', 'boolean'],
             'max_payback_months' => ['required', 'integer', 'min:1'],
             'deduct_timing' => ['required', Rule::in(['cutoff1', 'cutoff2', 'split'])],
             'priority' => ['required', 'integer', 'min:1'],
             'deduction_method' => ['required', Rule::in(['equal_amortization', 'manual_per_cutoff'])],
         ]);
+
+        // Fallbacks to keep existing clients working.
+        $validated['regular_default_term_months'] = (int) ($validated['regular_default_term_months'] ?? $validated['default_term_months']);
+        $validated['probationary_term_months'] = (int) ($validated['probationary_term_months'] ?? 1);
+        $validated['trainee_term_months'] = (int) ($validated['trainee_term_months'] ?? 1);
+        $validated['trainee_force_full_deduct'] = (bool) ($validated['trainee_force_full_deduct'] ?? true);
+        $validated['allow_full_deduct'] = (bool) ($validated['allow_full_deduct'] ?? true);
 
         $row = CashAdvancePolicy::query()->first();
         if (!$row) {
@@ -286,14 +299,42 @@ class SettingsController extends Controller
         return response()->json($row);
     }
 
+    public function getPayrollDeductionPolicy()
+    {
+        $row = PayrollDeductionPolicy::query()->first();
+        if (!$row) {
+            $row = PayrollDeductionPolicy::create([]);
+        }
+        return response()->json($row);
+    }
+
+    public function savePayrollDeductionPolicy(Request $request)
+    {
+        $validated = $request->validate([
+            'apply_premiums_to_non_regular' => ['required', 'boolean'],
+            'apply_tax_to_non_regular' => ['required', 'boolean'],
+            'cap_charges_to_net_pay' => ['required', 'boolean'],
+            'carry_forward_unpaid_charges' => ['required', 'boolean'],
+            'cap_cash_advance_to_net_pay' => ['required', 'boolean'],
+            'loans_before_charges' => ['required', 'boolean'],
+            'charges_before_cash_advance' => ['required', 'boolean'],
+        ]);
+
+        $row = PayrollDeductionPolicy::query()->first();
+        if (!$row) {
+            $row = PayrollDeductionPolicy::create($validated);
+        } else {
+            $row->update($validated);
+        }
+
+        return response()->json($row);
+    }
+
     public function getCashAdvances()
     {
         $rows = CashAdvance::query()->orderByDesc('id')->get();
         $policy = CashAdvancePolicy::query()->first();
-        $cutoffsPerMonth = 2;
-        if ($policy && in_array($policy->deduct_timing, ['cutoff1', 'cutoff2'], true)) {
-            $cutoffsPerMonth = 1;
-        }
+        $cutoffsPerMonth = 2; // Cash advance deducts on both cutoffs by default.
         $employeeIds = $rows->pluck('employee_id')->unique()->values();
         $employees = Employee::query()
             ->whereIn('id', $employeeIds)
@@ -304,18 +345,32 @@ class SettingsController extends Controller
             $emp = $employees->get($row->employee_id);
             $name = $emp ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : '')) : null;
             if ($row->per_cutoff_deduction === null) {
-                $totalCutoffs = max(1, (int) $row->term_months * $cutoffsPerMonth);
-                $row->per_cutoff_deduction = $row->amount / $totalCutoffs;
+                $fullDeduct = (bool) ($row->full_deduct ?? false);
+                if ($fullDeduct) {
+                    $row->per_cutoff_deduction = $row->amount;
+                } else {
+                    $totalCutoffs = max(1, (int) $row->term_months * $cutoffsPerMonth);
+                    $row->per_cutoff_deduction = $row->amount / $totalCutoffs;
+                }
+                $row->save();
+            }
+            if ($row->balance_remaining === null || (float) $row->balance_remaining <= 0) {
+                $row->balance_remaining = $row->amount;
+                $row->amount_deducted = 0;
                 $row->save();
             }
             return [
                 'id' => $row->id,
+                'reference_no' => $row->reference_no,
                 'employee_id' => $row->employee_id,
                 'employee_name' => $name,
                 'amount' => $row->amount,
+                'balance_remaining' => (float) ($row->balance_remaining ?? $row->amount),
+                'amount_deducted' => (float) ($row->amount_deducted ?? 0),
                 'term_months' => $row->term_months,
                 'start_month' => $row->start_month,
                 'method' => $row->method,
+                'full_deduct' => (bool) ($row->full_deduct ?? false),
                 'per_cutoff_deduction' => $row->per_cutoff_deduction,
                 'status' => $row->status,
             ];
@@ -332,25 +387,66 @@ class SettingsController extends Controller
             'term_months' => ['required', 'integer', 'min:1'],
             'start_month' => ['required', 'date_format:Y-m'],
             'method' => ['required', Rule::in(['salary_deduction', 'manual_payment'])],
+            'full_deduct' => ['nullable', 'boolean'],
         ]);
 
         $policy = CashAdvancePolicy::query()->first();
         $cutoffsPerMonth = 2;
-        if ($policy && in_array($policy->deduct_timing, ['cutoff1', 'cutoff2'], true)) {
-            $cutoffsPerMonth = 1;
+        $employee = Employee::query()->find($validated['employee_id']);
+        $employmentType = strtolower(trim((string) ($employee?->employment_type ?? '')));
+        $fullDeduct = (bool) ($validated['full_deduct'] ?? false);
+
+        // Only one active cash advance per employee (simplifies deduction + balance tracking).
+        $existingActive = CashAdvance::query()
+            ->where('employee_id', $validated['employee_id'])
+            ->whereRaw("LOWER(TRIM(COALESCE(status,''))) = 'active'")
+            ->exists();
+        if ($existingActive) {
+            return response()->json(['message' => 'Employee already has an active cash advance.'], 422);
         }
-        $totalCutoffs = max(1, (int) $validated['term_months'] * $cutoffsPerMonth);
-        $perCutoff = $validated['amount'] / $totalCutoffs;
+
+        if ($employmentType === 'trainees' || $employmentType === 'trainee') {
+            $termMonths = (int) ($policy?->trainee_term_months ?? 1);
+            $fullDeduct = (bool) ($policy?->trainee_force_full_deduct ?? true);
+        } elseif ($employmentType === 'probationary') {
+            $termMonths = (int) ($policy?->probationary_term_months ?? 1);
+            $fullDeduct = false;
+        } else {
+            $termMonths = (int) $validated['term_months'];
+            if (!$policy || !$policy->allow_full_deduct) {
+                $fullDeduct = false;
+            }
+            if ($fullDeduct) {
+                $termMonths = 1;
+            }
+        }
+
+        $maxMonths = (int) ($policy?->max_payback_months ?? 0);
+        if ($maxMonths > 0) {
+            $termMonths = min($termMonths, $maxMonths);
+        }
+
+        $totalCutoffs = max(1, $termMonths * $cutoffsPerMonth);
+        $perCutoff = $fullDeduct ? (float) $validated['amount'] : ((float) $validated['amount'] / $totalCutoffs);
 
         $row = CashAdvance::create([
+            'reference_no' => null,
             'employee_id' => $validated['employee_id'],
             'amount' => $validated['amount'],
-            'term_months' => $validated['term_months'],
+            'balance_remaining' => $validated['amount'],
+            'amount_deducted' => 0,
+            'term_months' => $termMonths,
             'start_month' => $validated['start_month'] . '-01',
             'method' => $validated['method'],
+            'full_deduct' => $fullDeduct,
             'per_cutoff_deduction' => $perCutoff,
             'status' => 'Active',
         ]);
+
+        if (!$row->reference_no) {
+            $row->reference_no = 'CA-' . now()->format('Y') . '-' . str_pad((string) $row->id, 6, '0', STR_PAD_LEFT);
+            $row->save();
+        }
 
         return response()->json($row);
     }
@@ -361,7 +457,11 @@ class SettingsController extends Controller
             'status' => ['required', Rule::in(['Active', 'Completed'])],
         ]);
 
-        $cashAdvance->update(['status' => $validated['status']]);
+        $updates = ['status' => $validated['status']];
+        if ($validated['status'] === 'Completed') {
+            $updates['balance_remaining'] = 0;
+        }
+        $cashAdvance->update($updates);
 
         return response()->json($cashAdvance);
     }

@@ -34,7 +34,8 @@ export function initProfileDrawer() {
 
   async function loadProfileToDrawer() {
     try {
-      if (pfFullName?.value || pfUsername?.value || pfEmail?.value) return;
+      // Avoid re-fetching when fields already have values (e.g., after validation errors).
+      if (pfFirstName?.value || pfLastName?.value || pfUsername?.value || pfEmail?.value) return;
 
       const res = await fetch("/profile/me", {
         headers: { "X-Requested-With": "XMLHttpRequest" },

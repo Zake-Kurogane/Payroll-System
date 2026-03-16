@@ -1726,6 +1726,11 @@ document.addEventListener("DOMContentLoaded", () => {
     apiFetch(`/payroll-runs/${currentRun.id}/payslips`, { method: "POST" })
       .then((data) => {
         showToast(data?.message || "Payslips generated for the locked payroll run.");
+        const go = confirm("Payslips generated. Do you want to go to the Payslips page now?");
+        if (go) {
+          const url = payslipBtn?.dataset?.payslipUrl || "/payslip";
+          window.location.href = url;
+        }
       })
       .catch(err => alert(err.message || "Failed to generate payslips."));
   });
