@@ -1729,7 +1729,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const go = confirm("Payslips generated. Do you want to go to the Payslips page now?");
         if (go) {
           const url = payslipBtn?.dataset?.payslipUrl || "/payslip";
-          window.location.href = url;
+          const u = new URL(url, window.location.origin);
+          u.searchParams.set("run_id", String(currentRun.id));
+          if (currentRun.period_month) u.searchParams.set("month", String(currentRun.period_month));
+          window.location.href = u.toString();
         }
       })
       .catch(err => alert(err.message || "Failed to generate payslips."));

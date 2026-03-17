@@ -172,6 +172,16 @@
     <!-- PAYSLIP PREVIEW OVERLAY -->
     <div class="overlay" id="psOverlay" hidden></div>
 
+    <!-- PRINT PREVIEW MODAL -->
+    <div class="overlay" id="printOverlay" hidden></div>
+    <aside class="modal" id="printModal" aria-hidden="true" hidden>
+        <div class="modal__head">
+            <div class="modal__title">Print Preview</div>
+            <button class="btn" type="button" id="printCloseBtn">Close</button>
+        </div>
+        <iframe class="modal__frame" id="printFrame" title="Print Preview"></iframe>
+    </aside>
+
     <!-- PAYSLIP PREVIEW DRAWER -->
     <aside class="drawer drawer--wide" id="psDrawer" aria-hidden="true">
         <div class="drawer__head">
@@ -216,6 +226,7 @@
                         <div class="psInfoTitle">PAY PERIOD</div>
                         <div class="psInfoRow"><span>Payroll Month</span><strong id="psMonth">-</strong></div>
                         <div class="psInfoRow"><span>Cutoff</span><strong id="psCutoff">-</strong></div>
+                        <div class="psInfoRow"><span>Period</span><strong id="psPeriod">-</strong></div>
                         <div class="psInfoRow"><span>Pay Date</span><strong id="psPayDate">-</strong></div>
                         <div class="psInfoRow"><span>Pay Method</span><strong id="psPayMethod">-</strong></div>
                         <div class="psInfoRow" id="psBankRow"><span>Bank</span><strong id="psBank">-</strong></div>
@@ -292,45 +303,61 @@
                             <td class="num" id="psPhEe">&#8369; 0.00</td>
                         </tr>
                         <tr>
-                            <td>Pag-IBIG (EE)</td>
-                            <td class="num">-</td>
-                            <td class="num" id="psPiEe">&#8369; 0.00</td>
-                        </tr>
-                        <tr>
                             <td>Withholding Tax</td>
                             <td class="num">-</td>
                             <td class="num" id="psTax">&#8369; 0.00</td>
                         </tr>
                         <tr>
-                            <td>Total Statutory + Tax (EE)</td>
+                            <td>HDMF</td>
                             <td class="num">-</td>
-                            <td class="num" id="psStatEeTotal">&#8369; 0.00</td>
+                            <td class="num" id="psPiEe">&#8369; 0.00</td>
                         </tr>
-
                         <tr>
-                            <td>Cash Advance</td>
+                            <td>SSS Loan</td>
                             <td class="num">-</td>
-                            <td class="num" id="psCashAdv">&#8369; 0.00</td>
+                            <td class="num" id="psSssLoan">&#8369; 0.00</td>
                         </tr>
-
-                        <tr id="psLoanDedRow">
-                            <td>Loan Deductions</td>
-                            <td class="num">-</td>
-                            <td class="num" id="psLoanDed">&#8369; 0.00</td>
-                        </tr>
-                        <tr id="psLoanDetailPlaceholder"></tr>
-
                         <tr>
-                            <td>Other Deductions (manual/recurring)</td>
+                            <td>HDMF Loan</td>
                             <td class="num">-</td>
-                            <td class="num" id="psOtherDedTotal">&#8369; 0.00</td>
+                            <td class="num" id="psHdmfLoan">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>PAGIBIG Housing Loan</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psPagibigHousingLoan">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>SSS Housing Loan</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psSssHousingLoan">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>HDMF Calamity Loan</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psHdmfCalamityLoan">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Advances</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psAdvances">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Shortages</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psShortages">&#8369; 0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Charges</td>
+                            <td class="num">-</td>
+                            <td class="num" id="psCharges">&#8369; 0.00</td>
                         </tr>
 
                         <!-- - Deductions adjustments injected here -->
                     <tbody id="psDedAdjRows"></tbody>
 
                     <tr class="psTotalRow">
-                        <td colspan="2">TOTAL DEDUCTIONS</td>
+                        <td colspan="2">Total Deds</td>
                         <td class="num" id="psDedTotal" colspan="2">&#8369; 0.00</td>
                     </tr>
                     </tbody>

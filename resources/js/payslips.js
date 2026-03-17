@@ -62,6 +62,8 @@ document.addEventListener("DOMContentLoaded", () => {
       areaPlace: p.area_place || "",
       periodMonth: p.period_month || "",
       cutoff: p.cutoff || "",
+      periodStart: p.period_start || "",
+      periodEnd: p.period_end || "",
       netPay: Number(p.net_pay || 0),
       releaseStatus: p.release_status || "Draft",
       payslipNo: p.payslip_no || "",
@@ -75,12 +77,18 @@ document.addEventListener("DOMContentLoaded", () => {
       allowancePay: Number(p.allowance_cutoff || 0),
       dailyRate: Number(p.daily_rate || 0),
       paidDays: Number(p.paid_days || 0),
+      presentDays: Number(p.present_days || 0),
+      leaveDays: Number(p.leave_days || 0),
+      absentDays: Number(p.absent_days || 0),
+      minutesLate: Number(p.minutes_late || 0),
+      minutesUndertime: Number(p.minutes_undertime || 0),
       otHours,
       otRate,
       otPay,
       earningsAdjustments: earnAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
       deductionAdjustments: dedAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
       attendanceDeductionTotal: Number(p.attendance_deduction || 0),
+      chargesDeduction: Number(p.charges_deduction || 0),
       sssEe: Number(p.sss_ee || 0),
       philhealthEe: Number(p.philhealth_ee || 0),
         pagibigEe: Number(p.pagibig_ee || 0),
@@ -88,6 +96,11 @@ document.addEventListener("DOMContentLoaded", () => {
         otherDeductionTotal: 0,
         cashAdvance: Number(p.cash_advance || 0),
         loanDeduction: Number(p.loan_deduction || 0),
+      loanItems: Array.isArray(p.loan_items) ? p.loan_items.map(i => ({
+        loanType: i.loan_type || "Loan",
+        deductedAmount: Number(i.deducted_amount || 0),
+        status: i.status || "",
+      })) : [],
       loanDetails: Array.isArray(p.loan_details) ? p.loan_details.map(l => ({
         loanNo: l.loan_no || "",
         loanType: l.loan_type || "",
@@ -107,6 +120,30 @@ document.addEventListener("DOMContentLoaded", () => {
   function safeText(id, value) {
     const el = $(id);
     if (el) el.textContent = value;
+  }
+
+  function fmtShortDate(iso) {
+    const raw = String(iso || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "-";
+    const [y, m, d] = raw.split("-");
+    return `${m}/${d}/${y}`;
+  }
+
+  function minsToHM(mins) {
+    const m = Math.max(0, Math.trunc(Number(mins || 0)));
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${h}h ${mm}m`;
+  }
+
+  function sumLoanDeducted(p, predicate) {
+    const list = Array.isArray(p?.loanItems) ? p.loanItems : [];
+    return list.reduce((a, it) => {
+      const amt = Number(it?.deductedAmount || 0);
+      if (amt <= 0) return a;
+      const t = String(it?.loanType || "").toLowerCase();
+      return predicate(t) ? a + amt : a;
+    }, 0);
   }
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
@@ -271,10 +308,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const psReleaseBtn = $("psReleaseBtn");
   const psDrawerMeta = $("psDrawerMeta");
 
+  const printOverlay = $("printOverlay");
+  const printModal = $("printModal");
+  const printFrame = $("printFrame");
+  const printCloseBtn = $("printCloseBtn");
+
   // new: adjustment containers in preview
   const psEarnAdjRows = $("psEarnAdjRows");
   const psDedAdjRows = $("psDedAdjRows");
-  const psLoanDetailPlaceholder = $("psLoanDetailPlaceholder");
 
   // =========================================================
   // DATA (backend-driven)
@@ -296,6 +337,38 @@ document.addEventListener("DOMContentLoaded", () => {
   let perPage = rowsPerPage ? Number(rowsPerPage.value || 20) : 20;
 
   const selectedIdsSet = new Set();
+
+  // =========================================================
+  // PRINT MODAL
+  // =========================================================
+  function closePrintModal() {
+    if (!printModal || !printOverlay || !printFrame) return;
+    printModal.hidden = true;
+    printModal.setAttribute("aria-hidden", "true");
+    printOverlay.hidden = true;
+    printFrame.src = "about:blank";
+    const drawerOpen = !!(psDrawer && psDrawer.classList.contains("is-open"));
+    document.body.style.overflow = drawerOpen ? "hidden" : "";
+  }
+
+  function openPrintModal(url) {
+    if (!printModal || !printOverlay || !printFrame) return;
+    printFrame.src = url;
+    printOverlay.hidden = false;
+    printModal.hidden = false;
+    printModal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  printCloseBtn && printCloseBtn.addEventListener("click", closePrintModal);
+  printOverlay && printOverlay.addEventListener("click", closePrintModal);
+
+  window.addEventListener("message", (e) => {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.type === "payslips:afterprint") {
+      closePrintModal();
+    }
+  });
 
   // =========================================================
   // INIT DEFAULTS
@@ -361,16 +434,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function loadRuns() {
+  async function loadRuns(forceRunId = "") {
     try {
       const data = await apiFetch("/payslips/runs");
-      const monthVal = monthInput?.value || "";
-      runs = Array.isArray(data)
-        ? data.filter((r) =>
-            (r.status === "Locked" || r.status === "Released") &&
-            (!monthVal || r.period_month === monthVal)
-          )
+      const allRuns = Array.isArray(data)
+        ? data.filter((r) => r && (r.status === "Locked" || r.status === "Released"))
         : [];
+
+      let effectiveMonth = monthInput?.value || "";
+
+      if (forceRunId) {
+        const forced = allRuns.find((r) => String(r.id) === String(forceRunId)) || null;
+        if (forced && forced.period_month && monthInput) {
+          monthInput.value = forced.period_month;
+          effectiveMonth = forced.period_month;
+        }
+      }
+
+      runs = allRuns.filter((r) => !effectiveMonth || r.period_month === effectiveMonth);
       initRunSelect();
     } catch {
       runs = [];
@@ -775,6 +856,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // pay period
     set("psMonth", p.periodMonth || "-");
     set("psCutoff", p.cutoff === "11-25" ? "11-25" : p.cutoff === "26-10" ? "26-10" : "-");
+    const periodLabel = (p.periodStart && p.periodEnd) ? `${fmtShortDate(p.periodStart)} to ${fmtShortDate(p.periodEnd)}` : "-";
+    set("psPeriod", periodLabel);
 
     set("psPayDate", resolvePayDate(p.periodMonth, p.cutoff));
     const payMethod = String(p.payMethod || "").toUpperCase();
@@ -812,10 +895,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const piEe = Number(p.pagibigEe || 0);
     const tax = Number(p.withholdingTax || 0);
 
-      const attendanceDed = Number(p.attendanceDeductionTotal || 0);
-      const cashAdv = Number(p.cashAdvance || 0);
-      const loanDed = Number(p.loanDeduction || 0);
-      const otherDed = Number(p.otherDeductionTotal || 0);
+    const attendanceDed = Number(p.attendanceDeductionTotal || 0);
+    const cashAdv = Number(p.cashAdvance || 0);
+    const chargesDed = Number(p.chargesDeduction || 0);
+    const otherDed = Number(p.otherDeductionTotal || 0);
+
+    const sssHousingLoan = sumLoanDeducted(p, (t) => t.includes("sss housing"));
+    const hdmfCalamityLoan = sumLoanDeducted(p, (t) => t.includes("calamity"));
+    const pagibigHousingLoan = sumLoanDeducted(p, (t) => t.includes("housing") && (t.includes("pagibig") || t.includes("hdmf")));
+    const sssLoan = Math.max(0, sumLoanDeducted(p, (t) => t.includes("sss")) - sssHousingLoan);
+    const hdmfLoan = Math.max(0, sumLoanDeducted(p, (t) => t.includes("hdmf")) - pagibigHousingLoan - hdmfCalamityLoan);
+    const loanDed = sssLoan + hdmfLoan + pagibigHousingLoan + sssHousingLoan + hdmfCalamityLoan;
 
     const statutoryEeTotal = sssEe + phEe + piEe + tax;
     setMoney("psAttDedTotal", attendanceDed);
@@ -823,31 +913,22 @@ document.addEventListener("DOMContentLoaded", () => {
     setMoney("psPhEe", phEe);
     setMoney("psPiEe", piEe);
     setMoney("psTax", tax);
-      setMoney("psStatEeTotal", statutoryEeTotal);
 
-      setMoney("psCashAdv", cashAdv);
-      setMoney("psLoanDed", loanDed);
-      if (psLoanDetailPlaceholder) {
-        document.querySelectorAll(".loan-detail-row").forEach(el => el.remove());
-        if (Array.isArray(p.loanDetails) && p.loanDetails.length) {
-          const rowsHtml = p.loanDetails.map((l) => `
-            <tr class="loan-detail-row">
-              <td>Loan - ${escapeHtml(l.loanType || "Loan")}</td>
-              <td class="num">${escapeHtml(l.status || "")}</td>
-              <td class="num">${escapeHtml(peso(l.perCutoff || 0))}</td>
-            </tr>
-          `).join("");
-          psLoanDetailPlaceholder.insertAdjacentHTML("afterend", rowsHtml);
-        }
-      }
-      setMoney("psOtherDedTotal", otherDed);
+    setMoney("psSssLoan", sssLoan);
+    setMoney("psHdmfLoan", hdmfLoan);
+    setMoney("psPagibigHousingLoan", pagibigHousingLoan);
+    setMoney("psSssHousingLoan", sssHousingLoan);
+    setMoney("psHdmfCalamityLoan", hdmfCalamityLoan);
+    setMoney("psAdvances", cashAdv);
+    setMoney("psShortages", 0);
+    setMoney("psCharges", chargesDed);
 
     // - totals (computed to ensure correctness)
     const totalEarnAdj = sumAmounts(earnAdj);
     const totalDedAdj = sumAmounts(dedAdj);
 
     const baseGross = Number(p.basicPay || 0) + Number(p.allowancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
-      const baseDed = attendanceDed + statutoryEeTotal + cashAdv + loanDed + otherDed + totalDedAdj;
+    const baseDed = attendanceDed + statutoryEeTotal + loanDed + cashAdv + chargesDed + otherDed + totalDedAdj;
     const computedNet = baseGross - baseDed;
 
     setMoney("psGross", baseGross);
@@ -870,7 +951,17 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.style.overflow = "hidden";
 
     // actions
-    if (psPrintBtn) psPrintBtn.onclick = () => window.print();
+    if (psPrintBtn) {
+      psPrintBtn.onclick = () => {
+        const qs = new URLSearchParams({
+          run_id: String(p.runId || ""),
+          ids: String(p.id || ""),
+          autoprint: "1",
+          in_modal: "1",
+        });
+        openPrintModal(`/payslips/print?${qs.toString()}`);
+      };
+    }
 
     if (psDownloadBtn) psDownloadBtn.onclick = () => alert("PDF download: connect to backend PDF generation later.");
 
@@ -936,8 +1027,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const action = btn.dataset.action;
       if (action === "view") return openPayslipDrawer(p);
       if (action === "print") {
-        openPayslipDrawer(p);
-        setTimeout(() => window.print(), 50);
+        const qs = new URLSearchParams({
+          run_id: String(p.runId || selectedRunId || ""),
+          ids: String(p.id || ""),
+          autoprint: "1",
+          in_modal: "1",
+        });
+        openPrintModal(`/payslips/print?${qs.toString()}`);
         return;
       }
       if (action === "pdf") return alert("Row PDF download: connect to backend later.");
@@ -1094,9 +1190,13 @@ document.addEventListener("DOMContentLoaded", () => {
     bulkPrintBtn.addEventListener("click", () => {
       const ids = selectedIds();
       if (!ids.length) return alert("Select at least 1 payslip.");
-      const url = `/payslips/print?run_id=${encodeURIComponent(selectedRunId)}&ids=${encodeURIComponent(ids.join(","))}&autoprint=1`;
-      const w = window.open(url, "_blank");
-      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
+      const qs = new URLSearchParams({
+        run_id: selectedRunId,
+        ids: ids.join(","),
+        autoprint: "1",
+        in_modal: "1",
+      });
+      openPrintModal(`/payslips/print?${qs.toString()}`);
     });
 
   // pagination
@@ -1186,11 +1286,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const qs = new URLSearchParams({
         run_id: selectedRunId,
         autoprint: "1",
+        in_modal: "1",
       });
       if (ids.length) qs.set("ids", ids.join(","));
-      const url = `/payslips/print?${qs.toString()}`;
-      const w = window.open(url, "_blank");
-      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
+      openPrintModal(`/payslips/print?${qs.toString()}`);
     });
 
   releaseAllBtn &&
@@ -1260,12 +1359,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const params = new URLSearchParams(window.location.search);
   const initialRunId = params.get("run_id") || "";
+  const initialMonth = params.get("month") || params.get("period_month") || "";
+  if (initialMonth && monthInput && /^\d{4}-\d{2}$/.test(initialMonth)) {
+    monthInput.value = initialMonth;
+  }
 
   Promise.resolve()
     .then(() => loadPayrollCalendarSettings())
     .then(() => loadCompanySetup())
     .then(() => loadFilterOptions())
-    .then(() => loadRuns())
+    .then(() => loadRuns(initialRunId))
     .then(() => {
       if (initialRunId && runSelect) {
         selectedRunId = initialRunId;

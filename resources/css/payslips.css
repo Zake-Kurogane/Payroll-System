@@ -650,8 +650,9 @@ th.sortable.is-desc .sortIcon {
     padding: 6px 12px;
     border-radius: 999px;
     font-size: 12px;
-    font-weight: 1000;
+    font-weight: 700;
     border: 1px solid transparent;
+    white-space: nowrap;
 }
 .chip--present {
     background: rgba(34, 197, 94, 0.12);
@@ -736,6 +737,9 @@ th.sortable.is-desc .sortIcon {
     backdrop-filter: blur(2px);
     z-index: 50;
 }
+.overlay[hidden] {
+    display: none !important;
+}
 .drawer {
     position: fixed;
     top: 0;
@@ -756,6 +760,42 @@ th.sortable.is-desc .sortIcon {
 }
 .drawer--wide {
     width: min(900px, 96vw);
+}
+
+.modal {
+    position: fixed;
+    inset: 24px;
+    background: #fff;
+    border: 1px solid rgba(17, 24, 39, 0.12);
+    border-radius: 12px;
+    z-index: 70;
+    box-shadow: 0 30px 60px rgba(17, 24, 39, 0.22);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.modal[hidden] {
+    display: none !important;
+}
+.modal__head {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+.modal__title {
+    font-weight: 1000;
+    color: #9c1d3c;
+}
+.modal__frame {
+    border: 0;
+    width: 100%;
+    flex: 1 1 auto;
+}
+@media (max-width: 720px) {
+    .modal { inset: 0; border-radius: 0; }
 }
 
 .drawer__head {

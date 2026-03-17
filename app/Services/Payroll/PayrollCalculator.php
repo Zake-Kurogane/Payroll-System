@@ -785,13 +785,27 @@ class PayrollCalculator
             $taxableBase = $taxable * $periodsPerMonth;
         }
 
-        $brackets = $brackets->filter(function ($b) use ($policy) {
+        $originalBrackets = $brackets->values();
+
+        // When timing is monthly, taxableBase is monthly; prefer monthly tax brackets to avoid using
+        // semi-monthly/weekly ranges against a monthly base (which can dramatically over-withhold).
+        $targetFreq = $timing === 'monthly' ? 'monthly' : (string) $policy->pay_frequency;
+
+        $filtered = $originalBrackets->filter(function ($b) use ($targetFreq) {
             if (!$b->pay_frequency) return true;
-            return $b->pay_frequency === $policy->pay_frequency;
+            return $b->pay_frequency === $targetFreq;
         })->values();
-        if ($brackets->isEmpty()) {
-            $brackets = $brackets->values();
+
+        // Fallbacks for legacy tables (no frequency column) or mis-tagged imports.
+        if ($filtered->isEmpty() && $timing === 'monthly' && (string) $policy->pay_frequency !== 'monthly') {
+            $fallback = $originalBrackets->filter(function ($b) use ($policy) {
+                if (!$b->pay_frequency) return true;
+                return $b->pay_frequency === $policy->pay_frequency;
+            })->values();
+            $filtered = $fallback->isEmpty() ? $originalBrackets : $fallback;
         }
+
+        $brackets = $filtered->isEmpty() ? $originalBrackets : $filtered;
 
         $amount = 0.0;
         foreach ($brackets as $b) {

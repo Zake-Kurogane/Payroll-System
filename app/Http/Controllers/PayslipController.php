@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeLoan;
 use App\Models\CompanySetup;
 use App\Models\PayrollRun;
+use App\Models\PayrollRunLoanItem;
 use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
 use App\Models\Payslip;
@@ -79,6 +80,7 @@ class PayslipController extends Controller
             'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
             'ids' => ['nullable', 'string'],
             'autoprint' => ['nullable', 'boolean'],
+            'in_modal' => ['nullable', 'boolean'],
         ]);
 
         $run = PayrollRun::query()->findOrFail($validated['run_id']);
@@ -102,6 +104,7 @@ class PayslipController extends Controller
             'run' => $run,
             'pages' => $pages,
             'autoprint' => (bool) ($validated['autoprint'] ?? false),
+            'inModal' => (bool) ($validated['in_modal'] ?? false),
             'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
         ]);
     }
@@ -411,6 +414,12 @@ class PayslipController extends Controller
             ->get()
             ->keyBy('employee_id');
 
+        $loanItems = PayrollRunLoanItem::query()
+            ->with('loan')
+            ->where('payroll_run_id', $run->id)
+            ->get()
+            ->groupBy('employee_id');
+
         $empIds = $payslips->pluck('employee_id')->filter()->values();
         $attendance = AttendanceRecord::query()
             ->whereIn('employee_id', $empIds)
@@ -418,7 +427,7 @@ class PayslipController extends Controller
             ->get()
             ->groupBy('employee_id');
 
-        return $payslips->map(function (Payslip $p) use ($rows, $run, $attendance, $start, $end, $workMonSat) {
+        return $payslips->map(function (Payslip $p) use ($rows, $loanItems, $run, $attendance, $start, $end, $workMonSat) {
             $emp = $p->employee;
             $row = $rows->get($p->employee_id);
             $name = $emp
@@ -426,10 +435,17 @@ class PayslipController extends Controller
                 : '';
 
             $dailyRate = $emp && $emp->basic_pay ? ((float) $emp->basic_pay / 26) : 0.0;
-            $paidDays = 0.0;
+            $att = [
+                'paid_days' => 0.0,
+                'present_days' => 0.0,
+                'absent_days' => 0.0,
+                'leave_days' => 0.0,
+                'minutes_late' => 0,
+                'minutes_undertime' => 0,
+            ];
             if ($emp) {
                 $records = $attendance->get($emp->id, collect());
-                $paidDays = $this->paidDaysInRange($records, $start, $end, $workMonSat);
+                $att = $this->attendanceBreakdownInRange($records, $start, $end, $workMonSat);
             }
 
             return [
@@ -439,6 +455,8 @@ class PayslipController extends Controller
                 'run_code' => $run->run_code,
                 'period_month' => $run->period_month,
                 'cutoff' => $run->cutoff,
+                'period_start' => $start->toDateString(),
+                'period_end' => $end->toDateString(),
                 'release_status' => $p->release_status,
                 'delivery_status' => $p->delivery_status,
                 'generated_at' => $p->generated_at,
@@ -456,7 +474,12 @@ class PayslipController extends Controller
                 'bank_name' => $emp?->bank_name,
                 'bank_account_number' => $emp?->bank_account_number,
                 'daily_rate' => (float) $dailyRate,
-                'paid_days' => (float) $paidDays,
+                'paid_days' => (float) ($att['paid_days'] ?? 0),
+                'present_days' => (float) ($att['present_days'] ?? 0),
+                'absent_days' => (float) ($att['absent_days'] ?? 0),
+                'leave_days' => (float) ($att['leave_days'] ?? 0),
+                'minutes_late' => (int) ($att['minutes_late'] ?? 0),
+                'minutes_undertime' => (int) ($att['minutes_undertime'] ?? 0),
                 'basic_pay_cutoff' => (float) ($row?->basic_pay_cutoff ?? 0),
                 'allowance_cutoff' => (float) ($row?->allowance_cutoff ?? 0),
                 'ot_hours' => (float) ($row?->ot_hours ?? 0),
@@ -469,6 +492,15 @@ class PayslipController extends Controller
                 'tax' => (float) ($row?->tax ?? 0),
                 'cash_advance' => (float) ($row?->cash_advance ?? 0),
                 'loan_deduction' => (float) ($row?->loan_deduction ?? 0),
+                'loan_items' => collect($loanItems->get($p->employee_id, collect()))
+                    ->map(function (PayrollRunLoanItem $i) {
+                        return [
+                            'loan_type' => $i->loan?->loan_type ?? 'Loan',
+                            'deducted_amount' => (float) ($i->deducted_amount ?? 0),
+                            'status' => (string) ($i->status ?? 'scheduled'),
+                        ];
+                    })
+                    ->values(),
                 'loan_details' => EmployeeLoan::query()
                     ->where('employee_id', $p->employee_id)
                     ->orderByDesc('id')
@@ -524,10 +556,20 @@ class PayslipController extends Controller
         return $date->format('m-d-Y');
     }
 
-    private function paidDaysInRange($records, Carbon $start, Carbon $end, bool $workMonSat): float
+    private function attendanceBreakdownInRange($records, Carbon $start, Carbon $end, bool $workMonSat): array
     {
         $map = collect($records)->keyBy(fn ($r) => $r->date?->format('Y-m-d'));
         $paidDays = 0.0;
+        $presentDays = 0.0;
+        $absentDays = 0.0;
+        $leaveDays = 0.0;
+        $minutesLate = 0;
+        $minutesUndertime = 0;
+
+        $presentStatuses = ['Present', 'Late', 'Half-day'];
+        $absentStatuses = ['Absent', 'Unpaid Leave', 'LOA'];
+        $leaveStatuses = ['Leave', 'Paid Leave'];
+
         $d = $start->copy();
         while ($d->lte($end)) {
             $dow = (int) $d->dayOfWeekIso; // 1=Mon ... 7=Sun
@@ -536,11 +578,29 @@ class PayslipController extends Controller
                 $key = $d->format('Y-m-d');
                 $rec = $map->get($key);
                 $status = $rec?->status ?? null;
+                if (is_string($status)) {
+                    if (in_array($status, $presentStatuses, true)) $presentDays += 1.0;
+                    if (in_array($status, $absentStatuses, true)) $absentDays += 1.0;
+                    if (in_array($status, $leaveStatuses, true)) $leaveDays += 1.0;
+                }
+
                 $paidDays += $this->paidDayFraction($status);
+
+                if ($rec) {
+                    $minutesLate += (int) ($rec->minutes_late ?? 0);
+                    $minutesUndertime += (int) ($rec->minutes_undertime ?? 0);
+                }
             }
             $d->addDay();
         }
-        return $paidDays;
+        return [
+            'paid_days' => $paidDays,
+            'present_days' => $presentDays,
+            'absent_days' => $absentDays,
+            'leave_days' => $leaveDays,
+            'minutes_late' => $minutesLate,
+            'minutes_undertime' => $minutesUndertime,
+        ];
     }
 
     private function paidDayFraction(?string $status): float

@@ -160,14 +160,31 @@
     @if($autoprint)
         <script>
             const canClose = !!window.opener;
+            const inModal = {{ !empty($inModal) ? 'true' : 'false' }};
             window.addEventListener("load", () => {
                 setTimeout(() => window.print(), 300);
             });
             window.addEventListener("afterprint", () => {
+                if (inModal) {
+                    try {
+                        window.parent.postMessage({ type: "payslips:afterprint" }, window.location.origin);
+                    } catch {
+                        // ignore
+                    }
+                    return;
+                }
                 if (canClose) window.close();
             });
             // Fallback: if afterprint doesn't fire, close after 20s if possible.
             setTimeout(() => {
+                if (inModal) {
+                    try {
+                        window.parent.postMessage({ type: "payslips:afterprint" }, window.location.origin);
+                    } catch {
+                        // ignore
+                    }
+                    return;
+                }
                 if (canClose) window.close();
             }, 20000);
         </script>
@@ -204,12 +221,27 @@
                             <div class="psInfoRow"><span>Employee ID</span><strong>{{ $p['emp_no'] ?? ($p['employee_id'] ?? '-') }}</strong></div>
                             <div class="psInfoRow"><span>Department</span><strong>{{ $p['department'] ?? '-' }}</strong></div>
                             <div class="psInfoRow"><span>Position</span><strong>{{ $p['position'] ?? '-' }}</strong></div>
+                            @php
+                                $branchName = $p['external_area'] ?? $p['area_place'] ?? null;
+                                $branchName = is_string($branchName) && trim($branchName) !== '' ? trim($branchName) : '-';
+                            @endphp
+                            <div class="psInfoRow"><span>Assignment</span><strong>{{ $branchName }}</strong></div>
                         </div>
                         <div class="psInfoCol">
                             <div class="psInfoTitle">PAY PERIOD</div>
                             <div class="psInfoRow"><span>Payroll Month</span><strong>{{ $p['period_month'] ?? '-' }}</strong></div>
                             <div class="psInfoRow"><span>Cutoff</span><strong>{{ $p['cutoff'] ?? '-' }}</strong></div>
+                            <div class="psInfoRow"><span>Period</span><strong>
+                                {{ ($p['period_start'] ?? null) ? \Carbon\Carbon::parse($p['period_start'])->format('m/d/Y') : '-' }}
+                                to
+                                {{ ($p['period_end'] ?? null) ? \Carbon\Carbon::parse($p['period_end'])->format('m/d/Y') : '-' }}
+                            </strong></div>
                             <div class="psInfoRow"><span>Pay Date</span><strong>{{ $payDate }}</strong></div>
+                            @php
+                                $pm = strtoupper((string) ($p['pay_method'] ?? ''));
+                                $payMethod = $pm === 'BANK' ? 'Bank' : 'Cash';
+                            @endphp
+                            <div class="psInfoRow"><span>Pay Method</span><strong>{{ $payMethod }}</strong></div>
                         </div>
                     </div>
 
@@ -274,18 +306,35 @@
                             </tr>
                             <tr><td>SSS (EE)</td><td class="num">-</td><td class="num">{{ $money($p['sss_ee'] ?? 0) }}</td></tr>
                             <tr><td>PhilHealth (EE)</td><td class="num">-</td><td class="num">{{ $money($p['philhealth_ee'] ?? 0) }}</td></tr>
-                            <tr><td>Pag-IBIG (EE)</td><td class="num">-</td><td class="num">{{ $money($p['pagibig_ee'] ?? 0) }}</td></tr>
                             <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{{ $money($p['tax'] ?? 0) }}</td></tr>
-                            <tr><td>Total Statutory + Tax (EE)</td><td class="num">-</td><td class="num">{{ $money($statEE) }}</td></tr>
-                            <tr><td>Cash Advance</td><td class="num">-</td><td class="num">{{ $money($p['cash_advance'] ?? 0) }}</td></tr>
-                            <tr><td>Loan Deductions</td><td class="num">-</td><td class="num">{{ $money($p['loan_deduction'] ?? 0) }}</td></tr>
-                            @foreach(($p['loan_details'] ?? []) as $loan)
-                                <tr>
-                                    <td>Loan - {{ $loan['loan_type'] ?? 'Loan' }}</td>
-                                    <td class="num">{{ $loan['status'] ?? '-' }}</td>
-                                    <td class="num">{{ $money($loan['per_cutoff'] ?? 0) }}</td>
-                                </tr>
-                            @endforeach
+                            @php
+                                $loanItems = collect($p['loan_items'] ?? [])->filter(fn ($i) => (float) ($i['deducted_amount'] ?? 0) > 0);
+                                $sumType = function (string $needle) use ($loanItems) {
+                                    return (float) $loanItems
+                                        ->filter(fn ($i) => str_contains(strtolower((string) ($i['loan_type'] ?? '')), $needle))
+                                        ->sum(fn ($i) => (float) ($i['deducted_amount'] ?? 0));
+                                };
+                                $sssHousing = $sumType('sss housing');
+                                $hdmfCalamity = $sumType('calamity');
+                                $pagibigHousing = (float) $loanItems
+                                    ->filter(fn ($i) => str_contains(strtolower((string) ($i['loan_type'] ?? '')), 'housing')
+                                        && (str_contains(strtolower((string) ($i['loan_type'] ?? '')), 'pagibig') || str_contains(strtolower((string) ($i['loan_type'] ?? '')), 'hdmf')))
+                                    ->sum(fn ($i) => (float) ($i['deducted_amount'] ?? 0));
+                                $sssLoan = max(0.0, $sumType('sss') - $sssHousing);
+                                $hdmfLoan = max(0.0, $sumType('hdmf') - $pagibigHousing - $hdmfCalamity);
+                                $advances = (float) ($p['cash_advance'] ?? 0);
+                                $charges = (float) ($p['charges_deduction'] ?? 0);
+                                $shortages = 0.0;
+                            @endphp
+                            <tr><td>HDMF</td><td class="num">-</td><td class="num">{{ $money($p['pagibig_ee'] ?? 0) }}</td></tr>
+                            <tr><td>SSS Loan</td><td class="num">-</td><td class="num">{{ $money($sssLoan) }}</td></tr>
+                            <tr><td>HDMF Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfLoan) }}</td></tr>
+                            <tr><td>PAGIBIG Housing Loan</td><td class="num">-</td><td class="num">{{ $money($pagibigHousing) }}</td></tr>
+                            <tr><td>SSS Housing Loan</td><td class="num">-</td><td class="num">{{ $money($sssHousing) }}</td></tr>
+                            <tr><td>HDMF Calamity Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfCalamity) }}</td></tr>
+                            <tr><td>Advances</td><td class="num">-</td><td class="num">{{ $money($advances) }}</td></tr>
+                            <tr><td>Shortages</td><td class="num">-</td><td class="num">{{ $money($shortages) }}</td></tr>
+                            <tr><td>Charges</td><td class="num">-</td><td class="num">{{ $money($charges) }}</td></tr>
                             @foreach($dedAdj as $a)
                                 <tr>
                                     <td>{{ $a['name'] ?? 'Adjustment' }}</td>
@@ -294,7 +343,7 @@
                                 </tr>
                             @endforeach
                             <tr class="psTotalRow">
-                                <td colspan="2">TOTAL DEDUCTIONS</td>
+                                <td colspan="2">Total Deds</td>
                                 <td class="num">{{ $money($p['deductions_total'] ?? 0) }}</td>
                             </tr>
                         </tbody>
