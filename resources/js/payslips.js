@@ -1329,6 +1329,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const ids = selectedIds();
       const payload = { run_id: Number(selectedRunId) };
+      const prevText = sendEmailBtn?.textContent || "";
+      if (sendEmailBtn) {
+        sendEmailBtn.disabled = true;
+        sendEmailBtn.textContent = "Sending…";
+      }
       apiFetch("/payslips/send-email", {
         method: "POST",
         body: JSON.stringify({
@@ -1338,20 +1343,36 @@ document.addEventListener("DOMContentLoaded", () => {
       })
         .then((res) => {
           const skipped = Array.isArray(res?.skipped) ? res.skipped : [];
+          const failed = Array.isArray(res?.failed) ? res.failed : [];
+          const failedEmpNos = new Set(failed.map((f) => String(f?.emp_no ?? "")));
           const scoped = ids.length
             ? payslips.filter((p) => ids.includes(p.id))
             : payslips.filter((p) => p.runId === selectedRunId);
           scoped.forEach((p) => {
+            if (failedEmpNos.has(String(p.empId))) {
+              p.deliveryStatus = "Failed";
+              return;
+            }
             if (!skipped.includes(p.empId)) p.deliveryStatus = "Sent";
           });
           render();
-          if (skipped.length) {
-            alert(`Sent: ${res?.sent || 0}. Skipped (no email): ${skipped.length}`);
-          } else {
-            alert(`Sent: ${res?.sent || 0}.`);
+          let msg = `Sent: ${res?.sent || 0}.`;
+          if (skipped.length) msg += ` Skipped (no email): ${skipped.length}.`;
+          if (failed.length) {
+            msg += ` Failed: ${failed.length}.`;
+            const first = failed[0];
+            if (first?.error) msg += `\nFirst error (${first.emp_no || "emp"}): ${first.error}`;
           }
+          alert(msg);
         })
-        .catch((err) => alert(err.message || "Failed to send emails."));
+        .catch((err) => alert(err.message || "Failed to send emails."))
+        .finally(() => {
+          if (sendEmailBtn) {
+            sendEmailBtn.textContent = prevText || "Send Payslips via Email";
+            const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
+            sendEmailBtn.disabled = !run || (run.status !== "Locked" && run.status !== "Released");
+          }
+        });
     });
 
   // init

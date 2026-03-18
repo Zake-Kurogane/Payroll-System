@@ -27,164 +27,10 @@ document.addEventListener("DOMContentLoaded", () => {
       .replaceAll("'", "&#039;");
 
   // =========================================================
-  // DEMO RUNS + DEMO REGISTER ROWS (replace with backend later)
-  // Each register row belongs to a run.
+  // DATA (loaded from backend)
   // =========================================================
-  const RUNS = [
-    {
-      id: "RUN-2026-01-16E-ALL",
-      month: "2026-01",
-      cutoff: "16–End",
-      assignment: "All",
-      status: "Processed", // Processed / Released
-      employees: 32,
-      totalNet: 512345.67,
-      processedAt: "2026-01-31 17:20",
-      processedBy: "Admin",
-      payslipsGeneratedAt: "2026-02-01 09:10",
-      releasedAt: "—",
-    },
-    {
-      id: "RUN-2026-02-115-TAGUM",
-      month: "2026-02",
-      cutoff: "1–15",
-      assignment: "Tagum",
-      status: "Released",
-      employees: 18,
-      totalNet: 221900.0,
-      processedAt: "2026-02-15 18:05",
-      processedBy: "Admin",
-      payslipsGeneratedAt: "2026-02-15 18:10",
-      releasedAt: "2026-02-15 18:20",
-    },
-  ];
-
-  const REGISTER = [
-    // run 1
-    {
-      runId: "RUN-2026-01-16E-ALL",
-      empId: "1023",
-      empName: "Dela Cruz, Juan",
-      department: "Sales",
-      empType: "Regular",
-      assignmentType: "Tagum",
-      areaPlace: "",
-      presentDays: 12,
-      absentDays: 1,
-      leaveDays: 0,
-      dailyRate: 610,
-      attendancePay: 7320,
-      otHours: 4.5,
-      otPay: 427.5,
-      // deductions breakdown
-      attendanceDeduction: 0,
-      otherDeductions: 0,
-      sssEe: 300,
-      philhealthEe: 150,
-      pagibigEe: 100,
-      tax: 0,
-      sssEr: 650,
-      philhealthEr: 300,
-      pagibigEr: 200,
-      gross: 8547.5,
-      deductionsEe: 550,
-      employerShare: 1150,
-      netPay: 7997.5,
-      payslipStatus: "Generated", // Not generated / Generated / Finalized
-    },
-    {
-      runId: "RUN-2026-01-16E-ALL",
-      empId: "1044",
-      empName: "Santos, Maria",
-      department: "Finance",
-      empType: "Regular",
-      assignmentType: "Area",
-      areaPlace: "Laak",
-      presentDays: 12,
-      absentDays: 0,
-      leaveDays: 0,
-      dailyRate: 700,
-      attendancePay: 8400,
-      otHours: 2,
-      otPay: 210,
-      attendanceDeduction: 0,
-      otherDeductions: 0,
-      sssEe: 320,
-      philhealthEe: 160,
-      pagibigEe: 100,
-      tax: 0,
-      sssEr: 680,
-      philhealthEr: 320,
-      pagibigEr: 200,
-      gross: 8910,
-      deductionsEe: 580,
-      employerShare: 1200,
-      netPay: 8330,
-      payslipStatus: "Generated",
-    },
-
-    // run 2
-    {
-      runId: "RUN-2026-02-115-TAGUM",
-      empId: "1102",
-      empName: "Garcia, Leo",
-      department: "Operations",
-      empType: "Contractual",
-      assignmentType: "Tagum",
-      areaPlace: "",
-      presentDays: 10,
-      absentDays: 0,
-      leaveDays: 0,
-      dailyRate: 500,
-      attendancePay: 5000,
-      otHours: 1,
-      otPay: 80,
-      attendanceDeduction: 0,
-      otherDeductions: 0,
-      sssEe: 220,
-      philhealthEe: 120,
-      pagibigEe: 80,
-      tax: 0,
-      sssEr: 450,
-      philhealthEr: 240,
-      pagibigEr: 160,
-      gross: 5280,
-      deductionsEe: 420,
-      employerShare: 850,
-      netPay: 4860,
-      payslipStatus: "Finalized",
-    },
-    {
-      runId: "RUN-2026-02-115-TAGUM",
-      empId: "1103",
-      empName: "Perez, Ana",
-      department: "Operations",
-      empType: "Contractual",
-      assignmentType: "Tagum",
-      areaPlace: "",
-      presentDays: 0,
-      absentDays: 0,
-      leaveDays: 0,
-      dailyRate: 520,
-      attendancePay: 0,
-      otHours: 0,
-      otPay: 0,
-      attendanceDeduction: 0,
-      otherDeductions: 0,
-      sssEe: 0,
-      philhealthEe: 0,
-      pagibigEe: 0,
-      tax: 0,
-      sssEr: 0,
-      philhealthEr: 0,
-      pagibigEr: 0,
-      gross: 0,
-      deductionsEe: 0,
-      employerShare: 0,
-      netPay: 0,
-      payslipStatus: "Not generated",
-    },
-  ];
+  let RUNS = [];
+  let REGISTER = [];
 
   // =========================================================
   // ELEMENTS
@@ -225,6 +71,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const regTbody = $("regTbody");
   const bdTbody = $("bdTbody");
   const remitTbody = $("remitTbody");
+  const externalGrossTbody = $("externalGrossTbody");
+  const externalPayslipsTbody = $("externalPayslipsTbody");
+  const companyPayslipsTbody = $("companyPayslipsTbody");
+  const overallTbody = $("overallTbody");
   const auditTbody = $("auditTbody");
   const issuesTbody = $("issuesTbody");
 
@@ -261,12 +111,86 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!runSelect) return;
     runSelect.innerHTML =
       `<option value="">— Select a payroll run —</option>` +
-      RUNS.map((r) => {
-        const label = `${r.month} (${r.cutoff}) • ${r.assignment} • ${r.status} • ${r.employees} employees`;
+      RUNS.filter(runMatchesFilters).map((r) => {
+        const label = `${r.month} (${r.cutoffLabel}) • ${r.displayLabel} • ${r.status} • ${r.employees} employees`;
         return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
       }).join("");
   }
-  initRunSelect();
+
+  function mapRun(run) {
+    const assignmentText = run.assignment_filter === "Field" && run.area_place_filter
+      ? `Field (${run.area_place_filter})`
+      : (run.assignment_filter || "—");
+
+    return {
+      id: String(run.id),
+      month: run.period_month,
+      cutoff: run.cutoff,
+      cutoffLabel: run.cutoff || "—",
+      assignment: assignmentText,
+      status: run.status || "—",
+      employees: Number(run.headcount || 0),
+      totalNet: Number(run.net || 0),
+      processedAt: run.locked_at || run.created_at || "—",
+      processedBy: run.created_by_name || "—",
+      payslipsGeneratedAt: run.payslips_generated_at || "—",
+      releasedAt: run.released_at || "—",
+      runType: run.run_type || "External",
+      displayLabel: run.display_label || `${run.run_type || "External"} · ${assignmentText}`,
+    };
+  }
+
+  function mapRow(row) {
+    const basic = Number(row.basic_pay_cutoff || 0);
+    const allowance = Number(row.allowance_cutoff || 0);
+    const charges = Number(row.charges_deduction || 0);
+    const loanDeduction = Number(row.loan_deduction || 0);
+    const cashAdvance = Number(row.cash_advance || 0);
+
+    return {
+      runId: selectedRunId,
+      empId: row.emp_no || String(row.employee_id || ""),
+      empName: row.name || "",
+      department: row.department || "",
+      empType: row.employment_type || "",
+      assignmentType: row.assignment || "",
+      areaPlace: row.area_place || "",
+      externalArea: row.external_area || "",
+      presentDays: Number(row.present_days || 0),
+      absentDays: Number(row.absent_days || 0),
+      leaveDays: Number(row.leave_days || 0),
+      dailyRate: Number(row.daily_rate || 0),
+      attendancePay: basic + allowance,
+      otHours: Number(row.ot_hours || 0),
+      otPay: Number(row.ot_pay || 0),
+      attendanceDeduction: Number(row.attendance_deduction || 0),
+      chargesDeduction: charges,
+      otherDeductions: charges + loanDeduction + cashAdvance,
+      sssEe: Number(row.sss_ee || 0),
+      philhealthEe: Number(row.philhealth_ee || 0),
+      pagibigEe: Number(row.pagibig_ee || 0),
+      tax: Number(row.tax || 0),
+      sssEr: Number(row.sss_er || 0),
+      philhealthEr: Number(row.philhealth_er || 0),
+      pagibigEr: Number(row.pagibig_er || 0),
+      gross: Number(row.gross || 0),
+      deductionsEe: Number(row.deductions_total || 0),
+      employerShare: Number(row.employer_share_total || 0),
+      netPay: Number(row.net_pay || 0),
+      payslipStatus: row.payslip_status || "—",
+    };
+  }
+
+  async function loadRuns() {
+    try {
+      const data = await apiFetch("/payroll-runs");
+      RUNS = Array.isArray(data) ? data.map(mapRun) : [];
+    } catch {
+      RUNS = [];
+    }
+    initRunSelect();
+    renderAudit();
+  }
 
   function setTopActionsEnabled(enabled) {
     [viewRunBtn, exportCsvBtn, downloadPdfBtn, printBtn].forEach((b) => {
@@ -529,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(r.id)}</td>
-        <td>${escapeHtml(`${r.month} (${r.cutoff})`)}</td>
+        <td>${escapeHtml(`${r.month} (${r.cutoffLabel})`)}</td>
         <td>${escapeHtml(r.status)}</td>
         <td class="num">${escapeHtml(String(r.employees))}</td>
         <td class="num"><strong>${escapeHtml(peso(r.totalNet))}</strong></td>
@@ -557,17 +481,260 @@ document.addEventListener("DOMContentLoaded", () => {
       if (Number(r.netPay || 0) < 0) {
         issues.push({ empId: r.empId, empName: r.empName, issue: "Negative net pay", severity: "High" });
       }
-      if ((r.presentDays || 0) === 0 && (r.absentDays || 0) === 0 && (r.leaveDays || 0) === 0) {
-        issues.push({ empId: r.empId, empName: r.empName, issue: "Missing attendance", severity: "High" });
-      }
-      if (getRun(r.runId)?.cutoff === "16�End" && (Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0)) === 0) {
-        issues.push({ empId: r.empId, empName: r.empName, issue: "Missing gov contributions (2nd cutoff)", severity: "Medium" });
-      }
       if (r.payslipStatus === "Not generated") {
         issues.push({ empId: r.empId, empName: r.empName, issue: "Payslip not generated", severity: "Low" });
       }
     });
     return issues;
+  }
+
+  function groupBy(list, keyFn) {
+    const map = new Map();
+    list.forEach((item) => {
+      const key = String(keyFn(item) ?? "—");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(item);
+    });
+    return map;
+  }
+
+  function appendGroupHeader(tbody, label, colspan) {
+    const tr = document.createElement("tr");
+    tr.className = "row-group-header";
+    tr.innerHTML = `<td colspan="${colspan}"><strong>${escapeHtml(label)}</strong></td>`;
+    tbody.appendChild(tr);
+  }
+
+  function companyLabel(r) {
+    const area = String(r.areaPlace || "").trim();
+    if (area) return area;
+    const assign = String(r.assignmentType || "").trim();
+    return assign || "—";
+  }
+
+  function renderExternalGross(rows) {
+    if (!externalGrossTbody) return;
+
+    const list = rows
+      .filter((r) => (r.externalArea || "").trim())
+      .slice()
+      .sort((a, b) => {
+        const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
+        if (ea !== 0) return ea;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+
+    externalGrossTbody.innerHTML = "";
+
+    if (!list.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="2" class="muted small">No rows found.</td>`;
+      externalGrossTbody.appendChild(tr);
+      return;
+    }
+
+    const groups = groupBy(list, (r) => (r.externalArea || "—").trim() || "—");
+    Array.from(groups.keys()).sort().forEach((external) => {
+      const items = groups.get(external) || [];
+      appendGroupHeader(externalGrossTbody, external, 2);
+
+      let totalGross = 0;
+      items.forEach((r) => {
+        totalGross += Number(r.gross || 0);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.empName)}</td>
+          <td class="num">${escapeHtml(peso(r.gross))}</td>
+        `;
+        externalGrossTbody.appendChild(tr);
+      });
+
+      const tr = document.createElement("tr");
+      tr.className = "row-total";
+      tr.innerHTML = `
+        <td><strong>Total Gross</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalGross))}</strong></td>
+      `;
+      externalGrossTbody.appendChild(tr);
+    });
+  }
+
+  function renderExternalPayslips(rows) {
+    if (!externalPayslipsTbody) return;
+
+    const list = rows
+      .filter((r) => (r.externalArea || "").trim())
+      .slice()
+      .sort((a, b) => {
+        const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
+        if (ea !== 0) return ea;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+
+    externalPayslipsTbody.innerHTML = "";
+
+    if (!list.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">No rows found.</td>`;
+      externalPayslipsTbody.appendChild(tr);
+      return;
+    }
+
+    const groups = groupBy(list, (r) => (r.externalArea || "—").trim() || "—");
+    Array.from(groups.keys()).sort().forEach((external) => {
+      const items = groups.get(external) || [];
+      appendGroupHeader(externalPayslipsTbody, external, 6);
+
+      let totalGross = 0;
+      let totalDed = 0;
+      let totalShort = 0;
+      let totalCharges = 0;
+      let totalNet = 0;
+
+      items.forEach((r) => {
+        const gross = Number(r.gross || 0);
+        const ded = Number(r.deductionsEe || 0);
+        const shortages = Number(r.attendanceDeduction || 0);
+        const charges = Number(r.chargesDeduction || 0);
+        const net = Number(r.netPay || 0);
+
+        totalGross += gross;
+        totalDed += ded;
+        totalShort += shortages;
+        totalCharges += charges;
+        totalNet += net;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.empName)}</td>
+          <td class="num">${escapeHtml(peso(gross))}</td>
+          <td class="num">${escapeHtml(peso(ded))}</td>
+          <td class="num">${escapeHtml(peso(shortages))}</td>
+          <td class="num">${escapeHtml(peso(charges))}</td>
+          <td class="num"><strong>${escapeHtml(peso(net))}</strong></td>
+        `;
+        externalPayslipsTbody.appendChild(tr);
+      });
+
+      const tr = document.createElement("tr");
+      tr.className = "row-total";
+      tr.innerHTML = `
+        <td><strong>TOTAL</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalGross))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalDed))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalShort))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalCharges))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalNet))}</strong></td>
+      `;
+      externalPayslipsTbody.appendChild(tr);
+    });
+  }
+
+  function renderCompanyPayslips(rows) {
+    if (!companyPayslipsTbody) return;
+
+    const list = rows
+      .slice()
+      .sort((a, b) => {
+        const ca = companyLabel(a).localeCompare(companyLabel(b));
+        if (ca !== 0) return ca;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+
+    companyPayslipsTbody.innerHTML = "";
+
+    if (!list.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">No rows found.</td>`;
+      companyPayslipsTbody.appendChild(tr);
+      return;
+    }
+
+    const groups = groupBy(list, (r) => companyLabel(r));
+    Array.from(groups.keys()).sort().forEach((company) => {
+      const items = groups.get(company) || [];
+      appendGroupHeader(companyPayslipsTbody, company, 6);
+
+      let totalGross = 0;
+      let totalDed = 0;
+      let totalShort = 0;
+      let totalCharges = 0;
+      let totalNet = 0;
+
+      items.forEach((r) => {
+        const gross = Number(r.gross || 0);
+        const ded = Number(r.deductionsEe || 0);
+        const shortages = Number(r.attendanceDeduction || 0);
+        const charges = Number(r.chargesDeduction || 0);
+        const net = Number(r.netPay || 0);
+
+        totalGross += gross;
+        totalDed += ded;
+        totalShort += shortages;
+        totalCharges += charges;
+        totalNet += net;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.empName)}</td>
+          <td class="num">${escapeHtml(peso(gross))}</td>
+          <td class="num">${escapeHtml(peso(ded))}</td>
+          <td class="num">${escapeHtml(peso(shortages))}</td>
+          <td class="num">${escapeHtml(peso(charges))}</td>
+          <td class="num"><strong>${escapeHtml(peso(net))}</strong></td>
+        `;
+        companyPayslipsTbody.appendChild(tr);
+      });
+
+      const tr = document.createElement("tr");
+      tr.className = "row-total";
+      tr.innerHTML = `
+        <td><strong>TOTAL</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalGross))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalDed))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalShort))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalCharges))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalNet))}</strong></td>
+      `;
+      companyPayslipsTbody.appendChild(tr);
+    });
+  }
+
+  function renderOverall(rows) {
+    if (!overallTbody) return;
+
+    const gross = rows.reduce((a, r) => a + Number(r.gross || 0), 0);
+    const deductions = rows.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
+    const net = rows.reduce((a, r) => a + Number(r.netPay || 0), 0);
+    const tax = rows.reduce((a, r) => a + Number(r.tax || 0), 0);
+
+    const statutory = rows.reduce(
+      (a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0),
+      0
+    );
+    const charges = rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
+    const shortages = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
+
+    overallTbody.innerHTML = "";
+
+    const metrics = [
+      ["Total Gross", gross],
+      ["Total Deductions (EE)", deductions],
+      ["Total Net Pay", net],
+      ["Statutory Deductions (EE)", statutory],
+      ["Withholding Tax", tax],
+      ["Charges", charges],
+      ["Shortages", shortages],
+    ];
+
+    metrics.forEach(([label, value]) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(label)}</td>
+        <td class="num"><strong>${escapeHtml(peso(value))}</strong></td>
+      `;
+      overallTbody.appendChild(tr);
+    });
   }
 
   function renderIssues(rows) {
@@ -605,6 +772,10 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRegister(sorted);
     renderBreakdown(sorted);
     renderRemittance(sorted);
+    renderExternalGross(sorted);
+    renderExternalPayslips(sorted);
+    renderCompanyPayslips(sorted);
+    renderOverall(sorted);
     renderAudit();
     renderIssues(sorted);
   }
@@ -621,7 +792,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["register", "breakdown", "remit", "audit", "issues"].forEach((k) => {
+    ["register", "breakdown", "remit", "externalGross", "externalPayslips", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -637,8 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   [monthInput, cutoffSelect, deptSelect, statusSelect].forEach((el) => {
     el && el.addEventListener("change", () => {
-      // If status/month/cutoff changed, run selector should still work;
-      // we just re-render with new filters.
+      initRunSelect();
       renderAll();
     });
   });
@@ -741,7 +911,23 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedRunId = runSelect.value || "";
     const run = selectedRunId ? getRun(selectedRunId) : null;
     setRunUI(run);
+
+    REGISTER = [];
     renderAll();
+
+    if (!selectedRunId) return;
+    setTopActionsEnabled(false);
+    apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/rows`)
+      .then((rows) => {
+        REGISTER = Array.isArray(rows) ? rows.map(mapRow) : [];
+      })
+      .catch(() => {
+        REGISTER = [];
+      })
+      .finally(() => {
+        setTopActionsEnabled(true);
+        renderAll();
+      });
   });
 
   // =========================================================
@@ -758,7 +944,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ...list.map((r) =>
           [
             r.id,
-            `${r.month} (${r.cutoff})`,
+            `${r.month} (${r.cutoffLabel})`,
             r.status,
             r.employees,
             Number(r.totalNet || 0).toFixed(2),
@@ -768,6 +954,117 @@ document.addEventListener("DOMContentLoaded", () => {
             r.releasedAt || "",
           ].map(quote).join(",")
         ),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "externalGross") {
+      const list = rows
+        .filter((r) => (r.externalArea || "").trim())
+        .slice()
+        .sort((a, b) => {
+          const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
+          if (ea !== 0) return ea;
+          return String(a.empName || "").localeCompare(String(b.empName || ""));
+        });
+
+      const headers = ["External", "Name", "Gross Pay"];
+      const csv = [
+        headers.join(","),
+        ...list.map((r) =>
+          [
+            r.externalArea || "",
+            r.empName,
+            Number(r.gross || 0).toFixed(2),
+          ].map(quote).join(",")
+        ),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "externalPayslips") {
+      const list = rows
+        .filter((r) => (r.externalArea || "").trim())
+        .slice()
+        .sort((a, b) => {
+          const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
+          if (ea !== 0) return ea;
+          return String(a.empName || "").localeCompare(String(b.empName || ""));
+        });
+
+      const headers = ["External", "Name", "Gross Pay", "Deductions", "Shortages", "Charges", "Net Pay"];
+      const csv = [
+        headers.join(","),
+        ...list.map((r) =>
+          [
+            r.externalArea || "",
+            r.empName,
+            Number(r.gross || 0).toFixed(2),
+            Number(r.deductionsEe || 0).toFixed(2),
+            Number(r.attendanceDeduction || 0).toFixed(2),
+            Number(r.chargesDeduction || 0).toFixed(2),
+            Number(r.netPay || 0).toFixed(2),
+          ].map(quote).join(",")
+        ),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "companyPayslips") {
+      const list = rows
+        .slice()
+        .sort((a, b) => {
+          const ca = companyLabel(a).localeCompare(companyLabel(b));
+          if (ca !== 0) return ca;
+          return String(a.empName || "").localeCompare(String(b.empName || ""));
+        });
+
+      const headers = ["Company", "Name", "Gross Pay", "Deductions", "Shortages", "Charges", "Net Pay"];
+      const csv = [
+        headers.join(","),
+        ...list.map((r) =>
+          [
+            companyLabel(r),
+            r.empName,
+            Number(r.gross || 0).toFixed(2),
+            Number(r.deductionsEe || 0).toFixed(2),
+            Number(r.attendanceDeduction || 0).toFixed(2),
+            Number(r.chargesDeduction || 0).toFixed(2),
+            Number(r.netPay || 0).toFixed(2),
+          ].map(quote).join(",")
+        ),
+      ].join("\n");
+      downloadCsv(csv, filename);
+      return;
+    }
+
+    if (activeTab === "overall") {
+      const gross = rows.reduce((a, r) => a + Number(r.gross || 0), 0);
+      const deductions = rows.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
+      const net = rows.reduce((a, r) => a + Number(r.netPay || 0), 0);
+      const tax = rows.reduce((a, r) => a + Number(r.tax || 0), 0);
+      const statutory = rows.reduce(
+        (a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0),
+        0
+      );
+      const charges = rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
+      const shortages = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
+
+      const totals = [
+        ["Total Gross", gross],
+        ["Total Deductions (EE)", deductions],
+        ["Total Net Pay", net],
+        ["Statutory Deductions (EE)", statutory],
+        ["Withholding Tax", tax],
+        ["Charges", charges],
+        ["Shortages", shortages],
+      ];
+      const csv = [
+        ["Metric", "Amount"].join(","),
+        ...totals.map(([k, v]) => [k, Number(v || 0).toFixed(2)].map(quote).join(",")),
       ].join("\n");
       downloadCsv(csv, filename);
       return;
@@ -944,7 +1241,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   setRunUI(null);
   setActiveTab("register");
-  loadFilterOptions().finally(renderAll);
+  loadFilterOptions()
+    .finally(() => loadRuns())
+    .finally(renderAll);
 });
 
 

@@ -35,8 +35,8 @@
                     <label>Cutoff</label>
                     <select id="cutoffSelect">
                         <option value="All" selected>Both</option>
-                        <option value="1–15">1–15</option>
-                        <option value="16–End">16–End</option>
+                        <option value="11-25">11-25</option>
+                        <option value="26-10">26-10</option>
                     </select>
                 </div>
 
@@ -67,7 +67,8 @@
                     <label>Status</label>
                     <select id="statusSelect">
                         <option value="All" selected>All</option>
-                        <option>Processed</option>
+                        <option>Draft</option>
+                        <option>Locked</option>
                         <option>Released</option>
                     </select>
                 </div>
@@ -154,6 +155,14 @@
                         & Contributions</button>
                     <button class="tabBtn" type="button" data-tab="remit" aria-selected="false">Gov
                         Remittance</button>
+                    <button class="tabBtn" type="button" data-tab="externalGross" aria-selected="false">External
+                        Gross</button>
+                    <button class="tabBtn" type="button" data-tab="externalPayslips" aria-selected="false">External
+                        Payslips</button>
+                    <button class="tabBtn" type="button" data-tab="companyPayslips" aria-selected="false">Company
+                        Payslips</button>
+                    <button class="tabBtn" type="button" data-tab="overall" aria-selected="false">Overall
+                        Summary</button>
                     <button class="tabBtn" type="button" data-tab="audit" aria-selected="false">Payslip
                         Release
                         Log</button>
@@ -246,6 +255,86 @@
                             </tr>
                         </thead>
                         <tbody id="remitTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: External Gross -->
+            <div class="tabPane" id="tab-externalGross" hidden>
+                <div class="card__title big">External Gross</div>
+                <div class="muted small">Grouped by external area with total gross.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="External gross table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th class="num">Gross Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody id="externalGrossTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: External Payslips -->
+            <div class="tabPane" id="tab-externalPayslips" hidden>
+                <div class="card__title big">Payslips by External</div>
+                <div class="muted small">Sorted by external area. Shows gross and key deductions.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="External payslips table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th class="num">Gross Pay</th>
+                                <th class="num">Deductions</th>
+                                <th class="num">Shortages</th>
+                                <th class="num">Charges</th>
+                                <th class="num">Net Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody id="externalPayslipsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: Company Payslips -->
+            <div class="tabPane" id="tab-companyPayslips" hidden>
+                <div class="card__title big">Payslips by Company</div>
+                <div class="muted small">Grouped by current company/assignment for all employees.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="Company payslips table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th class="num">Gross Pay</th>
+                                <th class="num">Deductions</th>
+                                <th class="num">Shortages</th>
+                                <th class="num">Charges</th>
+                                <th class="num">Net Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody id="companyPayslipsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: Overall Summary -->
+            <div class="tabPane" id="tab-overall" hidden>
+                <div class="card__title big">Overall Payslip Summary</div>
+                <div class="muted small">Totals for the selected run and current filters.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="Overall summary table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th class="num">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overallTbody"></tbody>
                     </table>
                 </div>
             </div>

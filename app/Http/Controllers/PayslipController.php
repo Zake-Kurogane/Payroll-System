@@ -239,22 +239,41 @@ class PayslipController extends Controller
         $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
         $company = CompanySetup::query()->first();
 
+        if (count($payload) === 0) {
+            return response()->json(['message' => 'No payslips found for this run/selection.'], 404);
+        }
+
         $sent = 0;
         $skipped = [];
+        $failed = [];
         foreach ($payload as $p) {
             $email = $p['employee_email'] ?? null;
             if (!$email) {
                 $skipped[] = $p['emp_no'] ?? $p['employee_id'];
                 continue;
             }
-            Mail::to($email)->send(new \App\Mail\PayslipMail($p, $company, $run));
-            $sent++;
-            Payslip::query()->where('id', $p['id'])->update(['delivery_status' => 'Sent']);
+            try {
+                Mail::to($email)->send(new \App\Mail\PayslipMail($p, $company, $run));
+                $sent++;
+                Payslip::query()->where('id', $p['id'])->update([
+                    'delivery_status' => 'Sent',
+                    'sent_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                $failed[] = [
+                    'emp_no' => $p['emp_no'] ?? $p['employee_id'],
+                    'error' => $e->getMessage(),
+                ];
+                Payslip::query()->where('id', $p['id'])->update([
+                    'delivery_status' => 'Failed',
+                ]);
+            }
         }
 
         return response()->json([
             'sent' => $sent,
             'skipped' => $skipped,
+            'failed' => $failed,
         ]);
     }
 

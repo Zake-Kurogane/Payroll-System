@@ -620,6 +620,26 @@ tbody tr:hover {
     background: rgba(156, 29, 60, 0.04);
 }
 
+/* Group headers + totals for grouped reports */
+tbody tr.row-group-header td {
+    background: var(--maroon);
+    color: #fff;
+    text-align: center;
+    font-weight: 1000;
+    letter-spacing: 0.2px;
+}
+tbody tr.row-group-header:hover {
+    background: var(--maroon);
+}
+tbody tr.row-total td {
+    background: #f3f4f6;
+    color: var(--text);
+    font-weight: 1000;
+}
+tbody tr.row-total:hover {
+    background: #f3f4f6;
+}
+
 /* Sort icon (chevron style like Employee Records) */
 th.sortable {
     cursor: pointer;

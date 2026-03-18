@@ -292,20 +292,7 @@ class PayrollCalculator
             $q->where('assignment_type', $assignment);
         }
         if ($assignment === 'Field' && $area) {
-            $q->where(function ($q) use ($area) {
-                // Regular area employees: attributed to their fixed external_area
-                $q->where(function ($q2) use ($area) {
-                    $q2->whereRaw("LOWER(employment_type) = 'regular'")
-                       ->where('external_area', $area);
-                })
-                // Non-regular area employees: attributed to their current area_place
-                ->orWhere(function ($q2) use ($area) {
-                    $q2->where(function ($q3) {
-                        $q3->whereRaw("LOWER(employment_type) != 'regular'")
-                           ->orWhereNull('employment_type');
-                    })->where('area_place', $area);
-                });
-            });
+            $q->where('area_place', $area);
         }
 
         return $q->orderBy('last_name')->orderBy('first_name')->get();

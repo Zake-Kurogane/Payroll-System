@@ -1,55 +1,29 @@
 @php
     $p = $payslip ?? [];
-    $companyName = $company?->company_name ?? 'Company';
     $period = ($p['period_month'] ?? '-') . ' (' . ($p['cutoff'] ?? '-') . ')';
-    $money = fn ($v) => '₱ ' . number_format((float) $v, 2);
+    $dateRange =
+        (($p['period_start'] ?? null) ? \Carbon\Carbon::parse($p['period_start'])->format('m/d/Y') : '-') .
+        ' to ' .
+        (($p['period_end'] ?? null) ? \Carbon\Carbon::parse($p['period_end'])->format('m/d/Y') : '-');
 @endphp
-<div style="font-family: Arial, Helvetica, sans-serif; color: #111; line-height: 1.4;">
-    <h2 style="margin:0 0 6px 0;">{{ $companyName }} Payslip</h2>
-    <div style="margin:0 0 10px 0; color:#555;">
-        Pay Period: {{ $period }}
+
+<div style="font-family: Arial, Helvetica, sans-serif; color: #111; line-height: 1.55; font-size: 14px;">
+    <div style="margin:0 0 12px 0;">Greetings!</div>
+
+    <div style="margin:0 0 12px 0;">
+        Please find attached the payslip for the period of <strong>{{ $dateRange }}</strong>.
+        This document provides a detailed breakdown of earnings, deductions, and net pay.
     </div>
 
-    <div style="margin-bottom:10px;">
-        <strong>Employee:</strong> {{ $p['emp_name'] ?? '-' }} ({{ $p['emp_no'] ?? ($p['employee_id'] ?? '-') }})
+    <div style="margin:0 0 12px 0;">
+        Kindly review the attached payslip for your reference. For any questions or clarifications, please contact the Human Resources Department.
     </div>
 
-    <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
-        <tr>
-            <td style="padding:6px 0;">Daily Rate</td>
-            <td style="padding:6px 0; text-align:right;">{{ $money($p['daily_rate'] ?? 0) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;">Paid Days</td>
-            <td style="padding:6px 0; text-align:right;">{{ number_format((float) ($p['paid_days'] ?? 0), 2) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;">Basic Pay (cutoff)</td>
-            <td style="padding:6px 0; text-align:right;">{{ $money($p['basic_pay_cutoff'] ?? 0) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;">Allowance (cutoff)</td>
-            <td style="padding:6px 0; text-align:right;">{{ $money($p['allowance_cutoff'] ?? 0) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;">OT Pay</td>
-            <td style="padding:6px 0; text-align:right;">{{ $money($p['ot_pay'] ?? 0) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;"><strong>Gross</strong></td>
-            <td style="padding:6px 0; text-align:right;"><strong>{{ $money($p['gross'] ?? 0) }}</strong></td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;">Total Deductions</td>
-            <td style="padding:6px 0; text-align:right;">{{ $money($p['deductions_total'] ?? 0) }}</td>
-        </tr>
-        <tr>
-            <td style="padding:6px 0;"><strong>Net Pay</strong></td>
-            <td style="padding:6px 0; text-align:right;"><strong>{{ $money($p['net_pay'] ?? 0) }}</strong></td>
-        </tr>
-    </table>
+    <div style="margin:0 0 12px 0;">Thank you.</div>
 
-    <div style="margin-top:10px; color:#777; font-size:12px;">
-        This is a system-generated payslip email.
+    <div style="margin-top:18px;">
+        Best regards,<br>
+        <strong>Jucinda Yap Borre</strong><br>
+        Payroll Officer
     </div>
 </div>
