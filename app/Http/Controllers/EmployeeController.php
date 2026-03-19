@@ -9,10 +9,13 @@ use App\Models\EmploymentStatus;
 use App\Models\EmploymentType;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
+use App\Models\ExternalPosition;
+use App\Models\Position;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
@@ -28,8 +31,19 @@ class EmployeeController extends Controller
         $assign = $assignParts[0] ?? null;
         $areaPlace = $assignParts[1] ?? request()->query('area_place');
 
+        $with = ['employmentStatus'];
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $with[] = 'positions:id,name';
+        }
+        if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
+            $with[] = 'externalPosition:id,name';
+        }
+        if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
+            $with[] = 'externalPosition:id,name';
+        }
+
         $employees = Employee::query()
-            ->with(['employmentStatus'])
+            ->with($with)
             ->when(!$canViewComp, function ($query) {
                 $query->select([
                     'id',
@@ -55,6 +69,7 @@ class EmployeeController extends Controller
                     'assignment_type',
                     'area_place',
                     'external_area',
+                    'external_position_id',
                     'bank_name',
                     'bank_account_name',
                     'bank_account_number',
@@ -115,8 +130,13 @@ class EmployeeController extends Controller
             $perPage = 20;
         }
 
+        $with = ['employmentStatus'];
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $with[] = 'positions:id,name';
+        }
+
         $employees = Employee::query()
-            ->with(['employmentStatus'])
+            ->with($with)
             ->when(!$canViewComp, function ($query) {
                 $query->select([
                     'id',
@@ -142,6 +162,7 @@ class EmployeeController extends Controller
                     'assignment_type',
                     'area_place',
                     'external_area',
+                    'external_position_id',
                     'bank_name',
                     'bank_account_name',
                     'bank_account_number',
@@ -233,12 +254,30 @@ class EmployeeController extends Controller
         }
         $groupedAreaPlaces = $ordered;
 
+        $positions = collect();
+        if (Schema::hasTable('positions')) {
+            $positions = Position::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
+        $externalPositions = collect();
+        if (Schema::hasTable('external_positions')) {
+            $externalPositions = ExternalPosition::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
         return view('layouts.emp_records', [
             'employees' => $employees,
             'statuses' => $statuses,
             'departments' => $departments,
             'assignments' => $assignments,
             'groupedAreaPlaces' => $groupedAreaPlaces,
+            'positions' => $positions,
+            'externalPositions' => $externalPositions,
         ]);
     }
 
@@ -289,12 +328,30 @@ class EmployeeController extends Controller
             ->orderBy('sort_order')
             ->pluck('label');
 
+        $positions = collect();
+        if (Schema::hasTable('positions')) {
+            $positions = Position::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
+        $externalPositions = collect();
+        if (Schema::hasTable('external_positions')) {
+            $externalPositions = ExternalPosition::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(['id', 'name']);
+        }
+
         return response()->json([
             'statuses' => $statuses,
             'departments' => $departments,
             'assignments' => $assignments,
             'area_places' => $areaPlaces,
             'employment_types' => $employmentTypes,
+            'positions' => $positions,
+            'external_positions' => $externalPositions,
         ]);
     }
 
@@ -454,6 +511,18 @@ class EmployeeController extends Controller
     {
         $validated = $this->validateEmployee($request);
 
+        $positionIds = [];
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $positionIds = $this->normalizePositionIds($validated['position_ids'] ?? []);
+            unset($validated['position_ids']);
+            $validated['position'] = $this->positionDisplayFromIds($positionIds);
+        }
+
+        // Department is no longer collected in the Add Employee form; keep DB insert valid.
+        if (!array_key_exists('department', $validated) || $validated['department'] === null) {
+            $validated['department'] = '';
+        }
+
         if (empty($validated['employment_status_id']) && !empty($validated['status'])) {
             $statusId = EmploymentStatus::whereRaw('LOWER(label) = ?', [strtolower($validated['status'])])->value('id');
             $validated['employment_status_id'] = $statusId;
@@ -461,9 +530,13 @@ class EmployeeController extends Controller
 
         if (strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
             $validated['external_area'] = null;
+            $validated['external_position_id'] = null;
         }
 
         $employee = Employee::create($validated);
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $employee->positions()->sync($positionIds);
+        }
 
         if (($validated['assignment_type'] ?? '') === 'Field' && !empty($validated['area_place'])) {
             EmployeeAreaHistory::create([
@@ -476,6 +549,12 @@ class EmployeeController extends Controller
 
         $this->forgetEmployeeCaches();
 
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $employee->load('positions:id,name');
+        }
+        if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
+            $employee->load('externalPosition:id,name');
+        }
         return response()->json($employee, 201);
     }
 
@@ -485,6 +564,13 @@ class EmployeeController extends Controller
         $oldAreaPlace = $employee->area_place;
         $validated = $this->validateEmployee($request, $employee->id);
 
+        $positionIds = [];
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $positionIds = $this->normalizePositionIds($validated['position_ids'] ?? []);
+            unset($validated['position_ids']);
+            $validated['position'] = $this->positionDisplayFromIds($positionIds);
+        }
+
         if (empty($validated['employment_status_id']) && !empty($validated['status'])) {
             $statusId = EmploymentStatus::whereRaw('LOWER(label) = ?', [strtolower($validated['status'])])->value('id');
             $validated['employment_status_id'] = $statusId;
@@ -492,9 +578,13 @@ class EmployeeController extends Controller
 
         if (strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
             $validated['external_area'] = null;
+            $validated['external_position_id'] = null;
         }
 
         $employee->update($validated);
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $employee->positions()->sync($positionIds);
+        }
 
         if (($validated['assignment_type'] ?? '') === 'Field'
             && !empty($validated['area_place'])
@@ -523,6 +613,12 @@ class EmployeeController extends Controller
 
         $this->forgetEmployeeCaches();
 
+        if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
+            $employee->load('positions:id,name');
+        }
+        if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
+            $employee->load('externalPosition:id,name');
+        }
         return response()->json($employee);
     }
 
@@ -594,6 +690,15 @@ class EmployeeController extends Controller
         return [];
     }
 
+    private function externalPositionRequiredRule(Request $request): array
+    {
+        $employmentType = strtolower(trim((string) $request->input('employment_type', '')));
+        if ($employmentType === 'regular') {
+            return ['required'];
+        }
+        return [];
+    }
+
     private function forgetEmployeeCaches(): void
     {
         Cache::forget('employees.statuses');
@@ -610,7 +715,7 @@ class EmployeeController extends Controller
             $uniqueEmpNo = $uniqueEmpNo->ignore($ignoreId);
         }
 
-        return $request->validate([
+        $rules = [
             'emp_no' => ['required', 'digits:4', $uniqueEmpNo],
             'first_name' => ['required', 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
@@ -625,8 +730,8 @@ class EmployeeController extends Controller
             'address_barangay' => ['nullable', 'string', 'max:255'],
             'address_street' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'department' => ['required', 'string', 'max:255'],
-            'position' => ['required', 'string', 'max:255'],
+            'department' => ['nullable', 'string', 'max:255'],
+            'position' => ['nullable', 'string', 'max:255'],
             'employment_type' => ['nullable', 'string', 'max:255'],
             'pay_type' => ['nullable', 'string', 'max:50'],
             'date_hired' => ['nullable', 'date'],
@@ -649,6 +754,54 @@ class EmployeeController extends Controller
             'philhealth' => ['nullable', 'string', 'max:50'],
             'pagibig' => ['nullable', 'string', 'max:50'],
             'tin' => ['nullable', 'string', 'max:50'],
-        ]);
+        ];
+
+        if (Schema::hasTable('positions')) {
+            $rules['position_ids'] = ['required', 'array', 'min:1'];
+            $rules['position_ids.*'] = ['integer', 'distinct', Rule::exists('positions', 'id')->where('is_active', true)];
+            // Position display becomes derived from selected ids when positions are enabled.
+            $rules['position'] = ['nullable', 'string', 'max:255'];
+        } else {
+            // Backward-compatible fallback if migrations are not yet applied.
+            $rules['position'] = ['required', 'string', 'max:255'];
+        }
+
+        if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
+            $rules['external_position_id'] = array_merge(
+                ['nullable', 'integer', Rule::exists('external_positions', 'id')->where('is_active', true)],
+                $this->externalPositionRequiredRule($request),
+            );
+        }
+
+        return $request->validate($rules);
+    }
+
+    private function normalizePositionIds(array $ids): array
+    {
+        $clean = array_values(array_unique(array_filter(array_map(
+            fn ($v) => is_numeric($v) ? (int) $v : null,
+            $ids,
+        ), fn ($v) => $v !== null && $v > 0)));
+
+        return $clean;
+    }
+
+    private function positionDisplayFromIds(array $positionIds): string
+    {
+        if (!count($positionIds)) {
+            return '';
+        }
+
+        $names = Position::whereIn('id', $positionIds)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        $display = implode(', ', $names);
+        if (mb_strlen($display) > 255) {
+            return mb_substr($display, 0, 252) . '...';
+        }
+        return $display;
     }
 }

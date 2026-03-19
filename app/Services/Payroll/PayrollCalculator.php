@@ -151,27 +151,28 @@ class PayrollCalculator
             : $zeros;
 
         $gross = $basicCutoff + $allowanceCutoff + $otPay + $earnAdj;
+        $grossTaxableForWtax = $this->taxableGrossForWithholding($gross, $allowanceCutoff);
 
         $payFreq = (string) ($wtPolicy->pay_frequency ?? 'semi_monthly');
         $periodsPerMonth = $this->periodsPerMonth($payFreq);
         $timing = (string) ($wtPolicy->timing ?? 'monthly');
 
         if ($timing === 'monthly') {
-            $monthlyTaxable = $gross * $periodsPerMonth;
+            $monthlyTaxable = $grossTaxableForWtax * $periodsPerMonth;
             if ($wtPolicy->basis_sss) $monthlyTaxable -= (float) ($sss['ee_full'] ?? 0);
             if ($wtPolicy->basis_ph) $monthlyTaxable -= (float) ($philhealth['ee_full'] ?? 0);
             if ($wtPolicy->basis_pi) $monthlyTaxable -= (float) ($pagibig['ee_full'] ?? 0);
             $monthlyTaxable = max(0, $monthlyTaxable);
             $taxable = $periodsPerMonth > 0 ? ($monthlyTaxable / $periodsPerMonth) : 0.0;
         } else {
-            $taxable = $gross;
+            $taxable = $grossTaxableForWtax;
             if ($wtPolicy->basis_sss) $taxable -= $sss['ee'];
             if ($wtPolicy->basis_ph) $taxable -= $philhealth['ee'];
             if ($wtPolicy->basis_pi) $taxable -= $pagibig['ee'];
             $taxable = max(0, $taxable);
         }
 
-        $applyTax = $isRegular || (bool) ($dedPolicy->apply_tax_to_non_regular ?? false);
+        $applyTax = $this->shouldApplyWithholdingTax($emp, $isRegular, $dedPolicy);
         $withholding = ($applyTax && ($wtPolicy->enabled ?? true))
             ? $this->computeWithholdingTax($wtPolicy, $wtBrackets, $taxable, $cutoff)
             : 0.0;
@@ -794,13 +795,47 @@ class PayrollCalculator
 
         $brackets = $filtered->isEmpty() ? $originalBrackets : $filtered;
 
+        // Some imports provide bracket ranges + marginal rates but leave base_tax as 0.00 for all brackets.
+        // In that case, compute progressive tax by summing each bracket segment up to taxableBase.
+        $hasAnyBaseTax = $brackets->contains(function ($b) {
+            return ((float) ($b->base_tax ?? 0)) > 0.0;
+        });
+
         $amount = 0.0;
-        foreach ($brackets as $b) {
-            $from = (float) $b->bracket_from;
-            $to = $b->bracket_to !== null ? (float) $b->bracket_to : null;
-            if ($taxableBase >= $from && ($to === null || $taxableBase <= $to)) {
-                $amount = (float) $b->base_tax + (($taxableBase - $from) * ((float) $b->excess_percent / 100));
-                break;
+        if ($hasAnyBaseTax) {
+            foreach ($brackets as $b) {
+                $from = (float) $b->bracket_from;
+                $to = $b->bracket_to !== null ? (float) $b->bracket_to : null;
+                if ($taxableBase >= $from && ($to === null || $taxableBase <= $to)) {
+                    $amount = (float) $b->base_tax + (($taxableBase - $from) * ((float) $b->excess_percent / 100));
+                    break;
+                }
+            }
+        } else {
+            $ordered = $brackets->values();
+            $count = $ordered->count();
+            for ($i = 0; $i < $count; $i++) {
+                $b = $ordered[$i];
+                $from = (float) $b->bracket_from;
+                $nextFrom = null;
+                if ($i + 1 < $count) {
+                    $nf = (float) ($ordered[$i + 1]->bracket_from ?? 0);
+                    if ($nf > $from) $nextFrom = $nf;
+                }
+
+                $to = $nextFrom;
+                if ($to === null) {
+                    $to = $b->bracket_to !== null ? (float) $b->bracket_to : null;
+                }
+                if ($taxableBase <= $from) {
+                    continue;
+                }
+
+                $segmentEnd = $to === null ? $taxableBase : min($taxableBase, $to);
+                $segmentAmount = max(0.0, $segmentEnd - $from);
+                $amount += $segmentAmount * ((float) $b->excess_percent / 100);
+
+                if ($to === null || $taxableBase <= $to) break;
             }
         }
 
@@ -1006,5 +1041,20 @@ class PayrollCalculator
         if ($raw === '') return false;
         $digits = preg_replace('/\D+/', '', $raw);
         return $digits !== '';
+    }
+
+    private function shouldApplyWithholdingTax(Employee $emp, bool $isRegular, PayrollDeductionPolicy $dedPolicy): bool
+    {
+        $applyTax = $isRegular || (bool) ($dedPolicy->apply_tax_to_non_regular ?? false);
+        if (!$applyTax) return false;
+
+        // Business rule: no TIN -> no withholding tax deduction.
+        return $this->hasGovId($emp->tin);
+    }
+
+    private function taxableGrossForWithholding(float $gross, float $allowanceCutoff): float
+    {
+        // Business rule: employee allowance is non-taxable for withholding tax computation.
+        return max(0.0, $gross - $allowanceCutoff);
     }
 }

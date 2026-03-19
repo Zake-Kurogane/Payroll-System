@@ -799,7 +799,7 @@
 
                     <div class="actionsRow">
                         <button class="btn btn--soft" type="button" id="wtImportBtn">Import Table</button>
-                        <input type="file" id="wtImportFile" accept=".csv,.xlsx" hidden />
+                        <input type="file" id="wtImportFile" accept=".csv,.xlsx,.xls" hidden />
                     </div>
 
                     <div class="importedBar" id="wtImportedWrap" style="display:none;">

@@ -501,12 +501,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const name = file?.name || "Import";
     const ext = name.split(".").pop()?.toLowerCase();
     let rows = [];
-    if (ext === "xlsx") {
+    if (ext === "xlsx" || ext === "xls") {
       const xlsx = window.XLSX;
       if (!xlsx) throw new Error("XLSX library not loaded. Please refresh the page.");
       const data = await file.arrayBuffer();
       const wb = xlsx.read(data, { type: "array" });
-      const sheetName = wb.SheetNames?.[0];
+      const sheetNames = wb.SheetNames || [];
+      const preferred = sheetNames.find((s) => /tax|withholding/i.test(String(s)));
+      const sheetName = preferred || sheetNames[0];
       const ws = sheetName ? wb.Sheets[sheetName] : null;
       if (!ws) throw new Error("No sheet found in XLSX.");
       rows = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: "" });
@@ -514,7 +516,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const text = await file.text();
       rows = parseCsv(text);
     } else {
-      throw new Error("Unsupported file type. Please use CSV or XLSX.");
+      throw new Error("Unsupported file type. Please use CSV, XLSX, or XLS.");
     }
     const table = normalizeTable(rows);
     if (!table) throw new Error("No rows found in file.");
@@ -793,7 +795,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function parsePrescribed(text) {
     const t = String(text || "");
     if (!t.trim()) return { base: 0, percent: 0 };
-    const base = parseNumber(t) ?? 0;
+    const baseMatch = t.match(/[\d,.]+/);
+    const base = baseMatch ? (parseNumber(baseMatch[0]) ?? 0) : 0;
     const pctMatch = t.match(/(\d+(?:\.\d+)?)\s*%/);
     const pct = pctMatch ? Number(pctMatch[1]) : 0;
     return { base, percent: Number.isFinite(pct) ? pct : 0 };
@@ -857,12 +860,86 @@ document.addEventListener("DOMContentLoaded", () => {
     return brackets;
   }
 
+  function mapWtBracketsCrossTab(payload) {
+    const header = payload?.header || [];
+    const rows = payload?.rows || [];
+    const allRows = [header, ...rows].map((r) => (Array.isArray(r) ? r : []));
+
+    function isFreqLabel(cell) {
+      const v = String(cell || "").trim().toLowerCase();
+      if (!v) return false;
+      return v.includes("daily") || v.includes("weekly") || v.includes("semi") || v.includes("monthly");
+    }
+
+    function isRangeRow(cell) {
+      const v = String(cell || "").trim().toLowerCase();
+      return v.includes("compensation") && v.includes("range");
+    }
+
+    function isPrescribedRow(cell) {
+      const v = String(cell || "").trim().toLowerCase();
+      return v.includes("prescribed") && v.includes("withholding");
+    }
+
+    const brackets = [];
+    for (let i = 0; i < allRows.length; i += 1) {
+      const r = allRows[i];
+      const label = r?.[0];
+      if (!isFreqLabel(label)) continue;
+      const payFrequency = normalizeFrequency(label);
+      if (!payFrequency) continue;
+
+      const rangeRow = allRows[i + 1] || [];
+      const presRow = allRows[i + 2] || [];
+      if (!isRangeRow(rangeRow[0]) || !isPrescribedRow(presRow[0])) continue;
+
+      for (let col = 1; col < r.length; col += 1) {
+        const bracketNo = parseNumber(r[col]);
+        if (bracketNo == null) continue;
+        const compRange = String(rangeRow[col] ?? "");
+        const prescribed = String(presRow[col] ?? "");
+        if (!compRange.trim()) continue;
+
+        const rangeParsed = parseRange(compRange);
+        const prescribedParsed = parsePrescribed(prescribed);
+        if (rangeParsed.from == null) continue;
+
+        brackets.push({
+          pay_frequency: payFrequency,
+          bracket_no: Math.trunc(bracketNo),
+          compensation_range: compRange,
+          prescribed_withholding_tax: prescribed,
+          bracket_from: rangeParsed.from,
+          bracket_to: rangeParsed.to == null ? null : rangeParsed.to,
+          base_tax: prescribedParsed.base ?? 0,
+          excess_percent: prescribedParsed.percent ?? 0,
+        });
+      }
+    }
+
+    return brackets;
+  }
+
+  function mapWtBracketsAuto(payload) {
+    const headerNorm = (payload?.header || []).map(normalizeHeader);
+    const looksTabular =
+      headerNorm.includes("payfrequency") ||
+      headerNorm.includes("compensationrange") ||
+      headerNorm.includes("prescribedwithholdingtax") ||
+      headerNorm.includes("bracketfrom");
+
+    const primary = looksTabular ? mapWtBrackets(payload) : mapWtBracketsCrossTab(payload);
+    if (primary.length) return primary;
+    const fallback = looksTabular ? mapWtBracketsCrossTab(payload) : mapWtBrackets(payload);
+    return fallback;
+  }
+
   wtImportFile?.addEventListener("change", async () => {
     const f = wtImportFile.files?.[0];
     if (!f) return;
     try {
       const payload = await parseTabularFile(f);
-      const brackets = mapWtBrackets(payload);
+      const brackets = mapWtBracketsAuto(payload);
       if (!brackets.length) {
         throw new Error("No valid rows found for withholding tax brackets.");
       }

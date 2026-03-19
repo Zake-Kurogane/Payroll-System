@@ -50,10 +50,10 @@ document.addEventListener("DOMContentLoaded", () => {
       id: emp.id,
       empNo: emp.emp_no,
       name: fullName(emp),
-      department: emp.department || "—",
       position: emp.position || "—",
       assignmentType: emp.assignment_type || "",
       areaPlace: emp.area_place || "",
+      externalArea: emp.external_area || "",
       employmentType: emp.employment_type || "",
     };
   }
@@ -148,10 +148,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function getEmployeeName(empNo) {
     return getEmpByNo(empNo)?.name || empNo || "";
-  }
-
-  function getEmployeeDept(empNo) {
-    return getEmpByNo(empNo)?.department || "—";
   }
 
   function getEmployeePos(empNo) {
@@ -391,7 +387,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const emp = r.employee_id ? getEmpById(r.employee_id) : null;
     const empNo = emp?.empNo || r.emp_no || "";
     const empName = emp?.name || r.emp_name || (empNo ? empNo : "");
-    const dept = emp?.department || r.department || "—";
     const pos = emp?.position || r.position || "—";
     const assignType = emp?.assignmentType || r.assignment_type || "";
     const areaPlace = emp?.areaPlace || r.area_place || "";
@@ -400,7 +395,6 @@ document.addEventListener("DOMContentLoaded", () => {
       employeeId: String(r.employee_id || ""),
       empId: empNo,
       empName: empName,
-      department: dept,
       position: pos,
       date: r.date || "",
       timeIn: r.clock_in || "",
@@ -875,9 +869,6 @@ document.addEventListener("DOMContentLoaded", () => {
       } else if (key === "name") {
         av = normalize(a.empName);
         bv = normalize(b.empName);
-      } else if (key === "department") {
-        av = normalize(a.department);
-        bv = normalize(b.department);
       } else if (key === "assignment") {
         av = normalize(assignmentText(a));
         bv = normalize(assignmentText(b));
@@ -985,7 +976,6 @@ document.addEventListener("DOMContentLoaded", () => {
             </button>
           </div>
         </td>
-        <td>${escapeHtml(r.department || "—")}</td>
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
         <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
@@ -1699,7 +1689,7 @@ document.addEventListener("DOMContentLoaded", () => {
     kpiPreviewTbody.innerHTML = "";
     if (!records.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">No records to preview.</td>`;
+      tr.innerHTML = `<td colspan="5" class="muted small">No records to preview.</td>`;
       kpiPreviewTbody.appendChild(tr);
       return;
     }
@@ -1730,7 +1720,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const header = document.createElement("tr");
         header.classList.add("kpiPreviewGroup");
         header.innerHTML = `
-          <td colspan="6">
+          <td colspan="5">
             ${escapeHtml(day)} • ${escapeHtml(assign)}
           </td>
         `;
@@ -1743,7 +1733,6 @@ document.addEventListener("DOMContentLoaded", () => {
             <td>${escapeHtml(r.date || "—")}</td>
             <td>${escapeHtml(assignmentPreviewText(r))}</td>
             <td>${escapeHtml(r.empName || "—")}</td>
-            <td>${escapeHtml(r.department || "—")}</td>
             <td>${escapeHtml(inOut)}</td>
             <td>${chip(r.status)}</td>
           `;
@@ -1919,7 +1908,6 @@ document.addEventListener("DOMContentLoaded", () => {
         isPaid: mapped.isPaid,
         countsAsPresent: mapped.countsAsPresent,
         empName: r.empId ? getEmployeeName(r.empId) : "",
-        department: r.empId ? getEmployeeDept(r.empId) : "",
         position: r.empId ? getEmployeePos(r.empId) : "",
         assignType: emp?.assignmentType || "",
         areaPlace: emp?.areaPlace || "",
@@ -1974,7 +1962,6 @@ document.addEventListener("DOMContentLoaded", () => {
       tr.innerHTML = `
         <td>${escapeHtml(r.date || "—")}</td>
         <td>${escapeHtml(r.empName || "—")}</td>
-        <td>${escapeHtml(r.department || "—")}</td>
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
         <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
@@ -2202,7 +2189,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const emp = getEmpByNo(empId);
     const name = emp?.name || getEmployeeName(empId) || empId;
-    const dept = emp?.department || getEmployeeDept(empId) || "—";
     const pos = emp?.position || getEmployeePos(empId) || "—";
 
     const list = records
@@ -2215,10 +2201,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (empDrawerTitle) empDrawerTitle.textContent = name;
     if (empDrawerSub) {
-      empDrawerSub.innerHTML =
-        `Department: <strong>${escapeHtml(dept)}</strong> • ` +
-        `Position: <strong>${escapeHtml(pos)}</strong> • ` +
-        `Assignment: <strong>${escapeHtml(assign)}</strong>`;
+      const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
+      const isRegular = employmentType === "regular";
+      const external = String(emp?.externalArea || "").trim() || "-";
+      const parts = [];
+      if (isRegular) {
+        parts.push(`External: <strong>${escapeHtml(external)}</strong>`);
+        parts.push(`External Position: <strong>${escapeHtml(pos)}</strong>`);
+      } else {
+        parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
+      }
+      parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
+      empDrawerSub.innerHTML = parts.join(" • ");
     }
 
     if (empCutoffMonthInput && !empCutoffMonthInput.value) {
@@ -2370,4 +2364,3 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   render();
 });
-

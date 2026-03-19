@@ -17,6 +17,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     ? window.__areaPlaces
     : {};
 
+  let positionsCatalog = Array.isArray(window.__positions) ? window.__positions : [];
+  let externalPositionsCatalog = Array.isArray(window.__externalPositions) ? window.__externalPositions : [];
+
   const CAN_VIEW_COMP = window.__canViewCompensation !== undefined ? !!window.__canViewCompensation : true;
 
   // ===== Payroll Required Field Rules =====
@@ -74,6 +77,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       middle: emp.middle_name || "",
       dept: emp.department || "",
       position: emp.position || "",
+      positionIds: Array.isArray(emp.positions) ? emp.positions.map(p => Number(p.id)).filter(Number.isFinite) : [],
       type: emp.employment_type || "",
       status: emp.status || emp.employment_status?.label || "Active",
       statusId: emp.employment_status_id || "",
@@ -85,6 +89,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       assignmentType: emp.assignment_type || "",
       areaPlace: emp.area_place || "",
       externalArea: emp.external_area || "",
+      externalPositionId: emp.external_position_id || emp.external_position?.id || emp.externalPosition?.id || "",
       birthday: emp.birthday || "",
       hired: emp.date_hired || "",
       mobile: emp.mobile || "",
@@ -120,14 +125,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       address_barangay: data.addrBarangay || null,
       address_street: data.addrStreet || null,
       email: data.email || null,
-      department: data.dept,
-      position: data.position,
+      position_ids: data.positionIds || [],
       employment_type: data.type || null,
       pay_type: data.payType || null,
       date_hired: data.hired || null,
       assignment_type: data.assignmentType || null,
       area_place: data.areaPlace || null,
       external_area: data.externalArea || null,
+      external_position_id: data.externalPositionId ? Number(data.externalPositionId) : null,
       bank_name: data.bankName || null,
       bank_account_name: data.accountName || null,
       bank_account_number: data.accountNumber || null,
@@ -247,8 +252,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_addrCity = F("f_addrCity");
   const f_addrBarangay = F("f_addrBarangay");
   const f_addrStreet = F("f_addrStreet");
-  const f_dept = F("f_dept");
-  const f_position = F("f_position");
+
+  // Positions dropdown checklist
+  const posDd = document.getElementById("posDd");
+  const posDdBtn = document.getElementById("posDdBtn");
+  const posDdPanel = document.getElementById("posDdPanel");
+  const posSearch = document.getElementById("posSearch");
+  const posDdList = document.getElementById("posDdList");
+
   const f_type = F("f_type");
   const f_hired = F("f_hired");
   const f_payType = F("f_payType");
@@ -261,6 +272,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const areaPlaceWrap = document.getElementById("areaPlaceWrap");
   const f_externalArea = F("f_externalArea");
   const externalAreaWrap = document.getElementById("externalAreaWrap");
+  const f_externalPosition = F("f_externalPosition");
+  const externalPositionWrap = document.getElementById("externalPositionWrap");
   const historyDrawer = document.getElementById("historyDrawer");
   const historyDrawerOverlay = document.getElementById("historyDrawerOverlay");
   const closeHistoryDrawerBtn = document.getElementById("closeHistoryDrawerBtn");
@@ -507,11 +520,121 @@ document.addEventListener("DOMContentLoaded", async () => {
     return digits.replace(/(.{4})/g, "$1-").replace(/-$/, "");
   }
 
+  function normalizePosName(name) {
+    return String(name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function filterPositionsList(qRaw) {
+    if (!posDdList) return;
+    const q = normalizePosName(qRaw);
+    const items = Array.from(posDdList.querySelectorAll(".ddcheck__item"));
+    let visible = 0;
+    items.forEach((el) => {
+      const name = el.getAttribute("data-name") || "";
+      const ok = !q || name.includes(q);
+      el.style.display = ok ? "" : "none";
+      if (ok) visible += 1;
+    });
+
+    const empty = posDdList.querySelector(".ddcheck__empty");
+    if (empty) {
+      empty.style.display = visible ? "none" : "";
+      empty.textContent = q ? "No matching positions." : empty.textContent;
+    }
+  }
+
+  function renderPositionsDropdown() {
+    if (!posDdList) return;
+    const items = (positionsCatalog || []).filter(p => p && p.id && p.name);
+    if (!items.length) {
+      posDdList.innerHTML = `<div class="ddcheck__empty">No positions found. If this is your first time, run <code>php artisan migrate</code>.</div>`;
+      return;
+    }
+    posDdList.innerHTML = items.map((p) => {
+      const id = Number(p.id);
+      const name = String(p.name);
+      return `
+        <label class="ddcheck__item" for="pos_${id}" data-name="${escapeHtml(normalizePosName(name))}">
+          <input type="checkbox" id="pos_${id}" value="${id}" />
+          <span>${escapeHtml(name)}</span>
+        </label>
+      `;
+    }).join("");
+
+    // placeholder for "no matches" state
+    posDdList.insertAdjacentHTML("beforeend", `<div class="ddcheck__empty" style="display:none">No matching positions.</div>`);
+    filterPositionsList(posSearch?.value || "");
+  }
+
+  function selectedPositionIds() {
+    if (!posDdList) return [];
+    const ids = Array.from(posDdList.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((el) => Number(el.value))
+      .filter(Number.isFinite);
+    return Array.from(new Set(ids));
+  }
+
+  function selectedPositionNamesByIds(ids) {
+    const map = new Map((positionsCatalog || []).map((p) => [Number(p.id), String(p.name || "")]));
+    return (ids || []).map((id) => map.get(Number(id)) || "").filter(Boolean);
+  }
+
+  function updatePositionsButton(ids) {
+    if (!posDdBtn) return;
+    const names = selectedPositionNamesByIds(ids);
+    if (!names.length) {
+      posDdBtn.textContent = "Select position(s)";
+      return;
+    }
+    const label = names.join(", ");
+    posDdBtn.textContent = label.length > 45 ? `${names.length} selected` : label;
+  }
+
+  function setSelectedPositionIds(ids) {
+    if (!posDdList) return;
+    const wanted = new Set((ids || []).map((v) => Number(v)).filter(Number.isFinite));
+    Array.from(posDdList.querySelectorAll('input[type="checkbox"]')).forEach((el) => {
+      el.checked = wanted.has(Number(el.value));
+    });
+    updatePositionsButton(Array.from(wanted));
+  }
+
+  function inferPositionIdsFromText(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return [];
+
+    const nameToId = new Map();
+    (positionsCatalog || []).forEach((p) => {
+      const id = Number(p?.id);
+      const name = normalizePosName(p?.name);
+      if (!Number.isFinite(id) || !name) return;
+      nameToId.set(name, id);
+    });
+
+    const parts = raw.split(",").map((s) => normalizePosName(s)).filter(Boolean);
+    const ids = parts.map((n) => nameToId.get(n)).filter((v) => Number.isFinite(v));
+    if (ids.length) return Array.from(new Set(ids));
+
+    const single = nameToId.get(normalizePosName(raw));
+    return Number.isFinite(single) ? [single] : [];
+  }
+
   function clearForm() {
     empForm?.reset();
     if (f_assignmentType) f_assignmentType.value = "G5-Davao";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_externalArea) f_externalArea.value = "";
+    if (f_externalPosition) f_externalPosition.value = "";
+    setSelectedPositionIds([]);
     resetAddressDropdowns();
     if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
     if (plInfoWrap) plInfoWrap.style.display = "none";
@@ -541,8 +664,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_email && (f_email.value = emp.email || "");
     if (f_addrStreet) f_addrStreet.value = emp.addrStreet || "";
     initAddressDropdowns(emp.addrProvince || "", emp.addrCity || "", emp.addrBarangay || "");
-    f_dept && (f_dept.value = emp.dept || "");
-    f_position && (f_position.value = emp.position || "");
+
+    const ids = (emp.positionIds && emp.positionIds.length)
+      ? emp.positionIds
+      : inferPositionIdsFromText(emp.position || "");
+    setSelectedPositionIds(ids);
+
     f_type && (f_type.value = emp.type || "");
     f_hired && (f_hired.value = emp.hired || "");
     f_payType && (f_payType.value = emp.payType || "");
@@ -552,6 +679,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_assignmentType && (f_assignmentType.value = emp.assignmentType || "G5-Davao");
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
     if (f_externalArea) f_externalArea.value = emp.externalArea || "";
+    if (f_externalPosition) f_externalPosition.value = String(emp.externalPositionId || "");
 
     f_sss && (f_sss.value = formatSSS(emp.sss || ""));
     f_ph && (f_ph.value = formatPhilHealth(emp.ph || ""));
@@ -586,8 +714,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       addrCity: f_addrCity?.value ? (f_addrCity.options[f_addrCity.selectedIndex]?.text || "") : "",
       addrBarangay: f_addrBarangay?.value ? (f_addrBarangay.options[f_addrBarangay.selectedIndex]?.text || "") : "",
       addrStreet: f_addrStreet?.value?.trim() || "",
-      dept: f_dept?.value?.trim(),
-      position: f_position?.value?.trim(),
+      positionIds: selectedPositionIds(),
       type: f_type?.value?.trim(),
       hired: f_hired?.value || "",
       payType: f_payType?.value?.trim(),
@@ -597,6 +724,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       assignmentType: f_assignmentType?.value?.trim(),
       areaPlace: f_areaPlace?.value?.trim(),
       externalArea: f_externalArea?.value?.trim(),
+      externalPositionId: f_externalPosition?.value ? Number(f_externalPosition.value) : null,
 
       sss: onlyDigits(f_sss?.value),
       ph: onlyDigits(f_ph?.value),
@@ -750,6 +878,50 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (places.includes(current)) selectEl.value = current;
   }
 
+  function populateExternalAreaPlaces(selectEl) {
+    if (!selectEl) return;
+    const current = selectEl.value;
+    const preferredOrder = ["Davao", "Tagum", "Field"];
+    const keys = [
+      ...preferredOrder.filter(k => Object.prototype.hasOwnProperty.call(areaPlaces, k)),
+      ...Object.keys(areaPlaces).filter(k => !preferredOrder.includes(k)),
+    ];
+    const seen = new Set();
+    const places = [];
+    keys.forEach((k) => {
+      (areaPlaces[k] || []).forEach((p) => {
+        const label = String(p || "").trim();
+        if (!label) return;
+        const key = label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        places.push(label);
+      });
+    });
+
+    selectEl.innerHTML =
+      `<option value="">-- Select --</option>` +
+      places.map(p => `<option value="${p}">${p}</option>`).join("");
+    if (places.includes(current)) selectEl.value = current;
+  }
+
+  function populateExternalPositions(selectEl) {
+    if (!selectEl) return;
+    const current = String(selectEl.value || "");
+    const items = (externalPositionsCatalog || []).filter(p => p && p.id && p.name);
+    if (!items.length) {
+      selectEl.innerHTML = `<option value="">-- Select external position --</option>` +
+        `<option value="" disabled>(No external positions found — run php artisan migrate)</option>`;
+      return;
+    }
+    selectEl.innerHTML =
+      `<option value="">-- Select external position --</option>` +
+      items.map(p => `<option value="${Number(p.id)}">${escapeHtml(String(p.name))}</option>`).join("");
+    if (items.some(p => String(p.id) === current)) {
+      selectEl.value = current;
+    }
+  }
+
   function populateAreaFilterPlaces(selectEl) {
     if (!selectEl) return;
     // Filter panel shows only Field area places (for the Area Place filter dropdown)
@@ -774,12 +946,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function syncExternalAreaUI() {
-    if (!f_assignmentType) return;
     const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
     const show = isRegular;
     if (f_externalArea) {
       if (show) {
-        populateAreaPlaces(f_externalArea);
+        populateExternalAreaPlaces(f_externalArea);
         f_externalArea.disabled = false;
       } else {
         f_externalArea.value = "";
@@ -787,6 +958,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
     if (externalAreaWrap) externalAreaWrap.style.display = show ? "" : "none";
+
+    if (f_externalPosition) {
+      if (show) {
+        populateExternalPositions(f_externalPosition);
+        f_externalPosition.disabled = false;
+      } else {
+        f_externalPosition.value = "";
+        f_externalPosition.disabled = true;
+      }
+    }
+    if (externalPositionWrap) externalPositionWrap.style.display = show ? "" : "none";
   }
 
   async function fetchAndShowPLBalance(empNo) {
@@ -929,6 +1111,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!ap) missing.push("Area Place");
         const isRegular = String(emp.type || "").toLowerCase() === "regular";
         if (isRegular && !(emp.externalArea || "").trim()) missing.push("External Area");
+        if (isRegular && !emp.externalPositionId) missing.push("External Position");
       }
     }
 
@@ -1097,7 +1280,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </td>
         <td>${emp.empId}</td>
         <td>${fullName(emp)}</td>
-        <td>${emp.dept || "-"}</td>
+        <td>${emp.position || "-"}</td>
           <td>${assignmentText(emp)}</td>
         ${compCols}
 
@@ -1625,8 +1808,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_first,
     f_last,
     f_middle,
-    f_dept,
-    f_position,
     f_addrStreet,
     f_bankName,
     f_accountName,
@@ -1665,9 +1846,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       alert("Employee ID must be exactly 4 digits.");
       return;
     }
-    if (!data.empId || !data.first || !data.last || !data.dept || !data.position) {
-      alert("Please fill required fields (Employee ID, First, Last, Department, Position).");
+    if (!data.empId || !data.first || !data.last || !(data.positionIds || []).length) {
+      alert("Please fill required fields (Employee ID, First, Last, Positions).");
       return;
+    }
+    const isRegular = String(data.type || "").toLowerCase() === "regular";
+    if (isRegular) {
+      if (!data.externalArea) {
+        alert("External Area is required for Regular employees.");
+        return;
+      }
+      if (!data.externalPositionId) {
+        alert("External Position is required for Regular employees.");
+        return;
+      }
     }
     if (CAN_VIEW_COMP) {
       if (!Number.isFinite(data.rate) || data.rate < 0) {
@@ -1723,6 +1915,49 @@ document.addEventListener("DOMContentLoaded", async () => {
   syncCashAdvanceFields();
   syncSalaryFields();
   syncPayoutFields();
+
+  // Positions dropdown checklist
+  if ((!positionsCatalog || !positionsCatalog.length) && Array.isArray(window.__positions)) {
+    positionsCatalog = window.__positions;
+  }
+  if ((!externalPositionsCatalog || !externalPositionsCatalog.length) && Array.isArray(window.__externalPositions)) {
+    externalPositionsCatalog = window.__externalPositions;
+  }
+  renderPositionsDropdown();
+  updatePositionsButton(selectedPositionIds());
+  populateExternalPositions(f_externalPosition);
+  syncExternalAreaUI();
+  function closePosDd() {
+    if (!posDdPanel || !posDdBtn) return;
+    posDdPanel.setAttribute("hidden", "");
+    posDdBtn.setAttribute("aria-expanded", "false");
+  }
+  function togglePosDd() {
+    if (!posDdPanel || !posDdBtn) return;
+    const isOpen = !posDdPanel.hasAttribute("hidden");
+    if (isOpen) closePosDd();
+    else {
+      posDdPanel.removeAttribute("hidden");
+      posDdBtn.setAttribute("aria-expanded", "true");
+      posSearch && setTimeout(() => posSearch.focus(), 0);
+    }
+  }
+  posDdBtn && posDdBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    togglePosDd();
+  });
+  posSearch && posSearch.addEventListener("input", () => {
+    filterPositionsList(posSearch.value);
+  });
+  posDdList && posDdList.addEventListener("change", () => {
+    updatePositionsButton(selectedPositionIds());
+  });
+  document.addEventListener("click", (e) => {
+    if (!posDd || !posDdPanel) return;
+    if (posDd.contains(e.target)) return;
+    closePosDd();
+  });
+
   assignmentFilter = currentAssignmentFilter();
   if (areaPlaceFilterWrap) {
     areaPlaceFilterWrap.style.display = "none";
@@ -1732,6 +1967,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function loadFilters() {
     try {
       const data = await apiFetch("/employees/filters");
+
+      if (Array.isArray(data.positions)) {
+        const prev = selectedPositionIds();
+        const q = posSearch?.value || "";
+        positionsCatalog = data.positions;
+        renderPositionsDropdown();
+        setSelectedPositionIds(prev);
+        if (posSearch) posSearch.value = q;
+        filterPositionsList(q);
+      }
+      if (Array.isArray(data.external_positions)) {
+        externalPositionsCatalog = data.external_positions;
+        populateExternalPositions(f_externalPosition);
+      }
       if (deptFilter) {
         deptFilter.innerHTML = `<option value="">All</option>` +
           (data.departments || []).map(d => `<option value="${d}">${d}</option>`).join("");

@@ -177,8 +177,6 @@
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
-                            <th class="sortable" data-sort="department">Department <span class="sortIcon"
-                                    aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="area">Area <span class="sortIcon" aria-hidden="true"></span>
@@ -386,7 +384,6 @@
                         <tr>
                             <th>Date</th>
                             <th>Name</th>
-                            <th>Department</th>
                             <th>Assignment</th>
                             <th>Area</th>
                             <th>Clock In/Out</th>
@@ -415,7 +412,7 @@
         <div class="drawer__head">
             <div>
                 <div class="drawer__title" id="kpiPreviewTitle">Total Records Preview</div>
-                <div class="drawer__sub muted small">Assignment, name, department, and in/out only.</div>
+                <div class="drawer__sub muted small">Assignment, name, and in/out only.</div>
             </div>
             <button class="iconx" type="button" id="closeKpiPreviewBtn" aria-label="Close preview">✕</button>
         </div>
@@ -427,7 +424,6 @@
                             <th>Date</th>
                             <th>Assignment</th>
                             <th>Name</th>
-                            <th>Department</th>
                             <th>In/Out</th>
                             <th>Status</th>
                         </tr>

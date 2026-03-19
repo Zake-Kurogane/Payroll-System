@@ -223,15 +223,31 @@ class SettingsController extends Controller
             WithholdingTaxBracket::query()->delete();
             $rows = [];
             foreach ($brackets as $idx => $b) {
+                $prescribed = $b['prescribed_withholding_tax'] ?? null;
+                $baseTax = (float) ($b['base_tax'] ?? 0);
+                $excessPercent = (float) ($b['excess_percent'] ?? 0);
+
+                // Defensive parsing: older clients may fail to extract base tax from strings like
+                // "₱1,875.00 + 20% over ₱33,333" and send base_tax=0.
+                if (is_string($prescribed) && trim($prescribed) !== '') {
+                    if ($baseTax <= 0 && preg_match('/([\\d,.]+)/', $prescribed, $m)) {
+                        $candidate = (float) str_replace(',', '', $m[1]);
+                        if ($candidate > 0) $baseTax = $candidate;
+                    }
+                    if ($excessPercent <= 0 && preg_match('/(\\d+(?:\\.\\d+)?)\\s*%/', $prescribed, $m)) {
+                        $excessPercent = (float) $m[1];
+                    }
+                }
+
                 $rows[] = [
                     'pay_frequency' => $b['pay_frequency'] ?? null,
                     'bracket_no' => $b['bracket_no'] ?? null,
                     'compensation_range' => $b['compensation_range'] ?? null,
-                    'prescribed_withholding_tax' => $b['prescribed_withholding_tax'] ?? null,
+                    'prescribed_withholding_tax' => $prescribed,
                     'bracket_from' => $b['bracket_from'],
                     'bracket_to' => $b['bracket_to'],
-                    'base_tax' => $b['base_tax'],
-                    'excess_percent' => $b['excess_percent'],
+                    'base_tax' => $baseTax,
+                    'excess_percent' => $excessPercent,
                     'sort_order' => $idx,
                 ];
             }

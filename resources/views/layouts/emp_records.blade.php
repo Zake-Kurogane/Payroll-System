@@ -127,7 +127,7 @@
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
-                            <th class="sortable" data-sort="dept">Department <span class="sortIcon"
+                            <th class="sortable" data-sort="position">Position <span class="sortIcon"
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
                                     aria-hidden="true"></span></th>
@@ -154,7 +154,7 @@
                                 <td>{{ $emp->emp_no }}</td>
                                 <td>{{ $emp->last_name }},
                                     {{ $emp->first_name }}{{ $emp->middle_name ? ' ' . $emp->middle_name : '' }}</td>
-                                <td>{{ $emp->department ?: '-' }}</td>
+                                <td>{{ $emp->position ?: '-' }}</td>
                                 <td>
                                     @php
                                         $assign = $emp->assignment_type ?: '';
@@ -321,6 +321,8 @@
             window.__serverEmployees = @json($employees->items());
             window.__areaPlaces = @json($groupedAreaPlaces);
             window.__canViewCompensation = @json(Gate::allows('viewCompensation'));
+            window.__positions = @json($positions ?? []);
+            window.__externalPositions = @json($externalPositions ?? []);
         </script>
 
         <div class="toast" id="toast" aria-live="polite" aria-atomic="true"></div>
@@ -416,19 +418,18 @@
                     <div class="sectionTitle">Employment Details</div>
                     <div class="grid2">
                         <div class="field">
-                            <label>Department *</label>
-                            <select id="f_dept" required>
-                                <option value="">Select department</option>
-                                <option>Admin</option>
-                                <option>HR</option>
-                                <option>IT</option>
-                                <option>Finance</option>
-                            </select>
-                        </div>
-
-                        <div class="field">
-                            <label>Position *</label>
-                            <input type="text" id="f_position" required placeholder="e.g. Assistant" />
+                            <label>Positions *</label>
+                            <div class="ddcheck" id="posDd">
+                                <button type="button" class="ddcheck__btn" id="posDdBtn" aria-haspopup="listbox"
+                                    aria-expanded="false">
+                                    Select position(s)
+                                </button>
+                                <div class="ddcheck__panel" id="posDdPanel" hidden>
+                                    <input type="text" class="ddcheck__search" id="posSearch"
+                                        placeholder="Type to search..." autocomplete="off" />
+                                    <div class="ddcheck__list" id="posDdList"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="field">
@@ -548,6 +549,16 @@
                                     @foreach ($places as $ap)
                                         <option value="{{ $ap }}">{{ $ap }}</option>
                                     @endforeach
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="field" id="externalPositionWrap" style="display:none;">
+                            <label>External Position</label>
+                            <select id="f_externalPosition" name="externalPosition" disabled>
+                                <option value="">-- Select external position --</option>
+                                @foreach ($externalPositions ?? [] as $p)
+                                    <option value="{{ $p->id }}">{{ $p->name }}</option>
                                 @endforeach
                             </select>
                         </div>

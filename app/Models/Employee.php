@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Employee extends Model
@@ -31,6 +32,7 @@ class Employee extends Model
         'assignment_type',
         'area_place',
         'external_area',
+        'external_position_id',
         'basic_pay',
         'allowance',
         'bank_name',
@@ -58,6 +60,16 @@ class Employee extends Model
     public function employmentStatus(): BelongsTo
     {
         return $this->belongsTo(EmploymentStatus::class);
+    }
+
+    public function positions(): BelongsToMany
+    {
+        return $this->belongsToMany(Position::class, 'employee_position');
+    }
+
+    public function externalPosition(): BelongsTo
+    {
+        return $this->belongsTo(ExternalPosition::class, 'external_position_id');
     }
 
     public function payrollRunRows(): HasMany

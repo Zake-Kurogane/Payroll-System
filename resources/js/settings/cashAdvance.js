@@ -134,6 +134,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     const v = String(raw || "").trim().toLowerCase();
     if (v === "trainee" || v === "trainees") return "trainees";
     if (v === "probationary" || v === "probi") return "probationary";
+    if (v.includes("non") && v.includes("regular")) return "probationary";
     return "regular";
   }
 
