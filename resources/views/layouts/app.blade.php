@@ -7,6 +7,8 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>Payroll System | @yield('title')</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+    <link rel="apple-touch-icon" href="{{ asset('image/logo.png') }}">
 
     @yield('vite')
     @vite(['resources/css/profile_drawer.css'])

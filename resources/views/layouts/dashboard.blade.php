@@ -32,16 +32,24 @@
                     <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Filter by assignment">
                         <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
                         @foreach ($assignments ?? [] as $a)
+                            @php
+                                $places = $groupedAreaPlaces[$a] ?? [];
+                            @endphp
                             <div class="seg__btn-wrap">
                                 <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
-                                    {{ $a }} <span class="seg__chevron">▾</span>
+                                    {{ $a }}
+                                    @if (!empty($places))
+                                        <span class="seg__chevron">▾</span>
+                                    @endif
                                 </button>
-                                <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
-                                    @foreach ($groupedAreaPlaces[$a] ?? [] as $ap)
-                                        <button type="button" class="seg__dropdown-item"
-                                            data-place="{{ $ap }}">{{ $ap }}</button>
-                                    @endforeach
-                                </div>
+                                @if (!empty($places))
+                                    <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                        @foreach ($places as $ap)
+                                            <button type="button" class="seg__dropdown-item"
+                                                data-place="{{ $ap }}">{{ $ap }}</button>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </div>
                         @endforeach
                     </div>

@@ -204,19 +204,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         wrap.appendChild(btn);
 
-        const dropdown = document.createElement("div");
-        dropdown.className = "seg__dropdown";
-        dropdown.setAttribute("data-group", label);
-        dropdown.style.display = "none";
-        places.forEach((p) => {
-          const item = document.createElement("button");
-          item.type = "button";
-          item.className = "seg__dropdown-item";
-          item.setAttribute("data-place", p);
-          item.textContent = p;
-          dropdown.appendChild(item);
-        });
-        wrap.appendChild(dropdown);
+        if (places.length) {
+          const dropdown = document.createElement("div");
+          dropdown.className = "seg__dropdown";
+          dropdown.setAttribute("data-group", label);
+          dropdown.style.display = "none";
+          places.forEach((p) => {
+            const item = document.createElement("button");
+            item.type = "button";
+            item.className = "seg__dropdown-item";
+            item.setAttribute("data-place", p);
+            item.textContent = p;
+            dropdown.appendChild(item);
+          });
+          wrap.appendChild(dropdown);
+        }
 
         assignSeg.appendChild(wrap);
       });
@@ -224,7 +226,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch {
     // Fallback: still show assignment options even if filters endpoint fails.
     if (assignSeg) {
-      const assignments = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+      const assignments = ["Davao", "Tagum", "Field"];
       assignSeg.innerHTML = "";
 
       const allBtn = document.createElement("button");

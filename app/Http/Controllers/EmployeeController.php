@@ -9,6 +9,8 @@ use App\Models\EmploymentStatus;
 use App\Models\EmploymentType;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
+use App\Models\Department;
+use App\Models\BasedLocation;
 use App\Models\ExternalPosition;
 use App\Models\Position;
 use Illuminate\Http\Request;
@@ -62,6 +64,7 @@ class EmployeeController extends Controller
                     'address_street',
                     'email',
                     'department',
+                    'based_location',
                     'position',
                     'employment_type',
                     'pay_type',
@@ -155,6 +158,7 @@ class EmployeeController extends Controller
                     'address_street',
                     'email',
                     'department',
+                    'based_location',
                     'position',
                     'employment_type',
                     'pay_type',
@@ -219,6 +223,12 @@ class EmployeeController extends Controller
         });
 
         $departments = Cache::remember('employees.departments', 300, function () {
+            if (Schema::hasTable('departments')) {
+                return Department::where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('label')
+                    ->pluck('label');
+            }
             return Employee::query()
                 ->select('department')
                 ->whereNotNull('department')
@@ -226,6 +236,16 @@ class EmployeeController extends Controller
                 ->distinct()
                 ->orderBy('department')
                 ->pluck('department');
+        });
+
+        $basedLocations = Cache::remember('employees.based_locations', 300, function () {
+            if (Schema::hasTable('based_locations')) {
+                return BasedLocation::where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('label')
+                    ->pluck('label');
+            }
+            return collect();
         });
 
         $assignments = Assignment::where('is_active', true)
@@ -274,6 +294,7 @@ class EmployeeController extends Controller
             'employees' => $employees,
             'statuses' => $statuses,
             'departments' => $departments,
+            'basedLocations' => $basedLocations,
             'assignments' => $assignments,
             'groupedAreaPlaces' => $groupedAreaPlaces,
             'positions' => $positions,
@@ -290,6 +311,12 @@ class EmployeeController extends Controller
         });
 
         $departments = Cache::remember('employees.departments', 300, function () {
+            if (Schema::hasTable('departments')) {
+                return Department::where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('label')
+                    ->pluck('label');
+            }
             return Employee::query()
                 ->select('department')
                 ->whereNotNull('department')
@@ -297,6 +324,16 @@ class EmployeeController extends Controller
                 ->distinct()
                 ->orderBy('department')
                 ->pluck('department');
+        });
+
+        $basedLocations = Cache::remember('employees.based_locations', 300, function () {
+            if (Schema::hasTable('based_locations')) {
+                return BasedLocation::where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->orderBy('label')
+                    ->pluck('label');
+            }
+            return collect();
         });
 
         $assignments = Assignment::where('is_active', true)
@@ -347,6 +384,7 @@ class EmployeeController extends Controller
         return response()->json([
             'statuses' => $statuses,
             'departments' => $departments,
+            'based_locations' => $basedLocations,
             'assignments' => $assignments,
             'area_places' => $areaPlaces,
             'employment_types' => $employmentTypes,
@@ -624,15 +662,25 @@ class EmployeeController extends Controller
 
     public function bulkAssign(Request $request)
     {
+        $assignment = trim((string) $request->input('assignment', ''));
+        $areaPlaceLabelsForAssignment = $assignment !== ''
+            ? AreaPlace::where('is_active', true)->where('parent_assignment', $assignment)->pluck('label')->all()
+            : [];
+
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['string', 'max:50'],
             'assignment' => ['required', Rule::in(Assignment::where('is_active', true)->pluck('label')->all())],
-            'area_place' => ['nullable', 'string', 'max:255'],
+            'area_place' => count($areaPlaceLabelsForAssignment)
+                ? ['required', 'string', 'max:255', Rule::in($areaPlaceLabelsForAssignment)]
+                : ['nullable', 'string', 'max:255'],
         ]);
 
         $assignment = $validated['assignment'];
-        $areaPlace = $validated['area_place'] ?? null;
+        $areaPlace = trim((string) ($validated['area_place'] ?? '')) !== '' ? $validated['area_place'] : null;
+        if (!count($areaPlaceLabelsForAssignment)) {
+            $areaPlace = null;
+        }
         $update = [
             'assignment_type' => $assignment,
             'area_place' => $areaPlace,
@@ -703,6 +751,7 @@ class EmployeeController extends Controller
     {
         Cache::forget('employees.statuses');
         Cache::forget('employees.departments');
+        Cache::forget('employees.based_locations');
         Cache::forget('employees.assignments');
         Cache::forget('employees.area_places');
         Cache::forget('employees.area_places_grouped');
@@ -714,6 +763,19 @@ class EmployeeController extends Controller
         if ($ignoreId !== null) {
             $uniqueEmpNo = $uniqueEmpNo->ignore($ignoreId);
         }
+
+        $activeAssignmentLabels = Assignment::where('is_active', true)->pluck('label')->all();
+        if ($ignoreId !== null) {
+            $existingAssignment = Employee::where('id', $ignoreId)->value('assignment_type');
+            if ($existingAssignment && !in_array($existingAssignment, $activeAssignmentLabels, true)) {
+                $activeAssignmentLabels[] = $existingAssignment;
+            }
+        }
+
+        $assignment = trim((string) $request->input('assignment_type', ''));
+        $areaPlaceLabelsForAssignment = $assignment !== ''
+            ? AreaPlace::where('is_active', true)->where('parent_assignment', $assignment)->pluck('label')->all()
+            : [];
 
         $rules = [
             'emp_no' => ['required', 'digits:4', $uniqueEmpNo],
@@ -730,13 +792,26 @@ class EmployeeController extends Controller
             'address_barangay' => ['nullable', 'string', 'max:255'],
             'address_street' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
-            'department' => ['nullable', 'string', 'max:255'],
+            'department' => array_merge(
+                ['nullable', 'string', 'max:255'],
+                Schema::hasTable('departments')
+                    ? [Rule::in(Department::where('is_active', true)->pluck('label')->all())]
+                    : [],
+            ),
+            'based_location' => array_merge(
+                ['nullable', 'string', 'max:255'],
+                Schema::hasTable('based_locations')
+                    ? [Rule::in(BasedLocation::where('is_active', true)->pluck('label')->all())]
+                    : [],
+            ),
             'position' => ['nullable', 'string', 'max:255'],
             'employment_type' => ['nullable', 'string', 'max:255'],
             'pay_type' => ['nullable', 'string', 'max:50'],
             'date_hired' => ['nullable', 'date'],
-            'assignment_type' => ['required', Rule::in(Assignment::where('is_active', true)->pluck('label')->all())],
-            'area_place' => ['required', 'string', 'max:255', Rule::in(AreaPlace::where('is_active', true)->pluck('label')->all())],
+            'assignment_type' => ['required', Rule::in($activeAssignmentLabels)],
+            'area_place' => count($areaPlaceLabelsForAssignment)
+                ? ['required', 'string', 'max:255', Rule::in($areaPlaceLabelsForAssignment)]
+                : ['nullable', 'string', 'max:255'],
             'external_area' => array_merge(
                 ['nullable', 'string', 'max:255'],
                 AreaPlace::where('is_active', true)->pluck('label')->isNotEmpty()
@@ -773,7 +848,12 @@ class EmployeeController extends Controller
             );
         }
 
-        return $request->validate($rules);
+        $validated = $request->validate($rules);
+        $validated['area_place'] = trim((string) ($validated['area_place'] ?? '')) !== '' ? $validated['area_place'] : null;
+        if (!count($areaPlaceLabelsForAssignment)) {
+            $validated['area_place'] = null;
+        }
+        return $validated;
     }
 
     private function normalizePositionIds(array $ids): array

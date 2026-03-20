@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (assignmentFilterEnabled) {
           if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+          assignmentOptions = ["Davao", "Tagum", "Field"];
           }
           buildAssignmentSeg();
           bindAssignmentSeg();
@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {
       if (assignmentFilterEnabled) {
         if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+          assignmentOptions = ["Davao", "Tagum", "Field"];
         }
         areaPlacesGrouped = areaPlacesGrouped || {};
         buildAssignmentSeg();
@@ -1490,14 +1490,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       wrap.appendChild(btn);
 
-      const dropdown = document.createElement("div");
-      dropdown.className = "seg__dropdown";
-      dropdown.dataset.group = label;
-      dropdown.style.display = "none";
-      dropdown.innerHTML = places.map(p =>
-        `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
-      ).join("");
-      wrap.appendChild(dropdown);
+      if (places.length) {
+        const dropdown = document.createElement("div");
+        dropdown.className = "seg__dropdown";
+        dropdown.dataset.group = label;
+        dropdown.style.display = "none";
+        dropdown.innerHTML = places.map(p =>
+          `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+        ).join("");
+        wrap.appendChild(dropdown);
+      }
 
       assignmentSeg.appendChild(wrap);
     });

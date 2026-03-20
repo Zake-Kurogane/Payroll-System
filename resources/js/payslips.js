@@ -496,14 +496,16 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           wrap.appendChild(btn);
 
-          const dropdown = document.createElement("div");
-          dropdown.className = "seg__dropdown";
-          dropdown.dataset.group = label;
-          dropdown.style.display = "none";
-          dropdown.innerHTML = places.map(p =>
-            `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
-          ).join("");
-          wrap.appendChild(dropdown);
+          if (places.length) {
+            const dropdown = document.createElement("div");
+            dropdown.className = "seg__dropdown";
+            dropdown.dataset.group = label;
+            dropdown.style.display = "none";
+            dropdown.innerHTML = places.map(p =>
+              `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+            ).join("");
+            wrap.appendChild(dropdown);
+          }
 
           assignmentSeg.appendChild(wrap);
         });
@@ -513,7 +515,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch {
       // Fallback: still render assignment filter options if filters endpoint fails.
-      const assignments = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+      const assignments = ["Davao", "Tagum", "Field"];
       areaPlaces = {};
 
       if (assignmentSeg) {

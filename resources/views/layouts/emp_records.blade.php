@@ -49,16 +49,24 @@
                         <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Filter by assignment">
                             <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
                             @foreach ($assignments as $a)
+                                @php
+                                    $places = $groupedAreaPlaces[$a] ?? [];
+                                @endphp
                                 <div class="seg__btn-wrap">
                                     <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
-                                        {{ $a }} <span class="seg__chevron">▾</span>
+                                        {{ $a }}
+                                        @if (!empty($places))
+                                            <span class="seg__chevron">▾</span>
+                                        @endif
                                     </button>
-                                    <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
-                                        @foreach ($groupedAreaPlaces[$a] ?? [] as $ap)
-                                            <button type="button" class="seg__dropdown-item"
-                                                data-place="{{ $ap }}">{{ $ap }}</button>
-                                        @endforeach
-                                    </div>
+                                    @if (!empty($places))
+                                        <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                            @foreach ($places as $ap)
+                                                <button type="button" class="seg__dropdown-item"
+                                                    data-place="{{ $ap }}">{{ $ap }}</button>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                 </div>
                             @endforeach
                         </div>
@@ -127,6 +135,8 @@
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
+                            <th class="sortable" data-sort="dept">Department <span class="sortIcon"
+                                    aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="position">Position <span class="sortIcon"
                                     aria-hidden="true"></span></th>
                             <th class="sortable" data-sort="assignment">Assignment <span class="sortIcon"
@@ -154,6 +164,7 @@
                                 <td>{{ $emp->emp_no }}</td>
                                 <td>{{ $emp->last_name }},
                                     {{ $emp->first_name }}{{ $emp->middle_name ? ' ' . $emp->middle_name : '' }}</td>
+                                <td>{{ $emp->department ?: '-' }}</td>
                                 <td>{{ $emp->position ?: '-' }}</td>
                                 <td>
                                     @php
@@ -161,13 +172,14 @@
                                         $isRegularField =
                                             $assign === 'Field' &&
                                             strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
+                                        $assignText = null;
                                         if ($emp->area_place) {
                                             $assignText = "{$assign} ({$emp->area_place})";
                                         } else {
                                             $assignText = $assign;
                                         }
                                     @endphp
-                                    {{ $assignText ?: '-' }}
+                                    {{ ($assignText ?? null) ?: '-' }}
                                 </td>
                                 @can('viewCompensation')
                                     <td class="col-basicpay">
@@ -194,7 +206,8 @@
                                         if ($assignType === '') {
                                             $missing[] = 'Assignment';
                                         }
-                                        if ($assignType !== '' && trim((string) ($emp->area_place ?? '')) === '') {
+                                        $needsAreaPlace = !empty($groupedAreaPlaces[$assignType] ?? []);
+                                        if ($assignType !== '' && $needsAreaPlace && trim((string) ($emp->area_place ?? '')) === '') {
                                             $missing[] = 'Area Place';
                                         }
                                         $isRegularField =
@@ -257,7 +270,10 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8">No employees found.</td>
+                                @php
+                                    $colspan = Gate::allows('viewCompensation') ? 11 : 8;
+                                @endphp
+                                <td colspan="{{ $colspan }}">No employees found.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -417,6 +433,26 @@
 
                     <div class="sectionTitle">Employment Details</div>
                     <div class="grid2">
+                        <div class="field">
+                            <label>Department</label>
+                            <select id="f_dept" name="department">
+                                <option value="">-- Select --</option>
+                                @foreach ($departments as $dept)
+                                    <option value="{{ $dept }}">{{ $dept }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label>Based Location</label>
+                            <select id="f_basedLocation" name="basedLocation">
+                                <option value="">-- Select --</option>
+                                @foreach (($basedLocations ?? []) as $loc)
+                                    <option value="{{ $loc }}">{{ $loc }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
                         <div class="field">
                             <label>Positions *</label>
                             <div class="ddcheck" id="posDd">

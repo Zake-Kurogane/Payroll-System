@@ -76,6 +76,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       last: emp.last_name,
       middle: emp.middle_name || "",
       dept: emp.department || "",
+      basedLocation: emp.based_location || "",
       position: emp.position || "",
       positionIds: Array.isArray(emp.positions) ? emp.positions.map(p => Number(p.id)).filter(Number.isFinite) : [],
       type: emp.employment_type || "",
@@ -125,6 +126,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       address_barangay: data.addrBarangay || null,
       address_street: data.addrStreet || null,
       email: data.email || null,
+      department: data.dept || null,
+      based_location: data.basedLocation || null,
       position_ids: data.positionIds || [],
       employment_type: data.type || null,
       pay_type: data.payType || null,
@@ -252,6 +255,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_addrCity = F("f_addrCity");
   const f_addrBarangay = F("f_addrBarangay");
   const f_addrStreet = F("f_addrStreet");
+  const f_dept = F("f_dept");
+  const f_basedLocation = F("f_basedLocation");
 
   // Positions dropdown checklist
   const posDd = document.getElementById("posDd");
@@ -632,6 +637,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     empForm?.reset();
     if (f_assignmentType) f_assignmentType.value = "G5-Davao";
     if (f_areaPlace) f_areaPlace.value = "";
+    if (f_dept) f_dept.value = "";
+    if (f_basedLocation) f_basedLocation.value = "";
     if (f_externalArea) f_externalArea.value = "";
     if (f_externalPosition) f_externalPosition.value = "";
     setSelectedPositionIds([]);
@@ -664,6 +671,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_email && (f_email.value = emp.email || "");
     if (f_addrStreet) f_addrStreet.value = emp.addrStreet || "";
     initAddressDropdowns(emp.addrProvince || "", emp.addrCity || "", emp.addrBarangay || "");
+    if (f_dept) {
+      const dept = String(emp.dept || "");
+      if (dept && !Array.from(f_dept.options).some(o => o.value === dept)) {
+        const opt = document.createElement("option");
+        opt.value = dept;
+        opt.textContent = dept;
+        f_dept.appendChild(opt);
+      }
+      f_dept.value = dept;
+    }
+    if (f_basedLocation) {
+      const loc = String(emp.basedLocation || "");
+      if (loc && !Array.from(f_basedLocation.options).some(o => o.value === loc)) {
+        const opt = document.createElement("option");
+        opt.value = loc;
+        opt.textContent = loc;
+        f_basedLocation.appendChild(opt);
+      }
+      f_basedLocation.value = loc;
+    }
 
     const ids = (emp.positionIds && emp.positionIds.length)
       ? emp.positionIds
@@ -676,7 +703,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_rate && (f_rate.value = emp.rate ?? "");
     f_allowance && (f_allowance.value = emp.allowance ?? 0);
 
-    f_assignmentType && (f_assignmentType.value = emp.assignmentType || "G5-Davao");
+    if (f_assignmentType) {
+      const assign = String(emp.assignmentType || "");
+      if (assign && !Array.from(f_assignmentType.options).some(o => o.value === assign)) {
+        const opt = document.createElement("option");
+        opt.value = assign;
+        opt.textContent = assign;
+        f_assignmentType.appendChild(opt);
+      }
+      f_assignmentType.value = assign || f_assignmentType.value || "G5-Davao";
+    }
     f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
     if (f_externalArea) f_externalArea.value = emp.externalArea || "";
     if (f_externalPosition) f_externalPosition.value = String(emp.externalPositionId || "");
@@ -707,6 +743,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       first: f_first?.value?.trim(),
       last: f_last?.value?.trim(),
       middle: f_middle?.value?.trim(),
+      dept: f_dept?.value?.trim(),
+      basedLocation: f_basedLocation?.value?.trim(),
       birthday: f_bday?.value || "",
       mobile: onlyDigits(f_mobile?.value),
       email: f_email?.value?.trim(),
@@ -870,10 +908,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   function populateAreaPlaces(selectEl, assignmentGroup) {
     if (!selectEl) return;
     const group = assignmentGroup || f_assignmentType?.value || "";
-    if (group === "Multi-Site (Roving)") {
-      populateExternalAreaPlaces(selectEl);
-      return;
-    }
     const places = (areaPlaces[group] || []);
     const current = selectEl.value;
     selectEl.innerHTML =
@@ -942,10 +976,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   function syncAssignmentUI() {
     if (!f_assignmentType || !f_areaPlace) return;
     const type = f_assignmentType.value;
-    // Always show area_place for all assignment types (each group has sub-options)
-    populateAreaPlaces(f_areaPlace, type);
-    f_areaPlace.disabled = !type;
-    if (areaPlaceWrap) areaPlaceWrap.style.display = type ? "" : "none";
+    const places = Array.isArray(areaPlaces[type]) ? areaPlaces[type] : [];
+    const needsAreaPlace = !!type && places.length > 0;
+    if (needsAreaPlace) {
+      populateAreaPlaces(f_areaPlace, type);
+      f_areaPlace.disabled = false;
+      if (areaPlaceWrap) areaPlaceWrap.style.display = "";
+    } else {
+      f_areaPlace.value = "";
+      f_areaPlace.disabled = true;
+      if (areaPlaceWrap) areaPlaceWrap.style.display = "none";
+    }
     syncExternalAreaUI();
   }
 
@@ -1111,8 +1152,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       const t = (emp.assignmentType || "").trim();
       if (!t) missing.push("Assignment");
       if (t) {
+        const needsAreaPlace = (areaPlaces[t] || []).length > 0;
         const ap = (emp.areaPlace || "").trim();
-        if (!ap) missing.push("Area Place");
+        if (needsAreaPlace && !ap) missing.push("Area Place");
         const isRegular = String(emp.type || "").toLowerCase() === "regular";
         if (isRegular && !(emp.externalArea || "").trim()) missing.push("External Area");
         if (isRegular && !emp.externalPositionId) missing.push("External Position");
@@ -1284,6 +1326,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </td>
         <td>${emp.empId}</td>
         <td>${fullName(emp)}</td>
+        <td>${escapeHtml(emp.dept || "-")}</td>
         <td>${emp.position || "-"}</td>
           <td>${assignmentText(emp)}</td>
         ${compCols}
@@ -1989,6 +2032,36 @@ document.addEventListener("DOMContentLoaded", async () => {
         deptFilter.innerHTML = `<option value="">All</option>` +
           (data.departments || []).map(d => `<option value="${d}">${d}</option>`).join("");
       }
+      if (f_dept) {
+        const current = String(f_dept.value || "");
+        const items = Array.isArray(data.departments) ? data.departments : [];
+        f_dept.innerHTML = `<option value="">-- Select --</option>` +
+          items.map(d => `<option value="${d}">${d}</option>`).join("");
+        if (current && items.includes(current)) {
+          f_dept.value = current;
+        } else if (current) {
+          const opt = document.createElement("option");
+          opt.value = current;
+          opt.textContent = current;
+          f_dept.appendChild(opt);
+          f_dept.value = current;
+        }
+      }
+      if (f_basedLocation) {
+        const current = String(f_basedLocation.value || "");
+        const items = Array.isArray(data.based_locations) ? data.based_locations : [];
+        f_basedLocation.innerHTML = `<option value="">-- Select --</option>` +
+          items.map(d => `<option value="${d}">${d}</option>`).join("");
+        if (current && items.includes(current)) {
+          f_basedLocation.value = current;
+        } else if (current) {
+          const opt = document.createElement("option");
+          opt.value = current;
+          opt.textContent = current;
+          f_basedLocation.appendChild(opt);
+          f_basedLocation.value = current;
+        }
+      }
       if (statusFilter) {
         statusFilter.innerHTML = `<option value="">All</option>` +
           (data.statuses || []).map(s => `<option value="${s.id}">${s.label}</option>`).join("");
@@ -2034,19 +2107,21 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             wrap.appendChild(btn);
 
-            const dropdown = document.createElement("div");
-            dropdown.className = "seg__dropdown";
-            dropdown.setAttribute("data-group", label);
-            dropdown.style.display = "none";
-            places.forEach((p) => {
-              const item = document.createElement("button");
-              item.type = "button";
-              item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
-              item.setAttribute("data-place", p);
-              item.textContent = p;
-              dropdown.appendChild(item);
-            });
-            wrap.appendChild(dropdown);
+            if (places.length) {
+              const dropdown = document.createElement("div");
+              dropdown.className = "seg__dropdown";
+              dropdown.setAttribute("data-group", label);
+              dropdown.style.display = "none";
+              places.forEach((p) => {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
+                item.setAttribute("data-place", p);
+                item.textContent = p;
+                dropdown.appendChild(item);
+              });
+              wrap.appendChild(dropdown);
+            }
 
             assignSeg.appendChild(wrap);
           });

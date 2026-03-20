@@ -72,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
       areaPlacesGrouped = (ap && typeof ap === "object" && !Array.isArray(ap)) ? ap : {};
       areaPlaceOptions = Array.isArray(areaPlacesGrouped["Field"]) ? areaPlacesGrouped["Field"] : [];
     } catch {
-      assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+      assignmentOptions = ["Davao", "Tagum", "Field"];
       areaPlacesGrouped = {};
       areaPlaceOptions = [];
     }
@@ -1121,14 +1121,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       wrap.appendChild(btn);
 
-      const dropdown = document.createElement("div");
-      dropdown.className = "seg__dropdown";
-      dropdown.dataset.group = label;
-      dropdown.style.display = "none";
-      dropdown.innerHTML = places.map(p =>
-        `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
-      ).join("");
-      wrap.appendChild(dropdown);
+      if (places.length) {
+        const dropdown = document.createElement("div");
+        dropdown.className = "seg__dropdown";
+        dropdown.dataset.group = label;
+        dropdown.style.display = "none";
+        dropdown.innerHTML = places.map(p =>
+          `<button type="button" class="seg__dropdown-item" data-place="${escapeHtml(p)}">${escapeHtml(p)}</button>`
+        ).join("");
+        wrap.appendChild(dropdown);
+      }
 
       segContainer.appendChild(wrap);
     });

@@ -25,6 +25,7 @@ class Employee extends Model
         'address_street',
         'email',
         'department',
+        'based_location',
         'position',
         'employment_type',
         'pay_type',
@@ -51,6 +52,27 @@ class Employee extends Model
         'birthday' => 'date:Y-m-d',
         'date_hired' => 'date:Y-m-d',
     ];
+
+    public function getAssignmentTypeAttribute($value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        $lower = mb_strtolower($value);
+        $lower = str_replace(
+            ["\u{2010}", "\u{2011}", "\u{2012}", "\u{2013}", "\u{2014}", "\u{2212}"],
+            '-',
+            $lower,
+        );
+        $compact = preg_replace('/[^a-z0-9]+/u', '', $lower) ?? '';
+        if (str_contains($compact, 'multisite') && str_contains($compact, 'roving')) {
+            return '';
+        }
+
+        return $value;
+    }
 
     public function attendanceRecords(): HasMany
     {

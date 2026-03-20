@@ -180,19 +180,21 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           wrap.appendChild(btn);
 
-          const dropdown = document.createElement("div");
-          dropdown.className = "seg__dropdown";
-          dropdown.setAttribute("data-group", label);
-          dropdown.style.display = "none";
-          places.forEach((p) => {
-            const item = document.createElement("button");
-            item.type = "button";
-            item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
-            item.setAttribute("data-place", p);
-            item.textContent = p;
-            dropdown.appendChild(item);
-          });
-          wrap.appendChild(dropdown);
+          if (places.length) {
+            const dropdown = document.createElement("div");
+            dropdown.className = "seg__dropdown";
+            dropdown.setAttribute("data-group", label);
+            dropdown.style.display = "none";
+            places.forEach((p) => {
+              const item = document.createElement("button");
+              item.type = "button";
+              item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
+              item.setAttribute("data-place", p);
+              item.textContent = p;
+              dropdown.appendChild(item);
+            });
+            wrap.appendChild(dropdown);
+          }
 
           loanAssignSeg.appendChild(wrap);
         });
