@@ -252,6 +252,20 @@ class EmployeeController extends Controller
                 $ordered[$label] = $grouped[$label];
             }
         }
+        // Multi-Site (Roving) should show all places across assignments
+        $multiLabel = 'Multi-Site (Roving)';
+        $allPlaces = [];
+        foreach ($ordered as $places) {
+            foreach ($places as $p) {
+                $p = trim((string) $p);
+                if ($p !== '') {
+                    $allPlaces[$p] = true;
+                }
+            }
+        }
+        if (!isset($ordered[$multiLabel]) && count($allPlaces)) {
+            $ordered[$multiLabel] = array_values(array_keys($allPlaces));
+        }
         $groupedAreaPlaces = $ordered;
 
         $positions = collect();
@@ -321,6 +335,20 @@ class EmployeeController extends Controller
             if (isset($grouped[$label])) {
                 $ordered[$label] = $grouped[$label];
             }
+        }
+        // Multi-Site (Roving) should show all places across assignments
+        $multiLabel = 'Multi-Site (Roving)';
+        $allPlaces = [];
+        foreach ($ordered as $places) {
+            foreach ($places as $p) {
+                $p = trim((string) $p);
+                if ($p !== '') {
+                    $allPlaces[$p] = true;
+                }
+            }
+        }
+        if (!isset($ordered[$multiLabel]) && count($allPlaces)) {
+            $ordered[$multiLabel] = array_values(array_keys($allPlaces));
         }
         $areaPlaces = $ordered;
 
