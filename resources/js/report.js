@@ -826,8 +826,27 @@ document.addEventListener("DOMContentLoaded", () => {
     allBtn.textContent = "All";
     assignmentSeg.appendChild(allBtn);
 
+    function mergedPlacesForMultiSite() {
+      const seen = new Set();
+      const out = [];
+      Object.values(areaPlaces || {}).forEach((arr) => {
+        if (!Array.isArray(arr)) return;
+        arr.forEach((p) => {
+          const label = String(p || "").trim();
+          if (!label) return;
+          const key = label.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(label);
+        });
+      });
+      return out;
+    }
+
     assignments.forEach((label) => {
-      const places = Array.isArray(areaPlaces[label]) ? areaPlaces[label] : [];
+      const places = label === "Multi-Site (Roving)"
+        ? mergedPlacesForMultiSite()
+        : (Array.isArray(areaPlaces[label]) ? areaPlaces[label] : []);
       const wrap = document.createElement("div");
       wrap.className = "seg__btn-wrap";
 
