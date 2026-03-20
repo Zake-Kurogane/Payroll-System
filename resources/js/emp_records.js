@@ -870,6 +870,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   function populateAreaPlaces(selectEl, assignmentGroup) {
     if (!selectEl) return;
     const group = assignmentGroup || f_assignmentType?.value || "";
+    if (group === "Multi-Site(Roving)") {
+      populateExternalAreaPlaces(selectEl);
+      return;
+    }
     const places = (areaPlaces[group] || []);
     const current = selectEl.value;
     selectEl.innerHTML =
