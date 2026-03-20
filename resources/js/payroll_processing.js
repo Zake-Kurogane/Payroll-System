@@ -288,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (assignmentFilterEnabled) {
         if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field"];
+          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
         }
         buildAssignmentSeg();
         bindAssignmentSeg();
@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {
       if (assignmentFilterEnabled) {
         if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field"];
+          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
         }
         areaPlacesGrouped = areaPlacesGrouped || {};
         buildAssignmentSeg();
