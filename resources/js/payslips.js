@@ -513,7 +513,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch {
       // Fallback: still render assignment filter options if filters endpoint fails.
-      const assignments = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+      const assignments = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
       areaPlaces = {};
 
       if (assignmentSeg) {

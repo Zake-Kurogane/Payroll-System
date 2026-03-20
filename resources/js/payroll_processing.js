@@ -286,18 +286,18 @@ document.addEventListener("DOMContentLoaded", () => {
         ? data.area_places : {};
       areaPlacesGrouped = grouped;
 
-      if (assignmentFilterEnabled) {
-        if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+        if (assignmentFilterEnabled) {
+          if (!assignmentOptions.length) {
+          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
+          }
+          buildAssignmentSeg();
+          bindAssignmentSeg();
+          syncSegButtons();
         }
-        buildAssignmentSeg();
-        bindAssignmentSeg();
-        syncSegButtons();
-      }
     } catch {
       if (assignmentFilterEnabled) {
         if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+          assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
         }
         areaPlacesGrouped = areaPlacesGrouped || {};
         buildAssignmentSeg();

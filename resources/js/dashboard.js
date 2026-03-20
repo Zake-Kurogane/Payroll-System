@@ -224,7 +224,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch {
     // Fallback: still show assignment options even if filters endpoint fails.
     if (assignSeg) {
-      const assignments = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+      const assignments = ["Davao", "Tagum", "Field", "Multi-Site (Roving)"];
       assignSeg.innerHTML = "";
 
       const allBtn = document.createElement("button");

@@ -1232,7 +1232,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .catch(() => {
         areaPlaces = {};
-        buildAssignmentSeg(["Davao", "Tagum", "Field", "Multi-Site(Roving)"]);
+        buildAssignmentSeg(["Davao", "Tagum", "Field", "Multi-Site (Roving)"]);
       });
   }
 
