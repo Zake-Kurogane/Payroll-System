@@ -13,13 +13,15 @@ return new class extends Migration
     {
         $old = 'Multi-Site(Roving)';
         $new = 'Multi-Site (Roving)';
+        $code = 'multi-site-roving';
 
         // If old exists and new doesn't, rename.
         $hasOld = DB::table('assignments')->where('label', $old)->exists();
-        $hasNew = DB::table('assignments')->where('label', $new)->exists();
+        $hasNew = DB::table('assignments')->where('code', $code)->orWhere('label', $new)->exists();
 
         if ($hasOld && !$hasNew) {
             DB::table('assignments')->where('label', $old)->update([
+                'code' => $code,
                 'label' => $new,
                 'updated_at' => Carbon::now(),
             ]);
@@ -34,6 +36,7 @@ return new class extends Migration
             $now = Carbon::now();
             $maxSort = (int) (DB::table('assignments')->max('sort_order') ?? 0);
             DB::table('assignments')->insert([
+                'code' => $code,
                 'label' => $new,
                 'is_active' => true,
                 'sort_order' => $maxSort + 1,
@@ -50,8 +53,9 @@ return new class extends Migration
     {
         $old = 'Multi-Site(Roving)';
         $new = 'Multi-Site (Roving)';
+        $code = 'multi-site-roving';
 
-        DB::table('assignments')->where('label', $new)->update([
+        DB::table('assignments')->where('code', $code)->orWhere('label', $new)->update([
             'label' => $old,
             'updated_at' => Carbon::now(),
         ]);
@@ -60,4 +64,3 @@ return new class extends Migration
         ]);
     }
 };
-

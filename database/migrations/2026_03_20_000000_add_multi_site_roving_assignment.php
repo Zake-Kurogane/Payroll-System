@@ -11,8 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $label = 'Multi-Site(Roving)';
-        $exists = DB::table('assignments')->where('label', $label)->exists();
+        $label = 'Multi-Site (Roving)';
+        $code = 'multi-site-roving';
+        $exists = DB::table('assignments')->where('code', $code)->orWhere('label', $label)->exists();
         if ($exists) {
             return;
         }
@@ -21,6 +22,7 @@ return new class extends Migration
         $maxSort = (int) (DB::table('assignments')->max('sort_order') ?? 0);
 
         DB::table('assignments')->insert([
+            'code' => $code,
             'label' => $label,
             'is_active' => true,
             'sort_order' => $maxSort + 1,
@@ -34,7 +36,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        DB::table('assignments')->where('label', 'Multi-Site(Roving)')->delete();
+        DB::table('assignments')->where('code', 'multi-site-roving')->orWhere('label', 'Multi-Site (Roving)')->delete();
     }
 };
-
