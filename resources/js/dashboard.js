@@ -221,7 +221,34 @@ document.addEventListener("DOMContentLoaded", async () => {
         assignSeg.appendChild(wrap);
       });
     }
-  } catch { /* silent */ }
+  } catch {
+    // Fallback: still show assignment options even if filters endpoint fails.
+    if (assignSeg) {
+      const assignments = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+      assignSeg.innerHTML = "";
+
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.className = "seg__btn seg__btn--emp is-active";
+      allBtn.setAttribute("data-assign", "");
+      allBtn.textContent = "All";
+      assignSeg.appendChild(allBtn);
+
+      assignments.forEach((label) => {
+        const wrap = document.createElement("div");
+        wrap.className = "seg__btn-wrap";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "seg__btn seg__btn--emp";
+        btn.setAttribute("data-assign", label);
+        btn.textContent = label;
+        wrap.appendChild(btn);
+
+        assignSeg.appendChild(wrap);
+      });
+    }
+  }
   wireAssignButtons();
 
   // ── Default month to current ─────────────────────────────

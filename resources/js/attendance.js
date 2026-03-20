@@ -72,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
       areaPlacesGrouped = (ap && typeof ap === "object" && !Array.isArray(ap)) ? ap : {};
       areaPlaceOptions = Array.isArray(areaPlacesGrouped["Field"]) ? areaPlacesGrouped["Field"] : [];
     } catch {
-      assignmentOptions = [];
+      assignmentOptions = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
       areaPlacesGrouped = {};
       areaPlaceOptions = [];
     }

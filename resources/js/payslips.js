@@ -512,7 +512,37 @@ document.addEventListener("DOMContentLoaded", () => {
         bindAssignmentButtons();
       }
     } catch {
-      // keep defaults
+      // Fallback: still render assignment filter options if filters endpoint fails.
+      const assignments = ["Davao", "Tagum", "Field", "Multi-Site(Roving)"];
+      areaPlaces = {};
+
+      if (assignmentSeg) {
+        assignmentSeg.innerHTML = "";
+
+        const allBtn = document.createElement("button");
+        allBtn.className = "seg__btn seg__btn--emp is-active";
+        allBtn.type = "button";
+        allBtn.dataset.assign = "All";
+        allBtn.textContent = "All";
+        assignmentSeg.appendChild(allBtn);
+
+        assignments.forEach((label) => {
+          const wrap = document.createElement("div");
+          wrap.className = "seg__btn-wrap";
+
+          const btn = document.createElement("button");
+          btn.className = "seg__btn seg__btn--emp";
+          btn.type = "button";
+          btn.dataset.assign = label;
+          btn.textContent = label;
+          wrap.appendChild(btn);
+
+          assignmentSeg.appendChild(wrap);
+        });
+
+        segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn--emp"));
+        bindAssignmentButtons();
+      }
     }
   }
 
