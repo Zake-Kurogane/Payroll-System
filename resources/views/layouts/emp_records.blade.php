@@ -125,13 +125,14 @@
             </div>
 
             <div class="tablewrap">
-                <table class="table" id="empTable">
+                <table class="table" id="empTable" data-has-comp="{{ Gate::allows('viewCompensation') ? '1' : '0' }}">
                     <thead>
                         <tr>
                             <th class="col-check">
                                 <input type="checkbox" id="selectAll" aria-label="Select all" />
                             </th>
-                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon" aria-hidden="true"></span>
+                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
+                                    aria-hidden="true"></span>
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
@@ -146,7 +147,7 @@
                                         aria-hidden="true"></span></th>
                                 <th class="sortable" data-sort="allowance">P/A <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="sortable" data-sort="salary">Total Salary <span class="sortIcon"
+                                <th class="sortable col-salary" data-sort="salary">Total Salary <span class="sortIcon"
                                         aria-hidden="true"></span></th>
                             @endcan
                             <th>Payroll Required</th>
@@ -179,7 +180,7 @@
                                             $assignText = $assign;
                                         }
                                     @endphp
-                                    {{ ($assignText ?? null) ?: '-' }}
+                                    {{ $assignText ?? null ?: '-' }}
                                 </td>
                                 @can('viewCompensation')
                                     <td class="col-basicpay">
@@ -188,7 +189,7 @@
                                     <td>
                                         <div class="salaryVal">&#8369; {{ number_format($emp->allowance ?? 0) }}</div>
                                     </td>
-                                    <td>
+                                    <td class="col-salary">
                                         <div class="salaryVal">&#8369;
                                             {{ number_format(($emp->basic_pay ?? 0) + ($emp->allowance ?? 0)) }}</div>
                                     </td>
@@ -207,7 +208,11 @@
                                             $missing[] = 'Assignment';
                                         }
                                         $needsAreaPlace = !empty($groupedAreaPlaces[$assignType] ?? []);
-                                        if ($assignType !== '' && $needsAreaPlace && trim((string) ($emp->area_place ?? '')) === '') {
+                                        if (
+                                            $assignType !== '' &&
+                                            $needsAreaPlace &&
+                                            trim((string) ($emp->area_place ?? '')) === ''
+                                        ) {
                                             $missing[] = 'Area Place';
                                         }
                                         $isRegularField =
@@ -347,7 +352,8 @@
 
         <!-- DRAWER -->
         <div class="overlay" id="drawerOverlay" hidden></div>
-        <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+        <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle"
+            aria-hidden="true">
             <div class="drawer__head">
                 <div>
                     <div class="drawer__title" id="drawerTitle">Employee Details</div>
@@ -357,149 +363,153 @@
             </div>
 
             <form class="form" id="empForm">
-                    <div class="sectionTitle">Basic Information</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Employee ID</label>
-                            <input type="text" id="f_empId" required placeholder="Auto-generated"
-                                inputmode="numeric" pattern="\d{4}" maxlength="4" readonly
-                                style="background:var(--surface-2,#f5f5f5);cursor:default;" />
-                        </div>
-
-                        <div class="field">
-                            <label>Status</label>
-                            <select id="f_status">
-                                @foreach ($statuses as $s)
-                                    <option value="{{ $s->id }}">{{ $s->label }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="field">
-                            <label>First Name *</label>
-                            <input type="text" id="f_first" required placeholder="First name" />
-                        </div>
-
-                        <div class="field">
-                            <label>Last Name *</label>
-                            <input type="text" id="f_last" required placeholder="Last name" />
-                        </div>
-
-                        <div class="field">
-                            <label>Middle Name</label>
-                            <input type="text" id="f_middle" placeholder="Middle name (optional)" />
-                        </div>
-
-                        <div class="field">
-                            <label>Birthday</label>
-                            <input type="date" id="f_bday" />
-                        </div>
+                <div class="sectionTitle">Basic Information</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Employee ID</label>
+                        <input type="text" id="f_empId" required placeholder="Auto-generated" inputmode="numeric"
+                            pattern="\d{4}" maxlength="4" readonly
+                            style="background:var(--surface-2,#f5f5f5);cursor:default;" />
+                        <small class="err" id="errEmpId"></small>
                     </div>
 
-                    <div class="sectionTitle">Contact & Address</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Mobile No.</label>
-                            <input type="text" id="f_mobile" placeholder="09xx-xxx-xxxx" inputmode="numeric"
-                                pattern="^[0-9]{4}-[0-9]{3}-[0-9]{4}$" />
-                        </div>
-                        <div class="field">
-                            <label>Email</label>
-                            <input type="email" id="f_email" placeholder="name@email.com" />
-                        </div>
-                        <div class="field">
-                            <label>Province</label>
-                            <select id="f_addrProvince">
-                                <option value="">— Select Province —</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>City / Municipality</label>
-                            <select id="f_addrCity" disabled>
-                                <option value="">— Select City / Municipality —</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>Barangay</label>
-                            <select id="f_addrBarangay" disabled>
-                                <option value="">— Select Barangay —</option>
-                            </select>
-                        </div>
-                        <div class="field">
-                            <label>Street / House No.</label>
-                            <input type="text" id="f_addrStreet" placeholder="e.g. 123 Rizal St." />
-                        </div>
+                    <div class="field">
+                        <label>Status</label>
+                        <select id="f_status">
+                            @foreach ($statuses as $s)
+                                <option value="{{ $s->id }}">{{ $s->label }}</option>
+                            @endforeach
+                        </select>
                     </div>
 
-                    <div class="sectionTitle">Employment Details</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Department</label>
-                            <select id="f_dept" name="department">
-                                <option value="">-- Select --</option>
-                                @foreach ($departments as $dept)
-                                    <option value="{{ $dept }}">{{ $dept }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                    <div class="field">
+                        <label>First Name *</label>
+                        <input type="text" id="f_first" required placeholder="First name" />
+                        <small class="err" id="errFirst"></small>
+                    </div>
 
-                        <div class="field">
-                            <label>Based Location</label>
-                            <select id="f_basedLocation" name="basedLocation">
-                                <option value="">-- Select --</option>
-                                @foreach (($basedLocations ?? []) as $loc)
-                                    <option value="{{ $loc }}">{{ $loc }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                    <div class="field">
+                        <label>Last Name *</label>
+                        <input type="text" id="f_last" required placeholder="Last name" />
+                        <small class="err" id="errLast"></small>
+                    </div>
 
-                        <div class="field">
-                            <label>Positions *</label>
-                            <div class="ddcheck" id="posDd">
-                                <button type="button" class="ddcheck__btn" id="posDdBtn" aria-haspopup="listbox"
-                                    aria-expanded="false">
-                                    Select position(s)
-                                </button>
-                                <div class="ddcheck__panel" id="posDdPanel" hidden>
-                                    <input type="text" class="ddcheck__search" id="posSearch"
-                                        placeholder="Type to search..." autocomplete="off" />
-                                    <div class="ddcheck__list" id="posDdList"></div>
-                                </div>
+                    <div class="field">
+                        <label>Middle Name</label>
+                        <input type="text" id="f_middle" placeholder="Middle name (optional)" />
+                    </div>
+
+                    <div class="field">
+                        <label>Birthday</label>
+                        <input type="date" id="f_bday" />
+                    </div>
+                </div>
+
+                <div class="sectionTitle">Contact & Address</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Mobile No.</label>
+                        <input type="text" id="f_mobile" placeholder="09xx-xxx-xxxx" inputmode="numeric"
+                            pattern="^[0-9]{4}-[0-9]{3}-[0-9]{4}$" />
+                    </div>
+                    <div class="field">
+                        <label>Email</label>
+                        <input type="email" id="f_email" placeholder="name@email.com" />
+                    </div>
+                    <div class="field">
+                        <label>Province</label>
+                        <select id="f_addrProvince">
+                            <option value="">— Select Province —</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>City / Municipality</label>
+                        <select id="f_addrCity" disabled>
+                            <option value="">— Select City / Municipality —</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Barangay</label>
+                        <select id="f_addrBarangay" disabled>
+                            <option value="">— Select Barangay —</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Street / House No.</label>
+                        <input type="text" id="f_addrStreet" placeholder="e.g. 123 Rizal St." />
+                    </div>
+                </div>
+
+                <div class="sectionTitle">Employment Details</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Department</label>
+                        <select id="f_dept" name="department">
+                            <option value="">-- Select --</option>
+                            @foreach ($departments as $dept)
+                                <option value="{{ $dept }}">{{ $dept }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Based Location</label>
+                        <select id="f_basedLocation" name="basedLocation">
+                            <option value="">-- Select --</option>
+                            @foreach ($basedLocations ?? [] as $loc)
+                                <option value="{{ $loc }}">{{ $loc }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Positions *</label>
+                        <div class="ddcheck" id="posDd">
+                            <button type="button" class="ddcheck__btn" id="posDdBtn" aria-haspopup="listbox"
+                                aria-expanded="false">
+                                Select position(s)
+                            </button>
+                            <div class="ddcheck__panel" id="posDdPanel" hidden>
+                                <input type="text" class="ddcheck__search" id="posSearch"
+                                    placeholder="Type to search..." autocomplete="off" />
+                                <div class="ddcheck__list" id="posDdList"></div>
                             </div>
                         </div>
-
-                        <div class="field">
-                            <label>Employment Type</label>
-                            <select id="f_type">
-                                <option value="">-- Select --</option>
-                            </select>
-                        </div>
-
-                        <div class="field">
-                            <label>Date Hired</label>
-                            <input type="date" id="f_hired" />
-                        </div>
-
-                        <div class="field">
-                            <label>Pay Type</label>
-                            <select id="f_payType">
-                                <option>Monthly</option>
-                                <option>Daily</option>
-                                <option>Hourly</option>
-                            </select>
-                        </div>
-
-                        <div id="plInfoWrap" class="plField" style="display:none;">
-                            <div class="plField__label">PL ALLOWANCE</div>
-                            <div class="plField__pill">
-                                <span id="f_plCount"></span> <span class="plField__unit">days</span>
-                            </div>
-                            <div id="f_plBadge" class="plField__pillMeta"></div>
-                        </div>
-
+                        <small class="err" id="errPositions"></small>
                     </div>
 
-                    @can('viewCompensation')
+                    <div class="field">
+                        <label>Employment Type</label>
+                        <select id="f_type">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Date Hired</label>
+                        <input type="date" id="f_hired" />
+                    </div>
+
+                    <div class="field">
+                        <label>Pay Type</label>
+                        <select id="f_payType">
+                            <option>Monthly</option>
+                            <option>Daily</option>
+                            <option>Hourly</option>
+                        </select>
+                    </div>
+
+                    <div id="plInfoWrap" class="plField" style="display:none;">
+                        <div class="plField__label">PL ALLOWANCE</div>
+                        <div class="plField__pill">
+                            <span id="f_plCount"></span> <span class="plField__unit">days</span>
+                        </div>
+                        <div id="f_plBadge" class="plField__pillMeta"></div>
+                    </div>
+
+                </div>
+
+                @can('viewCompensation')
                     <div class="sectionTitle">Compensation</div>
                     <div class="grid2">
                         <div class="field">
@@ -540,11 +550,13 @@
 
 
                             <input type="number" id="f_rate" required placeholder="e.g. 20000" min="0" />
+                            <small class="err" id="errRate"></small>
                         </div>
 
                         <div class="field">
                             <label>Allowance (monthly)</label>
                             <input type="number" id="f_allowance" placeholder="e.g. 1500" min="0" />
+                            <small class="err" id="errAllowance"></small>
                         </div>
 
                         <div class="field">
@@ -552,263 +564,271 @@
                             <input type="text" id="f_totalSalary" readonly />
                         </div>
                     </div>
-                    @endcan
+                @endcan
 
-                    <div class="sectionTitle">Assignment</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Assignment Type</label>
-                            <select id="f_assignmentType" name="assignmentType" required>
-                                @foreach ($assignments as $a)
-                                    <option value="{{ $a }}">{{ $a }}</option>
+                <div class="sectionTitle">Assignment</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Assignment Type</label>
+                        <select id="f_assignmentType" name="assignmentType" required>
+                            @foreach ($assignments as $a)
+                                <option value="{{ $a }}">{{ $a }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="field" id="areaPlaceWrap" style="display:none;">
+                        <label>Location (Area Place)</label>
+                        <select id="f_areaPlace" name="areaPlace" disabled>
+                            <option value="">-- Select area place --</option>
+                            @foreach ($groupedAreaPlaces as $group => $places)
+                                @foreach ($places as $ap)
+                                    <option value="{{ $ap }}">{{ $ap }}</option>
                                 @endforeach
-                            </select>
-                        </div>
+                            @endforeach
+                        </select>
+                    </div>
 
-                        <div class="field" id="areaPlaceWrap" style="display:none;">
-                            <label>Location (Area Place)</label>
-                            <select id="f_areaPlace" name="areaPlace" disabled>
-                                <option value="">-- Select area place --</option>
-                                @foreach ($groupedAreaPlaces as $group => $places)
-                                    @foreach ($places as $ap)
-                                        <option value="{{ $ap }}">{{ $ap }}</option>
-                                    @endforeach
+                    <div class="field" id="externalAreaWrap" style="display:none;">
+                        <label>External Area <span class="hint">(fixed deduction attribution)</span></label>
+                        <select id="f_externalArea" name="externalArea" disabled>
+                            <option value="">-- Select external area --</option>
+                            @foreach ($groupedAreaPlaces as $group => $places)
+                                @foreach ($places as $ap)
+                                    <option value="{{ $ap }}">{{ $ap }}</option>
                                 @endforeach
-                            </select>
-                        </div>
-
-                        <div class="field" id="externalAreaWrap" style="display:none;">
-                            <label>External Area <span class="hint">(fixed deduction attribution)</span></label>
-                            <select id="f_externalArea" name="externalArea" disabled>
-                                <option value="">-- Select external area --</option>
-                                @foreach ($groupedAreaPlaces as $group => $places)
-                                    @foreach ($places as $ap)
-                                        <option value="{{ $ap }}">{{ $ap }}</option>
-                                    @endforeach
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="field" id="externalPositionWrap" style="display:none;">
-                            <label>External Position</label>
-                            <select id="f_externalPosition" name="externalPosition" disabled>
-                                <option value="">-- Select external position --</option>
-                                @foreach ($externalPositions ?? [] as $p)
-                                    <option value="{{ $p->id }}">{{ $p->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
+                            @endforeach
+                        </select>
+                        <small class="err" id="errExternalArea"></small>
                     </div>
 
-                    <div class="sectionTitle">Cash Advance</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Cash Advance Eligibility</label>
-                            <input type="text" id="f_caEligible" readonly />
-                        </div>
+                    <div class="field" id="externalPositionWrap" style="display:none;">
+                        <label>External Position</label>
+                        <select id="f_externalPosition" name="externalPosition" disabled>
+                            <option value="">-- Select external position --</option>
+                            @foreach ($externalPositions ?? [] as $p)
+                                <option value="{{ $p->id }}">{{ $p->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="err" id="errExternalPosition"></small>
                     </div>
+                </div>
 
-                    <div class="sectionTitle">Government IDs</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>SSS No.</label>
-                            <input type="text" id="f_sss" placeholder="00-0000000-0" inputmode="numeric"
-                                pattern="^[0-9]{2}-[0-9]{7}-[0-9]{1}$" />
-                        </div>
-                        <div class="field">
-                            <label>PhilHealth No.</label>
-                            <input type="text" id="f_ph" placeholder="00-000000000-0" inputmode="numeric"
-                                pattern="^[0-9]{2}-[0-9]{9}-[0-9]{1}$" />
-                        </div>
-                        <div class="field">
-                            <label>Pag-IBIG No.</label>
-                            <input type="text" id="f_pagibig" placeholder="0000-0000-0000" inputmode="numeric"
-                                pattern="^[0-9]{4}-[0-9]{4}-[0-9]{4}$" />
-                        </div>
-                        <div class="field">
-                            <label>TIN</label>
-                            <input type="text" id="f_tin" placeholder="000-000-000-000" inputmode="numeric"
-                                pattern="^[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}$" />
-                        </div>
+                <div class="sectionTitle">Cash Advance</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Cash Advance Eligibility</label>
+                        <input type="text" id="f_caEligible" readonly />
                     </div>
+                </div>
 
-                    <div class="sectionTitle">Bank Details</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Bank Name</label>
-                            <input type="text" id="f_bankName" placeholder="e.g. BDO" />
-                        </div>
-                        <div class="field">
-                            <label>Account Name</label>
-                            <input type="text" id="f_accountName" placeholder="e.g. Juan Dela Cruz" />
-                        </div>
-                        <div class="field field--full">
-                            <label>Account Number</label>
-                            <input type="text" id="f_accountNumber" placeholder="0000-0000-0000-0000"
-                                inputmode="numeric" pattern="^[0-9]{4}(-[0-9]{4}){2,4}$" />
-                            <div class="hint">Leave blank to pay by cash.</div>
-                        </div>
-                        <div class="field field--full">
-                            <label>Payout Method (auto)</label>
-                            <input type="text" id="f_payoutMethod" readonly />
-                        </div>
+                <div class="sectionTitle">Government IDs</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>SSS No.</label>
+                        <input type="text" id="f_sss" placeholder="00-0000000-0" inputmode="numeric"
+                            pattern="^[0-9]{2}-[0-9]{7}-[0-9]{1}$" />
                     </div>
-
-                    <div class="sectionTitle">Charges / Shortages</div>
-                    <div id="chargesCasesWrap">
-                        <div class="tablewrap tablewrap--preview" style="margin-bottom:10px;">
-                            <table class="table table--preview" id="chargesTable">
-                                <thead>
-                                    <tr>
-                                        <th>Type</th>
-                                        <th>Description</th>
-                                        <th class="num">Total</th>
-                                        <th class="num">Remaining</th>
-                                        <th>Plan</th>
-                                        <th>Status</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="chargesTbody">
-                                    <tr>
-                                        <td colspan="7" class="muted small">Loading...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <button class="btn btn--soft" type="button" id="addChargeBtn">+ Add Charge / Shortage</button>
+                    <div class="field">
+                        <label>PhilHealth No.</label>
+                        <input type="text" id="f_ph" placeholder="00-000000000-0" inputmode="numeric"
+                            pattern="^[0-9]{2}-[0-9]{9}-[0-9]{1}$" />
                     </div>
-
-                    <!-- Add Charge Form (hidden by default) -->
-                    <div id="chargeFormWrap"
-                        style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
-                        <div class="sectionTitle" style="margin-top:0;">New Charge / Shortage</div>
-                        <div class="grid2">
-                            <div class="field">
-                                <label>Type</label>
-                                <select id="cf_type">
-                                    <option value="shortage">Shortage</option>
-                                    <option value="charge">Charge</option>
-                                </select>
-                            </div>
-                            <div class="field">
-                                <label>Amount (Total)</label>
-                                <input type="number" id="cf_amount" min="0.01" step="0.01"
-                                    placeholder="e.g. 3000" />
-                            </div>
-                            <div class="field field--full">
-                                <label>Description / Notes</label>
-                                <input type="text" id="cf_description" placeholder="Reason or details (optional)" />
-                            </div>
-                            <div class="field">
-                                <label>Payment Plan</label>
-                                <select id="cf_planType">
-                                    <option value="one_time">One-time (next cutoff)</option>
-                                    <option value="installment">Installment</option>
-                                </select>
-                            </div>
-                            <div class="field" id="cf_installmentWrap" style="display:none;">
-                                <label>No. of Cutoffs</label>
-                                <input type="number" id="cf_installmentCount" min="2" max="24"
-                                    placeholder="e.g. 3" />
-                            </div>
-                            <div class="field">
-                                <label>Start Month</label>
-                                <input type="month" id="cf_startMonth" />
-                            </div>
-                            <div class="field">
-                                <label>Start Cutoff</label>
-                                <select id="cf_startCutoff">
-                                    <option value="11-25">11–25</option>
-                                    <option value="26-10">26–10</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:8px; margin-top:10px;">
-                            <button class="btn btn--soft" type="button" id="cancelChargeBtn">Cancel</button>
-                            <button class="btn btn--maroon" type="button" id="saveChargeBtn">Save</button>
-                        </div>
+                    <div class="field">
+                        <label>Pag-IBIG No.</label>
+                        <input type="text" id="f_pagibig" placeholder="0000-0000-0000" inputmode="numeric"
+                            pattern="^[0-9]{4}-[0-9]{4}-[0-9]{4}$" />
                     </div>
-
-                    <div class="sectionTitle">Attendance Tardiness (view only)</div>
-                    <div class="tardyGrid">
-                        <div class="metricCard">
-                            <div class="metricCard__label">This Month</div>
-                            <div class="metricCard__value" id="tardyMonth">â€”</div>
-                            <div class="metricCard__sub">minutes late</div>
-                        </div>
-                        <div class="metricCard">
-                            <div class="metricCard__label">This Year</div>
-                            <div class="metricCard__value" id="tardyYear">â€”</div>
-                            <div class="metricCard__sub">minutes late</div>
-                        </div>
-                        <div class="metricCard metricCard--wide">
-                            <div class="metricCard__label">All Time</div>
-                            <div class="metricCard__value" id="tardyTotal">â€”</div>
-                            <div class="metricCard__sub" id="tardyLateDays">â€” late days</div>
-                        </div>
+                    <div class="field">
+                        <label>TIN</label>
+                        <input type="text" id="f_tin" placeholder="000-000-000-000" inputmode="numeric"
+                            pattern="^[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}$" />
                     </div>
+                </div>
 
-                    <div class="sectionTitle">Memos / Sanctions / NTE</div>
-                    <div class="tablewrap tablewrap--preview" style="margin-bottom:6px;">
-                        <table class="table table--preview" id="disciplineTable">
+                <div class="sectionTitle">Bank Details</div>
+                <div class="grid2">
+                    <div class="field">
+                        <label>Bank Name</label>
+                        <input type="text" id="f_bankName" placeholder="e.g. BDO" />
+                        <small class="err" id="errBankName"></small>
+                    </div>
+                    <div class="field">
+                        <label>Account Name</label>
+                        <input type="text" id="f_accountName" placeholder="e.g. Juan Dela Cruz" />
+                        <small class="err" id="errAccountName"></small>
+                    </div>
+                    <div class="field field--full">
+                        <label>Account Number</label>
+                        <input type="text" id="f_accountNumber" placeholder="0000-0000-0000-0000" inputmode="numeric"
+                            pattern="^[0-9]{4}(-[0-9]{4}){2,4}$" />
+                        <div class="hint">Leave blank to pay by cash.</div>
+                        <small class="err" id="errAccountNumber"></small>
+                    </div>
+                    <div class="field field--full">
+                        <label>Payout Method (auto)</label>
+                        <input type="text" id="f_payoutMethod" readonly />
+                    </div>
+                </div>
+
+                <div class="sectionTitle">Charges / Shortages</div>
+                <div id="chargesCasesWrap">
+                    <div class="tablewrap tablewrap--preview" style="margin-bottom:10px;">
+                        <table class="table table--preview" id="chargesTable">
                             <thead>
                                 <tr>
                                     <th>Type</th>
-                                    <th>Date</th>
-                                    <th>Reference</th>
-                                    <th>Remarks</th>
+                                    <th>Description</th>
+                                    <th class="num">Total</th>
+                                    <th class="num">Remaining</th>
+                                    <th>Plan</th>
+                                    <th>Status</th>
+                                    <th></th>
                                 </tr>
                             </thead>
-                            <tbody id="disciplineTbody">
+                            <tbody id="chargesTbody">
                                 <tr>
-                                    <td colspan="4" class="muted small">No records yet.</td>
+                                    <td colspan="7" class="muted small">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                    <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns: emp_no, type, date, remarks, reference).</div>
+                    <button class="btn btn--soft" type="button" id="addChargeBtn">+ Add Charge / Shortage</button>
+                </div>
 
-                    <div class="form__actions">
-                        <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
-                        <div class="spacer"></div>
-                        <button class="btn btn--soft" type="button" id="cancelBtn">Cancel</button>
-                        <button class="btn btn--maroon" type="submit" id="saveBtn">Save</button>
+                <!-- Add Charge Form (hidden by default) -->
+                <div id="chargeFormWrap"
+                    style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
+                    <div class="sectionTitle" style="margin-top:0;">New Charge / Shortage</div>
+                    <div class="grid2">
+                        <div class="field">
+                            <label>Type</label>
+                            <select id="cf_type">
+                                <option value="shortage">Shortage</option>
+                                <option value="charge">Charge</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Amount (Total)</label>
+                            <input type="number" id="cf_amount" min="0.01" step="0.01"
+                                placeholder="e.g. 3000" />
+                        </div>
+                        <div class="field field--full">
+                            <label>Description / Notes</label>
+                            <input type="text" id="cf_description" placeholder="Reason or details (optional)" />
+                        </div>
+                        <div class="field">
+                            <label>Payment Plan</label>
+                            <select id="cf_planType">
+                                <option value="one_time">One-time (next cutoff)</option>
+                                <option value="installment">Installment</option>
+                            </select>
+                        </div>
+                        <div class="field" id="cf_installmentWrap" style="display:none;">
+                            <label>No. of Cutoffs</label>
+                            <input type="number" id="cf_installmentCount" min="2" max="24"
+                                placeholder="e.g. 3" />
+                        </div>
+                        <div class="field">
+                            <label>Start Month</label>
+                            <input type="month" id="cf_startMonth" />
+                        </div>
+                        <div class="field">
+                            <label>Start Cutoff</label>
+                            <select id="cf_startCutoff">
+                                <option value="11-25">11–25</option>
+                                <option value="26-10">26–10</option>
+                            </select>
+                        </div>
                     </div>
-                </form>
+                    <div style="display:flex; gap:8px; margin-top:10px;">
+                        <button class="btn btn--soft" type="button" id="cancelChargeBtn">Cancel</button>
+                        <button class="btn btn--maroon" type="button" id="saveChargeBtn">Save</button>
+                    </div>
+                </div>
+
+                <div class="sectionTitle">Attendance Tardiness (view only)</div>
+                <div class="tardyGrid">
+                    <div class="metricCard">
+                        <div class="metricCard__label">This Month</div>
+                        <div class="metricCard__value" id="tardyMonth">â€”</div>
+                        <div class="metricCard__sub">minutes late</div>
+                    </div>
+                    <div class="metricCard">
+                        <div class="metricCard__label">This Year</div>
+                        <div class="metricCard__value" id="tardyYear">â€”</div>
+                        <div class="metricCard__sub">minutes late</div>
+                    </div>
+                    <div class="metricCard metricCard--wide">
+                        <div class="metricCard__label">All Time</div>
+                        <div class="metricCard__value" id="tardyTotal">â€”</div>
+                        <div class="metricCard__sub" id="tardyLateDays">â€” late days</div>
+                    </div>
+                </div>
+
+                <div class="sectionTitle">Memos / Sanctions / NTE</div>
+                <div class="tablewrap tablewrap--preview" style="margin-bottom:6px;">
+                    <table class="table table--preview" id="disciplineTable">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Reference</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="disciplineTbody">
+                            <tr>
+                                <td colspan="4" class="muted small">No records yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns: emp_no,
+                    type, date, remarks, reference).</div>
+
+                <div class="form__actions">
+                    <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
+                    <div class="spacer"></div>
+                    <button class="btn btn--soft" type="button" id="cancelBtn">Cancel</button>
+                    <button class="btn btn--maroon" type="submit" id="saveBtn">Save</button>
+                </div>
+            </form>
         </aside>
 
         <!-- AREA HISTORY DRAWER -->
         <div class="overlay" id="historyDrawerOverlay" hidden></div>
-        <aside class="drawer drawer--narrow" id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyDrawerTitle" aria-hidden="true">
+        <aside class="drawer drawer--narrow" id="historyDrawer" role="dialog" aria-modal="true"
+            aria-labelledby="historyDrawerTitle" aria-hidden="true">
             <div class="drawer__head">
-                    <div>
-                        <div class="drawer__title" id="historyDrawerTitle">Area Assignment History</div>
-                        <div class="muted small" id="historyDrawerSubtitle"></div>
-                    </div>
-                    <button class="iconbtn" id="closeHistoryDrawerBtn" type="button" aria-label="Close">✕</button>
+                <div>
+                    <div class="drawer__title" id="historyDrawerTitle">Area Assignment History</div>
+                    <div class="muted small" id="historyDrawerSubtitle"></div>
                 </div>
-                <div class="form">
-                    <div id="historyDrawerExternal" class="muted small" style="margin-bottom:10px;display:none;"></div>
-                    <div class="field" style="margin-bottom:10px;">
-                        <input type="search" id="historySearch" class="field__control" placeholder="Search area or period…" autocomplete="off" />
-                    </div>
-                    <div class="tablewrap tablewrap--preview">
-                        <table class="table table--preview" aria-label="Area assignment history table">
-                            <thead>
-                                <tr>
-                                    <th>Period</th>
-                                    <th>Area</th>
-                                </tr>
-                            </thead>
-                            <tbody id="areaHistoryList">
-                                <tr>
-                                    <td colspan="2" class="muted small">No history yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                <button class="iconbtn" id="closeHistoryDrawerBtn" type="button" aria-label="Close">✕</button>
+            </div>
+            <div class="form">
+                <div id="historyDrawerExternal" class="muted small" style="margin-bottom:10px;display:none;"></div>
+                <div class="field" style="margin-bottom:10px;">
+                    <input type="search" id="historySearch" class="field__control" placeholder="Search area or period…"
+                        autocomplete="off" />
                 </div>
+                <div class="tablewrap tablewrap--preview">
+                    <table class="table table--preview" aria-label="Area assignment history table">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Area</th>
+                            </tr>
+                        </thead>
+                        <tbody id="areaHistoryList">
+                            <tr>
+                                <td colspan="2" class="muted small">No history yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </aside>
 
     </section>

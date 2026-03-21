@@ -235,6 +235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const openAddBtn = document.getElementById("openAddBtn");
   const cancelBtn = document.getElementById("cancelBtn");
   const deleteBtn = document.getElementById("deleteBtn");
+  const saveBtn = document.getElementById("saveBtn");
   const empForm = document.getElementById("empForm");
   const drawerTitleEl = document.getElementById("drawerTitle");
   const drawerSubEl = document.getElementById("drawerSubtitle");
@@ -257,6 +258,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_addrStreet = F("f_addrStreet");
   const f_dept = F("f_dept");
   const f_basedLocation = F("f_basedLocation");
+
+  // inline validation errors (rendered under fields in the drawer)
+  const errEmpId = F("errEmpId");
+  const errFirst = F("errFirst");
+  const errLast = F("errLast");
+  const errPositions = F("errPositions");
+  const errExternalArea = F("errExternalArea");
+  const errExternalPosition = F("errExternalPosition");
+  const errRate = F("errRate");
+  const errAllowance = F("errAllowance");
+  const errBankName = F("errBankName");
+  const errAccountName = F("errAccountName");
+  const errAccountNumber = F("errAccountNumber");
 
   // Positions dropdown checklist
   const posDd = document.getElementById("posDd");
@@ -321,6 +335,77 @@ document.addEventListener("DOMContentLoaded", async () => {
   let statusLabelMap = new Map();
 
   // ===== Drawer helpers =====
+  function hidePLInfo() {
+    if (plInfoWrap) plInfoWrap.style.display = "none";
+    if (f_plCount) f_plCount.textContent = "";
+    if (f_plBadge) {
+      f_plBadge.textContent = "";
+      f_plBadge.classList.remove("pl-pill--low");
+    }
+  }
+
+  function fieldWrap(el) {
+    if (!el) return null;
+    return el.closest ? (el.closest(".field") || null) : null;
+  }
+
+  const VALIDATION_FIELDS = [
+    [f_empId, errEmpId],
+    [f_first, errFirst],
+    [f_last, errLast],
+    [posDd, errPositions],
+    [f_externalArea, errExternalArea],
+    [f_externalPosition, errExternalPosition],
+    [f_rate, errRate],
+    [f_allowance, errAllowance],
+    [f_bankName, errBankName],
+    [f_accountName, errAccountName],
+    [f_accountNumber, errAccountNumber],
+  ];
+
+  function clearFormErrors() {
+    VALIDATION_FIELDS.forEach(([el, errEl]) => {
+      const w = fieldWrap(el) || el;
+      if (w?.classList) w.classList.remove("is-invalid");
+      if (errEl) errEl.textContent = "";
+    });
+  }
+
+  function setFieldError(el, errEl, message) {
+    const w = fieldWrap(el) || el;
+    if (w?.classList) w.classList.add("is-invalid");
+    if (errEl) errEl.textContent = String(message || "");
+  }
+
+  function clearFieldError(el, errEl) {
+    const w = fieldWrap(el) || el;
+    if (w?.classList) w.classList.remove("is-invalid");
+    if (errEl) errEl.textContent = "";
+  }
+
+  function focusFirstError() {
+    const first = document.querySelector(".drawer .field.is-invalid");
+    if (!first) return;
+    const focusable = first.querySelector("input, select, textarea, button, [tabindex]");
+    if (focusable && typeof focusable.focus === "function") focusable.focus();
+  }
+
+  // Clear validation errors as user fixes inputs
+  [
+    [f_first, errFirst, "input"],
+    [f_last, errLast, "input"],
+    [f_externalArea, errExternalArea, "change"],
+    [f_externalPosition, errExternalPosition, "change"],
+    [f_rate, errRate, "input"],
+    [f_allowance, errAllowance, "input"],
+    [f_bankName, errBankName, "input"],
+    [f_accountName, errAccountName, "input"],
+    [f_accountNumber, errAccountNumber, "input"],
+  ].forEach(([el, errEl, ev]) => {
+    if (!el) return;
+    el.addEventListener(ev, () => clearFieldError(el, errEl));
+  });
+
   function openDrawer(title, subtitle) {
     if (!drawer) return;
     drawer.classList.add("is-open");
@@ -559,7 +644,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderPositionsDropdown() {
     if (!posDdList) return;
-    const items = (positionsCatalog || []).filter(p => p && p.id && p.name);
+    const items = (positionsCatalog || [])
+      .filter(p => p && p.id && p.name)
+      .slice()
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
     if (!items.length) {
       posDdList.innerHTML = `<div class="ddcheck__empty">No positions found. If this is your first time, run <code>php artisan migrate</code>.</div>`;
       return;
@@ -635,6 +723,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function clearForm() {
     empForm?.reset();
+    clearFormErrors();
     if (f_assignmentType) f_assignmentType.value = "G5-Davao";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_dept) f_dept.value = "";
@@ -644,7 +733,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setSelectedPositionIds([]);
     resetAddressDropdowns();
     if (f_status && f_status.options.length) f_status.value = f_status.options[0].value;
-    if (plInfoWrap) plInfoWrap.style.display = "none";
+    hidePLInfo();
     resetDisciplineUI();
     syncAssignmentUI();
     syncCashAdvanceFields();
@@ -654,6 +743,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function fillForm(emp) {
     if (!emp) return;
+    clearFormErrors();
+    hidePLInfo();
     f_empId && (f_empId.value = emp.empId || "");
     if (f_status) {
       if (emp.statusId) {
@@ -713,7 +804,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       f_assignmentType.value = assign || f_assignmentType.value || "G5-Davao";
     }
-    f_areaPlace && (f_areaPlace.value = emp.areaPlace || "");
+    if (f_areaPlace) setSelectValuePreserveOption(f_areaPlace, emp.areaPlace || "");
     if (f_externalArea) f_externalArea.value = emp.externalArea || "";
     if (f_externalPosition) f_externalPosition.value = String(emp.externalPositionId || "");
 
@@ -731,6 +822,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     syncPayoutFields();
     loadTardiness(emp.empId);
     loadDiscipline(emp.empId);
+
+    // If Field employee has an empty area_place (but history exists), auto-resolve latest from history.
+    if (
+      String(emp.assignmentType || "") === "Field" &&
+      f_areaPlace &&
+      !String(f_areaPlace.value || "").trim()
+    ) {
+      const thisEmp = String(emp.empId || "");
+      resolveLatestAreaPlace(thisEmp)
+        .then((area) => {
+          if (!area) return;
+          if (String(selectedEmpId || "") !== thisEmp) return;
+          if (String(f_assignmentType?.value || "") !== "Field") return;
+          if (String(f_areaPlace.value || "").trim()) return;
+          setSelectValuePreserveOption(f_areaPlace, area);
+          syncAssignmentUI();
+        })
+        .catch(() => { /* ignore */ });
+    }
   }
 
   function collectForm() {
@@ -908,12 +1018,49 @@ document.addEventListener("DOMContentLoaded", async () => {
   function populateAreaPlaces(selectEl, assignmentGroup) {
     if (!selectEl) return;
     const group = assignmentGroup || f_assignmentType?.value || "";
-    const places = (areaPlaces[group] || []);
-    const current = selectEl.value;
+    const places = (areaPlaces[group] || [])
+      .map(p => String(p || "").trim())
+      .filter(Boolean)
+      .slice()
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    const current = String(selectEl.value || "").trim();
     selectEl.innerHTML =
       `<option value="">-- Select --</option>` +
       places.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (places.includes(current)) selectEl.value = current;
+
+    if (current) {
+      const has = Array.from(selectEl.options).some(o => String(o.value) === current);
+      if (!has) {
+        const opt = document.createElement("option");
+        opt.value = current;
+        opt.textContent = current;
+        selectEl.appendChild(opt);
+      }
+      selectEl.value = current;
+    }
+  }
+
+  function setSelectValuePreserveOption(selectEl, value) {
+    if (!selectEl) return;
+    const v = String(value || "").trim();
+    if (!v) {
+      selectEl.value = "";
+      return;
+    }
+    const has = Array.from(selectEl.options).some(o => String(o.value) === v);
+    if (!has) {
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = v;
+      selectEl.appendChild(opt);
+    }
+    selectEl.value = v;
+  }
+
+  async function resolveLatestAreaPlace(empNo) {
+    const rows = await apiFetch(`/employees/${encodeURIComponent(empNo)}/area-history`);
+    const first = Array.isArray(rows) ? rows[0] : null;
+    return String(first?.area_place || "").trim();
   }
 
   function populateExternalAreaPlaces(selectEl) {
@@ -946,7 +1093,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   function populateExternalPositions(selectEl) {
     if (!selectEl) return;
     const current = String(selectEl.value || "");
-    const items = (externalPositionsCatalog || []).filter(p => p && p.id && p.name);
+    const items = (externalPositionsCatalog || [])
+      .filter(p => p && p.id && p.name)
+      .slice()
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
     if (!items.length) {
       selectEl.innerHTML = `<option value="">-- Select external position --</option>` +
         `<option value="" disabled>(No external positions found — run php artisan migrate)</option>`;
@@ -977,13 +1127,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!f_assignmentType || !f_areaPlace) return;
     const type = f_assignmentType.value;
     const places = Array.isArray(areaPlaces[type]) ? areaPlaces[type] : [];
-    const needsAreaPlace = !!type && places.length > 0;
-    if (needsAreaPlace) {
+    const currentVal = String(f_areaPlace.value || "").trim();
+    const showAreaPlace = (!!type && places.length > 0) || !!currentVal;
+    if (showAreaPlace) {
       populateAreaPlaces(f_areaPlace, type);
       f_areaPlace.disabled = false;
       if (areaPlaceWrap) areaPlaceWrap.style.display = "";
     } else {
-      f_areaPlace.value = "";
       f_areaPlace.disabled = true;
       if (areaPlaceWrap) areaPlaceWrap.style.display = "none";
     }
@@ -1315,7 +1465,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const compCols = CAN_VIEW_COMP ? `
           <td class="col-basicpay"><div class="salaryVal">${money(emp.rate || 0)}</div></td>
           <td><div class="salaryVal">${money(emp.allowance || 0)}</div></td>
-        <td>
+        <td class="col-salary">
           <div class="salaryVal">${money(salaryTotal(emp))}</div>
         </td>
       ` : "";
@@ -1768,6 +1918,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectedEmpId = null;
     clearForm();
     openDrawer("Add Employee", "Fill in the details then click Save.");
+    // UX: focus first name immediately so user can start typing
+    setTimeout(() => f_first?.focus(), 0);
     try {
       const res = await apiFetch("/employees/next-id");
       if (f_empId) f_empId.value = res.next_id;
@@ -1791,6 +1943,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   f_type && f_type.addEventListener("change", () => {
     syncCashAdvanceFields();
     syncExternalAreaUI();
+
+    // PL allowance applies only to Regular employees.
+    const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
+    if (!isRegular) {
+      hidePLInfo();
+    } else if (selectedEmpId && !!(f_assignmentType?.value)) {
+      fetchAndShowPLBalance(selectedEmpId);
+    }
   });
   f_rate && f_rate.addEventListener("input", () => {
     syncCashAdvanceFields();
@@ -1798,7 +1958,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   f_allowance && f_allowance.addEventListener("input", syncSalaryFields);
   f_accountNumber && f_accountNumber.addEventListener("input", syncPayoutFields);
-  f_assignmentType && f_assignmentType.addEventListener("change", syncAssignmentUI);
+  f_assignmentType && f_assignmentType.addEventListener("change", () => {
+    // If user changes assignment, clear stale area place then re-sync options.
+    if (f_areaPlace) f_areaPlace.value = "";
+    syncAssignmentUI();
+  });
 
   // Address cascade listeners
   f_addrProvince && f_addrProvince.addEventListener("change", async () => {
@@ -1845,21 +2009,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (f_accountNumber.value !== next) f_accountNumber.value = next;
   });
 
+  function capWords(value) {
+    const v = String(value || "");
+    if (!v) return v;
+    return v.replace(/(^|[\s\-'])([a-z])/g, (m, p1, p2) => `${p1}${String(p2).toUpperCase()}`);
+  }
+
   function capFirst(value) {
     const v = String(value || "");
     if (!v) return v;
     return v.charAt(0).toUpperCase() + v.slice(1);
   }
 
-  const capInputs = [
-    f_first,
-    f_last,
-    f_middle,
-    f_addrStreet,
-    f_bankName,
-    f_accountName,
-  ];
-  capInputs.forEach((el) => {
+  [f_first, f_last, f_middle].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("input", () => {
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const next = capWords(el.value);
+      if (el.value !== next) {
+        el.value = next;
+        if (typeof start === "number" && typeof end === "number") {
+          el.setSelectionRange(start, end);
+        }
+      }
+    });
+  });
+
+  // keep previous lightweight capitalization for other fields
+  [f_addrStreet, f_bankName, f_accountName].forEach((el) => {
     if (!el) return;
     el.addEventListener("input", () => {
       const next = capFirst(el.value);
@@ -1887,60 +2065,71 @@ document.addEventListener("DOMContentLoaded", async () => {
   empForm && empForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = collectForm();
+    clearFormErrors();
 
     // required fields
     if (!/^\d{4}$/.test(String(data.empId || ""))) {
-      alert("Employee ID must be exactly 4 digits.");
-      return;
+      setFieldError(f_empId, errEmpId, "Employee ID must be exactly 4 digits.");
     }
     if (!data.empId || !data.first || !data.last || !(data.positionIds || []).length) {
-      alert("Please fill required fields (Employee ID, First, Last, Positions).");
-      return;
+      if (!data.empId) setFieldError(f_empId, errEmpId, "Employee ID is required.");
+      if (!data.first) setFieldError(f_first, errFirst, "First name is required.");
+      if (!data.last) setFieldError(f_last, errLast, "Last name is required.");
+      if (!(data.positionIds || []).length) setFieldError(posDd, errPositions, "At least one position is required.");
     }
     const isRegular = String(data.type || "").toLowerCase() === "regular";
     if (isRegular) {
       if (!data.externalArea) {
-        alert("External Area is required for Regular employees.");
-        return;
+        setFieldError(f_externalArea, errExternalArea, "External Area is required for Regular employees.");
       }
       if (!data.externalPositionId) {
-        alert("External Position is required for Regular employees.");
-        return;
+        setFieldError(f_externalPosition, errExternalPosition, "External Position is required for Regular employees.");
       }
     }
     if (CAN_VIEW_COMP) {
       if (!Number.isFinite(data.rate) || data.rate < 0) {
-        alert("Basic Pay must be a valid number.");
-        return;
+        setFieldError(f_rate, errRate, "Basic Pay must be a valid number.");
       }
       if (!Number.isFinite(data.allowance) || data.allowance < 0) {
-        alert("Allowance must be a valid number.");
-        return;
+        setFieldError(f_allowance, errAllowance, "Allowance must be a valid number.");
       }
     }
     if (data.accountNumber) {
       if (!data.bankName || !data.accountName) {
-        alert("Bank Name and Account Name are required when Account Number is provided.");
-        return;
+        if (!data.bankName) setFieldError(f_bankName, errBankName, "Bank Name is required when Account Number is provided.");
+        if (!data.accountName) setFieldError(f_accountName, errAccountName, "Account Name is required when Account Number is provided.");
       }
+    }
+
+    const hasErrors = !!document.querySelector(".drawer .field.is-invalid");
+    if (hasErrors) {
+      focusFirstError();
+      return;
     }
 
     const exists = employees.some(emp => emp.empId === data.empId);
 
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.dataset.prevText = saveBtn.textContent || "Save";
+      saveBtn.textContent = "Saving...";
+    }
+
     try {
+      let saved = null;
       if (selectedEmpId) {
-        await apiFetch(`/employees/${encodeURIComponent(selectedEmpId)}`, {
+        saved = await apiFetch(`/employees/${encodeURIComponent(selectedEmpId)}`, {
           method: "PUT",
           body: JSON.stringify(toApi(data)),
         });
       } else if (exists) {
         if (!confirm("Employee ID already exists. Overwrite?")) return;
-        await apiFetch(`/employees/${encodeURIComponent(data.empId)}`, {
+        saved = await apiFetch(`/employees/${encodeURIComponent(data.empId)}`, {
           method: "PUT",
           body: JSON.stringify(toApi(data)),
         });
       } else {
-        await apiFetch("/employees", {
+        saved = await apiFetch("/employees", {
           method: "POST",
           body: JSON.stringify(toApi(data)),
         });
@@ -1949,11 +2138,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       const successMsg = selectedEmpId ? "Employee updated successfully." : "Employee added successfully.";
       closeDrawer();
       showToast(successMsg);
-      await loadEmployees();
+
+      if (saved && typeof saved === "object" && saved.emp_no) {
+        const mapped = fromApi(saved);
+        const idx = employees.findIndex(e => String(e.empId) === String(mapped.empId));
+        if (idx >= 0) employees[idx] = mapped;
+        else employees.unshift(mapped);
+      } else {
+        // fallback (older endpoints)
+        await loadEmployees();
+      }
+
       render();
       notifyEmployeeUpdated();
     } catch (err) {
       alert(err.message || "Failed to save employee.");
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = saveBtn.dataset.prevText || "Save";
+        delete saveBtn.dataset.prevText;
+      }
     }
   });
 
@@ -1997,7 +2202,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     filterPositionsList(posSearch.value);
   });
   posDdList && posDdList.addEventListener("change", () => {
-    updatePositionsButton(selectedPositionIds());
+    const ids = selectedPositionIds();
+    updatePositionsButton(ids);
+    if (ids.length) clearFieldError(posDd, errPositions);
+    if (posSearch && posSearch.value) {
+      posSearch.value = "";
+      filterPositionsList("");
+      posSearch.focus();
+    }
   });
   document.addEventListener("click", (e) => {
     if (!posDd || !posDdPanel) return;
@@ -2029,12 +2241,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         populateExternalPositions(f_externalPosition);
       }
       if (deptFilter) {
+        const depts = (data.departments || [])
+          .slice()
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base" }));
         deptFilter.innerHTML = `<option value="">All</option>` +
-          (data.departments || []).map(d => `<option value="${d}">${d}</option>`).join("");
+          depts.map(d => `<option value="${d}">${d}</option>`).join("");
       }
       if (f_dept) {
         const current = String(f_dept.value || "");
-        const items = Array.isArray(data.departments) ? data.departments : [];
+        const items = (Array.isArray(data.departments) ? data.departments : [])
+          .slice()
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base" }));
         f_dept.innerHTML = `<option value="">-- Select --</option>` +
           items.map(d => `<option value="${d}">${d}</option>`).join("");
         if (current && items.includes(current)) {
@@ -2049,7 +2266,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       if (f_basedLocation) {
         const current = String(f_basedLocation.value || "");
-        const items = Array.isArray(data.based_locations) ? data.based_locations : [];
+        const items = (Array.isArray(data.based_locations) ? data.based_locations : [])
+          .slice()
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base" }));
         f_basedLocation.innerHTML = `<option value="">-- Select --</option>` +
           items.map(d => `<option value="${d}">${d}</option>`).join("");
         if (current && items.includes(current)) {
@@ -2071,8 +2290,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       statusLabelMap = new Map((data.statuses || []).map(s => [String(s.id), s.label]));
       if (f_type && (data.employment_types || []).length) {
+        const types = (data.employment_types || [])
+          .slice()
+          .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base" }));
         f_type.innerHTML = `<option value="">-- Select --</option>` +
-          (data.employment_types || []).map(t => `<option value="${t}">${t}</option>`).join("");
+          types.map(t => `<option value="${t}">${t}</option>`).join("");
       }
       if (data.area_places && typeof data.area_places === 'object' && !Array.isArray(data.area_places)) {
         areaPlaces = data.area_places;
@@ -2128,6 +2350,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
       wireAssignButtons();
+      // If the drawer is open, refresh Area Place options now that filters are loaded.
+      if (drawer?.classList?.contains("is-open")) {
+        syncAssignmentUI();
+      }
     } catch (err) {
       console.error(err);
     }

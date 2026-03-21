@@ -663,9 +663,19 @@ class EmployeeController extends Controller
     public function bulkAssign(Request $request)
     {
         $assignment = trim((string) $request->input('assignment', ''));
-        $areaPlaceLabelsForAssignment = $assignment !== ''
-            ? AreaPlace::where('is_active', true)->where('parent_assignment', $assignment)->pluck('label')->all()
-            : [];
+        $areaPlaceLabelsForAssignment = [];
+        if ($assignment !== '') {
+            $areaPlacesQuery = AreaPlace::where('is_active', true);
+            // Keep consistent with filters()/view() where NULL parent_assignment is treated as "Field"
+            if ($assignment === 'Field') {
+                $areaPlacesQuery->where(function ($q) use ($assignment) {
+                    $q->where('parent_assignment', $assignment)->orWhereNull('parent_assignment');
+                });
+            } else {
+                $areaPlacesQuery->where('parent_assignment', $assignment);
+            }
+            $areaPlaceLabelsForAssignment = $areaPlacesQuery->pluck('label')->all();
+        }
 
         $validated = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
@@ -773,9 +783,19 @@ class EmployeeController extends Controller
         }
 
         $assignment = trim((string) $request->input('assignment_type', ''));
-        $areaPlaceLabelsForAssignment = $assignment !== ''
-            ? AreaPlace::where('is_active', true)->where('parent_assignment', $assignment)->pluck('label')->all()
-            : [];
+        $areaPlaceLabelsForAssignment = [];
+        if ($assignment !== '') {
+            $areaPlacesQuery = AreaPlace::where('is_active', true);
+            // Keep consistent with filters()/view() where NULL parent_assignment is treated as "Field"
+            if ($assignment === 'Field') {
+                $areaPlacesQuery->where(function ($q) use ($assignment) {
+                    $q->where('parent_assignment', $assignment)->orWhereNull('parent_assignment');
+                });
+            } else {
+                $areaPlacesQuery->where('parent_assignment', $assignment);
+            }
+            $areaPlaceLabelsForAssignment = $areaPlacesQuery->pluck('label')->all();
+        }
 
         $rules = [
             'emp_no' => ['required', 'digits:4', $uniqueEmpNo],

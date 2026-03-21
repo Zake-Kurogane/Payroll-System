@@ -715,19 +715,98 @@ h1 {
     text-overflow: ellipsis;
     vertical-align: middle;
     word-break: break-word;
+}
+
+/* Keep header text + sort icon on one line */
+#empTable th {
+    white-space: nowrap;
+    word-break: normal;
+}
+
+/* Allow cell values to wrap */
+#empTable td {
     white-space: normal;
 }
-/* 1-checkbox 2-EmpID 3-Name 4-Dept 5-Assignment 6-BasicPay 7-P/A 8-TotalSalary 9-PayrollReq 10-Actions */
-#empTable th:nth-child(1), #empTable td:nth-child(1) { width: 3%; }
-#empTable th:nth-child(2), #empTable td:nth-child(2) { width: 7%; }
-#empTable th:nth-child(3), #empTable td:nth-child(3) { width: 13%; }
-#empTable th:nth-child(4), #empTable td:nth-child(4) { width: 9%; }
-#empTable th:nth-child(5), #empTable td:nth-child(5) { width: 15%; }
-#empTable th:nth-child(6), #empTable td:nth-child(6) { width: 10%; }
-#empTable th:nth-child(7), #empTable td:nth-child(7) { width: 8%; }
-#empTable th:nth-child(8), #empTable td:nth-child(8) { width: 10%; }
-#empTable th:nth-child(9), #empTable td:nth-child(9) { width: 14%; }
-#empTable th:nth-child(10), #empTable td:nth-child(10) { width: 11%; }
+/* Column sizing (fixed layout) */
+/* WITH compensation (11 cols): 1-check 2-emp 3-name 4-dept 5-position 6-assignment 7-basic 8-pa 9-salary 10-payroll 11-actions */
+#empTable[data-has-comp="1"] th:nth-child(1),
+#empTable[data-has-comp="1"] td:nth-child(1) {
+    width: 3%;
+}
+#empTable[data-has-comp="1"] th:nth-child(2),
+#empTable[data-has-comp="1"] td:nth-child(2) {
+    width: 6%;
+}
+#empTable[data-has-comp="1"] th:nth-child(3),
+#empTable[data-has-comp="1"] td:nth-child(3) {
+    width: 11%;
+}
+#empTable[data-has-comp="1"] th:nth-child(4),
+#empTable[data-has-comp="1"] td:nth-child(4) {
+    width: 17%;
+} /* Department */
+#empTable[data-has-comp="1"] th:nth-child(5),
+#empTable[data-has-comp="1"] td:nth-child(5) {
+    width: 13%;
+}
+#empTable[data-has-comp="1"] th:nth-child(6),
+#empTable[data-has-comp="1"] td:nth-child(6) {
+    width: 11%;
+}
+#empTable[data-has-comp="1"] th:nth-child(7),
+#empTable[data-has-comp="1"] td:nth-child(7) {
+    width: 8%;
+}
+#empTable[data-has-comp="1"] th:nth-child(8),
+#empTable[data-has-comp="1"] td:nth-child(8) {
+    width: 6%;
+}
+#empTable[data-has-comp="1"] th:nth-child(9),
+#empTable[data-has-comp="1"] td:nth-child(9) {
+    width: 7%;
+} /* Total Salary */
+#empTable[data-has-comp="1"] th:nth-child(10),
+#empTable[data-has-comp="1"] td:nth-child(10) {
+    width: 8%;
+}
+#empTable[data-has-comp="1"] th:nth-child(11),
+#empTable[data-has-comp="1"] td:nth-child(11) {
+    width: 10%;
+}
+
+/* WITHOUT compensation (8 cols): 1-check 2-emp 3-name 4-dept 5-position 6-assignment 7-payroll 8-actions */
+#empTable[data-has-comp="0"] th:nth-child(1),
+#empTable[data-has-comp="0"] td:nth-child(1) {
+    width: 3%;
+}
+#empTable[data-has-comp="0"] th:nth-child(2),
+#empTable[data-has-comp="0"] td:nth-child(2) {
+    width: 8%;
+}
+#empTable[data-has-comp="0"] th:nth-child(3),
+#empTable[data-has-comp="0"] td:nth-child(3) {
+    width: 16%;
+}
+#empTable[data-has-comp="0"] th:nth-child(4),
+#empTable[data-has-comp="0"] td:nth-child(4) {
+    width: 20%;
+} /* Department */
+#empTable[data-has-comp="0"] th:nth-child(5),
+#empTable[data-has-comp="0"] td:nth-child(5) {
+    width: 18%;
+}
+#empTable[data-has-comp="0"] th:nth-child(6),
+#empTable[data-has-comp="0"] td:nth-child(6) {
+    width: 18%;
+}
+#empTable[data-has-comp="0"] th:nth-child(7),
+#empTable[data-has-comp="0"] td:nth-child(7) {
+    width: 7%;
+}
+#empTable[data-has-comp="0"] th:nth-child(8),
+#empTable[data-has-comp="0"] td:nth-child(8) {
+    width: 10%;
+}
 
 thead th {
     position: sticky;
@@ -1071,6 +1150,21 @@ th.sortable.is-desc .sortIcon {
     cursor: not-allowed;
 }
 
+.err {
+    display: block;
+    margin-top: 4px;
+    color: #991b1b;
+    font-weight: 800;
+    font-size: 12px;
+    min-height: 14px;
+}
+
+.field.is-invalid > input,
+.field.is-invalid > select {
+    border-color: rgba(153, 27, 27, 0.55);
+    box-shadow: 0 0 0 4px rgba(153, 27, 27, 0.1);
+}
+
 .plField {
     display: grid;
     gap: 8px;
@@ -1311,6 +1405,30 @@ th.sortable.is-desc .sortIcon {
     font-weight: 700;
 }
 .ddcheck__empty code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
     font-size: 12px;
+}
+
+/* Total Salary column: nudge content to the right (closer to Payroll Required) */
+#empTable th.col-salary,
+#empTable td.col-salary {
+    text-align: right;
+    padding-right: 8px;
+}
+
+/* Add a small visual gap between Total Salary and Payroll Required */
+#empTable th.col-salary + th,
+#empTable td.col-salary + td {
+    padding-left: 10px;
+}
+
+/* Actions column: never ellipsis/cut icons */
+#empTable td.actions {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+    padding-left: 2px;
+    padding-right: 2px;
 }

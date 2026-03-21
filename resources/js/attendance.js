@@ -1344,21 +1344,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const date = f_date.value;
     if (!employeeId || !date) return;
 
+    if (errAreaPlace) errAreaPlace.textContent = "";
     if (areaPlaceHint) areaPlaceHint.style.display = "";
     try {
       const data = await apiFetch(`/attendance/area?employee_id=${encodeURIComponent(employeeId)}&date=${encodeURIComponent(date)}`);
       const resolved = data?.area_place || "";
-      if (resolved) {
-        if (!Array.from(f_areaPlace.options).some(o => o.value === resolved)) {
-          const opt = document.createElement("option");
-          opt.value = resolved;
-          opt.textContent = resolved;
-          f_areaPlace.appendChild(opt);
-        }
-        f_areaPlace.value = resolved;
+      if (!resolved) {
+        if (errAreaPlace) errAreaPlace.textContent = "No Area Place found for this date. Please select manually.";
+        return;
       }
+      if (!Array.from(f_areaPlace.options).some(o => o.value === resolved)) {
+        const opt = document.createElement("option");
+        opt.value = resolved;
+        opt.textContent = resolved;
+        f_areaPlace.appendChild(opt);
+      }
+      f_areaPlace.value = resolved;
     } catch {
-      // silently ignore resolve errors
+      if (errAreaPlace) errAreaPlace.textContent = "Unable to resolve Area Place. Please select manually.";
     } finally {
       if (areaPlaceHint) areaPlaceHint.style.display = "none";
     }
@@ -1399,6 +1402,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (areaWrap) areaWrap.hidden = true;
       currentPLRemaining = null;
       if (plBalanceWrap) plBalanceWrap.style.display = "none";
+      if (errAreaPlace) errAreaPlace.textContent = "";
       if (f_status) {
         const opt = Array.from(f_status.options).find(o => o.value === "RNR");
         if (opt) opt.disabled = true;
@@ -1419,10 +1423,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (f_areaPlace) {
       if (emp.assignmentType === "Field") {
         f_areaPlace.disabled = false;
-        resolveAndPopulateArea();
+        // only auto-resolve if empty (edit mode may already have a snapshot)
+        if (!f_areaPlace.value) resolveAndPopulateArea();
       } else {
         f_areaPlace.value = "";
         f_areaPlace.disabled = true;
+        if (errAreaPlace) errAreaPlace.textContent = "";
       }
     }
     if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Field";
@@ -1502,6 +1508,20 @@ document.addEventListener("DOMContentLoaded", () => {
       if (f_clockIn)  f_clockIn.value  = record.timeIn  || "";
       if (f_clockOut) f_clockOut.value = record.timeOut || "";
 
+      if (f_areaPlace) f_areaPlace.value = "";
+      if (record.areaPlace && f_areaPlace) {
+        if (!Array.from(f_areaPlace.options).some(o => o.value === record.areaPlace)) {
+          const opt = document.createElement("option");
+          opt.value = record.areaPlace;
+          opt.textContent = record.areaPlace;
+          f_areaPlace.appendChild(opt);
+        }
+        f_areaPlace.value = record.areaPlace;
+      }
+
+      syncAssignmentFromEmployee();
+      return;
+
       const emp = getEmpById(record.employeeId || "");
       if (emp?.assignmentType === "Field") {
         if (areaWrap) areaWrap.hidden = false;
@@ -1560,6 +1580,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
     const emp = getEmpById(employeeId);
+    if (emp?.assignmentType === "Field") {
+      const area = String(f_areaPlace?.value || "").trim();
+      if (!area) {
+        if (errAreaPlace) errAreaPlace.textContent = "Area Place is required for Field employees.";
+        ok = false;
+      }
+    }
+    if (status === "Paid Leave" && String(emp?.employmentType || "").toLowerCase() !== "regular") {
+      if (errStatus) errStatus.textContent = "Paid Leave is only allowed for Regular employees.";
+      ok = false;
+    }
     if (status === "RNR" && emp?.assignmentType !== "Field") {
       if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees.";
       ok = false;
@@ -1574,12 +1605,16 @@ document.addEventListener("DOMContentLoaded", () => {
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
 
   f_employee && f_employee.addEventListener("change", () => {
+    if (f_areaPlace) f_areaPlace.value = "";
+    if (errAreaPlace) errAreaPlace.textContent = "";
     syncAssignmentFromEmployee();
   });
 
   f_date && f_date.addEventListener("change", () => {
     const emp = getEmpById(f_employee?.value);
     if (emp?.assignmentType === "Field") {
+      if (f_areaPlace) f_areaPlace.value = "";
+      if (errAreaPlace) errAreaPlace.textContent = "";
       resolveAndPopulateArea();
     }
     syncPLBalance();
