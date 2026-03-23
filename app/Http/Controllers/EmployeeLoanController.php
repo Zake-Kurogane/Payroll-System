@@ -8,6 +8,7 @@ use App\Models\EmployeeLoanHistory;
 use App\Models\EmployeeLoanSchedule;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
+use App\Models\LoanType;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -15,6 +16,11 @@ class EmployeeLoanController extends Controller
 {
     public function page()
     {
+        $loanTypes = LoanType::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->pluck('label');
+
         $assignments = Assignment::where('is_active', true)
             ->orderBy('sort_order')
             ->pluck('label');
@@ -40,6 +46,7 @@ class EmployeeLoanController extends Controller
         return view('layouts.loans', [
             'assignments' => $assignments,
             'groupedAreaPlaces' => $groupedAreaPlaces,
+            'loanTypes' => $loanTypes,
         ]);
     }
 

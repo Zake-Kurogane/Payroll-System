@@ -10,10 +10,12 @@
 @php
     $assignments = $assignments ?? collect();
     $groupedAreaPlaces = $groupedAreaPlaces ?? [];
+    $loanTypes = $loanTypes ?? collect();
 @endphp
 <script>
     window.__assignments = @json($assignments);
     window.__areaPlaces = @json($groupedAreaPlaces);
+    window.__loanTypes = @json($loanTypes);
 </script>
 <section class="content loans-page">
     <div class="headline headline--withActions">
@@ -21,136 +23,184 @@
             <h1>EMPLOYEE LOANS</h1>
             <div class="muted small">Track approved loans, deduction setup, and balances across payroll runs.</div>
         </div>
-        <div class="headline__actions">
-            <button class="btn btn--maroon" id="openAddLoanBtn" type="button">Add Loan</button>
-        </div>
     </div>
 
-    <section class="card filterbar">
-        <div class="filterbar__left">
-            <div class="f f--search">
-                <label>Search</label>
-                <input id="loanSearch" type="search" placeholder="Loan no, employee name, or ID" />
-            </div>
-            <div class="f f--status">
-                <label>Status</label>
-                <select id="loanStatusFilter">
-                    <option value="All">All</option>
-                    <option value="draft">Draft</option>
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                </select>
-            </div>
-            <div class="f f--startmonth">
-                <label>Start Month</label>
-                <input id="loanStartFilter" type="month" />
-            </div>
-            <div class="f f--assign-group">
-                <label>Assignment</label>
-                <div class="seg seg--pill" id="loanAssignSeg" role="group" aria-label="Filter by assignment">
-                    <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
-                    @foreach ($assignments as $a)
-                        <div class="seg__btn-wrap">
-                            <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
-                                {{ $a }}
-                                @if (!empty($groupedAreaPlaces[$a] ?? []))
-                                    <span class="seg__chevron">▾</span>
-                                @endif
-                            </button>
-                            @if (!empty($groupedAreaPlaces[$a] ?? []))
-                                <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
-                                    @foreach ($groupedAreaPlaces[$a] as $ap)
-                                        <button type="button" class="seg__dropdown-item"
-                                            data-place="{{ $ap }}">{{ $ap }}</button>
-                                    @endforeach
-                                </div>
-                            @endif
-                        </div>
-                    @endforeach
+    <nav class="loansTabs" aria-label="Loans sections">
+        <button class="loansTab is-active" type="button" data-loans-tab="agency">Agency loan list</button>
+        <button class="loansTab" type="button" data-loans-tab="cash">Cash Advance</button>
+        <button class="loansTab" type="button" data-loans-tab="deductions" data-deduction-type="charge">Charges</button>
+        <button class="loansTab" type="button" data-loans-tab="deductions" data-deduction-type="shortage">Shortages</button>
+    </nav>
+
+    <div class="loansTabPanel" data-loans-panel="agency">
+        <section class="card filterbar">
+            <div class="filterbar__left">
+                <div class="f f--search">
+                    <label>Search</label>
+                    <input id="loanSearch" type="search" placeholder="Loan no, employee name, or ID" />
                 </div>
-                <input type="hidden" id="loanAssignFilter" value="All" />
+                <div class="f f--status">
+                    <label>Status</label>
+                    <select id="loanStatusFilter">
+                        <option value="All">All</option>
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div class="f f--startmonth">
+                    <label>Start Month</label>
+                    <input id="loanStartFilter" type="month" />
+                </div>
+                <div class="f f--assign-group">
+                    <label>Assignment</label>
+                    <div class="seg seg--pill" id="loanAssignSeg" role="group" aria-label="Filter by assignment">
+                        <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
+                        @foreach ($assignments as $a)
+                            <div class="seg__btn-wrap">
+                                <button type="button" class="seg__btn seg__btn--emp" data-assign="{{ $a }}">
+                                    {{ $a }}
+                                    @if (!empty($groupedAreaPlaces[$a] ?? []))
+                                        <span class="seg__chevron">▾</span>
+                                    @endif
+                                </button>
+                                @if (!empty($groupedAreaPlaces[$a] ?? []))
+                                    <div class="seg__dropdown" data-group="{{ $a }}" style="display:none;">
+                                        @foreach ($groupedAreaPlaces[$a] as $ap)
+                                            <button type="button" class="seg__dropdown-item"
+                                                data-place="{{ $ap }}">{{ $ap }}</button>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                    <input type="hidden" id="loanAssignFilter" value="All" />
+                </div>
+                <div class="f f--loantype">
+                    <label>Loan Type</label>
+                    <select id="loanTypeFilter">
+                        <option value="All">All</option>
+                        @foreach ($loanTypes as $t)
+                            <option value="{{ $t }}">{{ $t }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
-            <div class="f f--loantype">
-                <label>Loan Type</label>
-                <select id="loanTypeFilter">
-                    <option value="All">All</option>
-                    <option value="SSS Salary Loan">SSS Salary Loan</option>
-                    <option value="SSS Calamity Loan">SSS Calamity Loan</option>
-                    <option value="SSS Housing Loan">SSS Housing Loan</option>
-                    <option value="HDMF MPL">HDMF MPL</option>
-                    <option value="HDMF Calamity Loan">HDMF Calamity Loan</option>
-                    <option value="HDMF Housing Loan">HDMF Housing Loan</option>
-                    <option value="Company Loan">Company Loan</option>
-                    <option value="Cash Advance">Cash Advance</option>
-                    <option value="Other">Other</option>
-                </select>
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="card tablecard">
-        <div class="tablecard__head">
-            <div>
-                <div class="card__title big">Loans List</div>
-                <div class="muted small" id="loanMeta">Loading loans...</div>
+        <section class="card tablecard">
+            <div class="tablecard__head">
+                <div>
+                    <div class="card__title big">Loans List</div>
+                    <div class="muted small" id="loanMeta">Loading loans...</div>
+                </div>
+                <div>
+                    <button class="btn btn--maroon" id="openAddLoanBtn" type="button" data-tab-action="agency">Add Loan</button>
+                </div>
             </div>
-        </div>
-        <div class="tablewrap">
-            <table class="table" aria-label="Loans table">
-                <thead>
-                    <tr>
-                        <th>Loan No.</th>
-                        <th>Employee</th>
-                        <th>Loan Type</th>
-                        <th class="num">Principal</th>
-                        <th class="num">Total Payable</th>
-                        <th class="num">Per Cutoff</th>
-                        <th class="num">Balance Remaining</th>
-                        <th>Start</th>
-                        <th>End (Est.)</th>
-                        <th>Status</th>
-                        <th>Payroll Deduction</th>
-                        <th class="col-actions">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="loanTbody"></tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="card">
-        <div class="tablecard__head">
-            <div>
-                <div class="card__title">Employee Cash Advance Entry</div>
-                <div class="muted small">Transactions</div>
+            <div class="tablewrap">
+                <table class="table" aria-label="Loans table">
+                    <thead>
+                        <tr>
+                            <th>Loan No.</th>
+                            <th>Employee</th>
+                            <th>Loan Type</th>
+                            <th class="num">Principal</th>
+                            <th class="num">Total Payable</th>
+                            <th class="num">Per Cutoff</th>
+                            <th class="num">Balance Remaining</th>
+                            <th>Start</th>
+                            <th>End (Est.)</th>
+                            <th>Status</th>
+                            <th>Payroll Deduction</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loanTbody"></tbody>
+                </table>
             </div>
-            <div>
-                <button class="btn btn--maroon" type="button" id="newCaBtn">+ New Cash Advance</button>
+        </section>
+    </div>
+
+    <div class="loansTabPanel" data-loans-panel="cash" hidden>
+        <section class="card">
+            <div class="tablecard__head">
+                <div>
+                    <div class="card__title">Employee Cash Advance Entry</div>
+                    <div class="muted small">Transactions</div>
+                </div>
+                <div>
+                    <button class="btn btn--maroon" type="button" id="newCaBtn">+ New Cash Advance</button>
+                </div>
             </div>
-        </div>
 
-        <div class="notice notice--success" id="cashAdvanceTxnNotice" hidden></div>
-        <div class="notice notice--info" id="caActionBanner" hidden></div>
+            <div class="notice notice--success" id="cashAdvanceTxnNotice" hidden></div>
+            <div class="notice notice--info" id="caActionBanner" hidden></div>
 
-        <div class="tablewrap">
-            <table class="table" aria-label="Cash advances table">
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Amount</th>
-                        <th>Term</th>
-                        <th>Start payroll month</th>
-                        <th>Per-cutoff deduction</th>
-                        <th>Status</th>
-                        <th style="width:160px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="caTbody"></tbody>
-            </table>
-        </div>
-    </section>
+            <div class="tablewrap">
+                <table class="table" aria-label="Cash advances table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Amount</th>
+                            <th>Term</th>
+                            <th>Start payroll month</th>
+                            <th>Per-cutoff deduction</th>
+                            <th>Status</th>
+                            <th style="width:160px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="caTbody"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <div class="loansTabPanel" data-loans-panel="deductions" hidden>
+        <section class="card">
+            <div class="tablecard__head">
+                <div>
+                    <div class="card__title" id="dcTitle">Charges</div>
+                    <div class="muted small">Create and manage scheduled deductions by employee.</div>
+                </div>
+                <div>
+                    <button class="btn btn--maroon" type="button" id="dcNewBtn">+ New Charge</button>
+                </div>
+            </div>
+
+            <div class="dcTop">
+                <div class="field field--full">
+                    <label>Employee</label>
+                    <div class="typeahead" id="dcEmployeeTypeahead">
+                        <input type="text" id="dcEmployeeInput" placeholder="Type employee name or ID..." autocomplete="off" />
+                        <input type="hidden" id="dcEmployeeEmpNo" />
+                        <div class="typeahead__list" id="dcEmployeeList" hidden></div>
+                    </div>
+                </div>
+                <div class="notice notice--success" id="dcNotice" hidden></div>
+            </div>
+
+            <div class="tablewrap">
+                <table class="table" aria-label="Deduction cases table">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th class="num">Total</th>
+                            <th class="num">Remaining</th>
+                            <th>Plan</th>
+                            <th>Start</th>
+                            <th>Status</th>
+                            <th style="width:120px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dcTbody"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
 </section>
 @endsection
 
@@ -201,15 +251,9 @@
                 <div class="field">
                     <label>Loan Type</label>
                     <select id="loanType">
-                        <option value="SSS Salary Loan">SSS Salary Loan</option>
-                        <option value="SSS Calamity Loan">SSS Calamity Loan</option>
-                        <option value="SSS Housing Loan">SSS Housing Loan</option>
-                        <option value="HDMF MPL">HDMF MPL</option>
-                        <option value="HDMF Calamity Loan">HDMF Calamity Loan</option>
-                        <option value="HDMF Housing Loan">HDMF Housing Loan</option>
-                        <option value="Company Loan">Company Loan</option>
-                        <option value="Cash Advance">Cash Advance</option>
-                        <option value="Other">Other</option>
+                        @foreach ($loanTypes as $t)
+                            <option value="{{ $t }}">{{ $t }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div class="field">
@@ -405,6 +449,69 @@
         </div>
         <div class="drawer__foot">
             <button class="btn" type="button" id="closeLoanDetailFooter">Close</button>
+        </div>
+    </aside>
+
+    <div class="overlay" id="dcDrawerOverlay" hidden></div>
+    <aside class="drawer" id="dcDrawer" aria-hidden="true">
+        <div class="drawer__head">
+            <div>
+                <div class="drawer__title" id="dcFormTitle">New Charge</div>
+                <div class="drawer__sub muted small" id="dcDrawerSub">Create a scheduled deduction item.</div>
+            </div>
+            <button class="iconx" type="button" id="closeDcDrawer">✕</button>
+        </div>
+        <form class="drawer__body" id="dcForm" autocomplete="off">
+            <div class="grid2">
+                <div class="field field--full">
+                    <label>Employee *</label>
+                    <div class="typeahead" id="dcFormEmployeeTypeahead">
+                        <input type="text" id="dcFormEmployeeInput" placeholder="Type employee name or ID..." autocomplete="off" required />
+                        <input type="hidden" id="dcFormEmployeeEmpNo" />
+                        <div class="typeahead__list" id="dcFormEmployeeList" hidden></div>
+                    </div>
+                </div>
+
+                <div class="field field--full">
+                    <label>Description <span class="muted small">(optional)</span></label>
+                    <input type="text" id="dcDescription" placeholder="e.g., Damaged item / cash discrepancy" />
+                </div>
+
+                <div class="field">
+                    <label>Total amount</label>
+                    <input type="number" id="dcAmountTotal" min="0" step="0.01" placeholder="0.00" required />
+                </div>
+
+                <div class="field">
+                    <label>Plan</label>
+                    <select id="dcPlanType" required>
+                        <option value="installment" selected>Installment</option>
+                        <option value="one_time">One-time</option>
+                    </select>
+                </div>
+
+                <div class="field" id="dcInstallmentWrap">
+                    <label>Installments</label>
+                    <input type="number" id="dcInstallmentCount" min="2" max="24" step="1" value="3" />
+                </div>
+
+                <div class="field">
+                    <label>Start month</label>
+                    <input type="month" id="dcStartMonth" required />
+                </div>
+
+                <div class="field">
+                    <label>Start cutoff</label>
+                    <select id="dcStartCutoff" required>
+                        <option value="11-25" selected>11-25</option>
+                        <option value="26-10">26-10</option>
+                    </select>
+                </div>
+            </div>
+        </form>
+        <div class="drawer__foot">
+            <button class="btn btn--soft" type="button" id="dcCancelBtn">Cancel</button>
+            <button class="btn btn--maroon" type="submit" form="dcForm" id="dcSaveBtn">Save</button>
         </div>
     </aside>
 

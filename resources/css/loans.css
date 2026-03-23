@@ -29,6 +29,125 @@
   position: relative;
 }
 
+.loansTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.loansTab {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--maroon);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 1000;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  line-height: 1;
+}
+
+.loansTab:hover {
+  background: rgba(156, 29, 60, 0.06);
+  border-color: rgba(156, 29, 60, 0.25);
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.08);
+  transform: translateY(-1px);
+}
+
+.loansTab.is-active {
+  background: var(--maroon);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 14px 26px rgba(156, 29, 60, 0.2);
+}
+
+.loansTabPanel {
+  display: grid;
+  gap: 12px;
+}
+
+.loansTabPanel[hidden] {
+  display: none !important;
+}
+
+/* New Charge/Shortage drawer: prevent horizontal scroll on narrow screens */
+#dcDrawer {
+  overflow-x: hidden;
+  width: min(460px, 92vw);
+  box-shadow: -12px 0 26px rgba(17, 24, 39, 0.18);
+}
+
+#dcDrawer .drawer__head {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+#dcDrawer .drawer__body {
+  overflow-x: hidden;
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#dcDrawer .field input,
+#dcDrawer .field select,
+#dcDrawer .field textarea {
+  min-width: 0;
+}
+
+/* Match Cash Advance drawer spacing/scale */
+#dcDrawer .field {
+  display: grid;
+  gap: 8px;
+}
+
+#dcDrawer .field label {
+  margin: 0;
+}
+
+/* Browsers can show default red `:invalid` styling on required inputs; keep it consistent with app styles */
+#dcDrawer input:invalid,
+#dcDrawer select:invalid,
+#dcDrawer textarea:invalid {
+  box-shadow: none;
+  border-color: var(--line);
+}
+
+@media (max-width: 700px) {
+  #dcDrawer .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dcTop {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dcForm {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.dcForm .actionsRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.dcForm .actionsRow .spacer {
+  flex: 1;
+}
+
 .drawer--wide {
   max-width: 980px;
 }
@@ -65,8 +184,8 @@
   column-gap: 8px;
   grid-template-columns:
     minmax(260px, 1.5fr)
-    minmax(160px, 1fr)
-    minmax(220px, 1fr);
+    minmax(150px, 0.9fr)
+    minmax(240px, 1.1fr);
   grid-template-areas:
     "search status assign"
     "startmonth loanType .";
@@ -97,6 +216,11 @@
   padding: 6px;
 }
 .typeahead__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
   padding: 8px 10px;
   border-radius: 10px;
   font-weight: 700;
@@ -173,6 +297,10 @@
   align-self: end;
 }
 
+.filterbar__left .f--status select {
+  width: 100%;
+}
+
 /* Keep second-row fields compact */
 .f--startmonth input {
   width: 200px;
@@ -185,36 +313,24 @@
   max-width: 240px;
 }
 
-/* Assignment pills (copied from Employee Records) */
+/* Assignment pills (match Payroll Processing) */
 .filterbar .seg {
-  background: #fff;
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 999px;
   overflow: hidden;
-  display: flex;
-  height: 44px;
+  background: #fff;
   flex: 0 0 auto;
 }
-.filterbar .seg--pill {
-  overflow: visible;
-}
-
-.filterbar .seg--pill .seg__btn:first-child {
-  border-radius: 999px 0 0 999px;
-}
-.filterbar .seg--pill .seg__btn:last-child,
-.filterbar .seg--pill .seg__btn-wrap:last-child .seg__btn {
-  border-radius: 0 999px 999px 0;
-}
-
+.filterbar .seg--pill { overflow: hidden; }
 .filterbar .seg__btn {
-  border: none;
-  background: #fff;
-  padding: 0 18px;
-  font-weight: 1000;
+  border: 0;
+  background: transparent;
+  padding: 12px 24px;
+  font-weight: 900;
   cursor: pointer;
-  color: var(--muted);
-  height: 100%;
+  color: #51627c;
   display: inline-flex;
   align-items: center;
 }
@@ -387,12 +503,12 @@ body.drawer-open {
   top: 0;
   left: 0;
   background: #fff;
-  border: 1px solid rgba(156, 29, 60, 0.2);
-  border-radius: 12px;
-  box-shadow: 0 14px 28px rgba(156, 29, 60, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  border-radius: 3px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
   z-index: 200;
   min-width: 220px;
-  padding: 6px 0;
+  padding: 4px 0;
   white-space: normal;
   display: none;
   opacity: 0;
@@ -411,21 +527,16 @@ body.drawer-open {
   width: 100%;
   background: none;
   border: none;
-  padding: 8px 16px 8px 28px;
+  padding: 7px 12px;
   text-align: left;
   font-size: 0.875rem;
   cursor: pointer;
-  color: var(--maroon);
+  color: #111;
   position: relative;
   word-break: break-word;
 }
 .filterbar .seg__dropdown-item::before {
-  content: "\2022";
-  position: absolute;
-  left: 14px;
-  top: 7px;
-  color: var(--maroon);
-  opacity: 0.9;
+  content: none;
 }
 .filterbar .seg__dropdown-item:hover {
   background: rgba(156, 29, 60, 0.08);
@@ -435,6 +546,10 @@ body.drawer-open {
   background: rgba(156, 29, 60, 0.14);
   color: var(--maroon);
   font-weight: 600;
+}
+.filterbar .seg__dropdown-item:focus-visible {
+  outline: 2px solid rgba(156, 29, 60, 0.45);
+  outline-offset: -2px;
 }
 
 @media (max-width: 900px) {

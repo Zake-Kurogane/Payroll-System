@@ -298,6 +298,13 @@ class PayslipController extends Controller
             ->get()
             ->keyBy('employee_id');
 
+        // Pre-fetch all existing payslip numbers for this run to avoid N+1 `exists()` queries.
+        // We'll also reserve numbers we generate in-memory during the transaction.
+        $usedPayslipNos = array_fill_keys(
+            $existing->pluck('payslip_no')->filter()->values()->all(),
+            true
+        );
+
         $overrides = PayrollRunRowOverride::query()
             ->where('payroll_run_id', $run->id)
             ->get()
@@ -307,14 +314,14 @@ class PayslipController extends Controller
         $payslipIds = [];
         $adjRows = [];
 
-        DB::transaction(function () use ($rows, $overrides, $run, $empMap, $existing, &$createdCount, &$payslipIds, &$adjRows) {
+        DB::transaction(function () use ($rows, $overrides, $run, $empMap, $existing, &$usedPayslipNos, &$createdCount, &$payslipIds, &$adjRows) {
             foreach ($rows as $row) {
                 $emp = $empMap->get($row->employee_id);
                 $baseNo = 'PS-' . ($run->run_code ?: ('RUN-' . $run->id)) . '-' . ($emp?->emp_no ?: $row->employee_id);
                 $payslip = $existing->get($row->employee_id);
 
                 if (!$payslip) {
-                    $payslipNo = $this->uniquePayslipNo($baseNo);
+                    $payslipNo = $this->uniquePayslipNo($baseNo, $usedPayslipNos);
                     $payslip = Payslip::create([
                         'payroll_run_id' => $run->id,
                         'employee_id' => $row->employee_id,
@@ -411,14 +418,15 @@ class PayslipController extends Controller
         ]);
     }
 
-    private function uniquePayslipNo(string $base): string
+    private function uniquePayslipNo(string $base, array &$used): string
     {
         $candidate = $base;
         $i = 1;
-        while (Payslip::query()->where('payslip_no', $candidate)->exists()) {
+        while (isset($used[$candidate])) {
             $candidate = $base . '-' . $i;
             $i++;
         }
+        $used[$candidate] = true;
         return $candidate;
     }
 

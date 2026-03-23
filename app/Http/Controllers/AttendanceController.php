@@ -552,10 +552,6 @@ class AttendanceController extends Controller
                     // Clock times are optional for Present, Late, Half-day, etc.
                 }
 
-                if ($empNo !== '' && !Employee::where('emp_no', $empNo)->exists()) {
-                    $errors[] = "{$sheetName} row {$r}: emp_no \"{$empNo}\" not found.";
-                }
-
                 if (in_array($status, ['Late', 'Present'], true)) {
                     $computedLate = $this->computeLateMinutes($clockIn);
                     if ($computedLate !== null) {
@@ -568,6 +564,7 @@ class AttendanceController extends Controller
                 $rowsToUpsert[] = [
                     'date' => $workDate->toDateString(),
                     'emp_no' => $empNo,
+                    '_src' => "{$sheetName} row {$r}",
                     'status' => $status ?: '',
                     'area_place' => $areaVal !== '' ? $areaVal : null,
                     'clock_in' => $clockIn ?: null,
@@ -579,6 +576,24 @@ class AttendanceController extends Controller
             }
         }
 
+        // Preload employees once to avoid N+1 checks and lookups during validation + upsert.
+        $empNos = array_values(array_unique(array_filter(array_map(
+            fn ($r) => $r['emp_no'] ?? '',
+            $rowsToUpsert
+        ))));
+        $employeesByNo = Employee::query()
+            ->whereIn('emp_no', $empNos)
+            ->get(['id', 'emp_no'])
+            ->keyBy('emp_no');
+
+        foreach ($rowsToUpsert as $row) {
+            $empNo = (string) ($row['emp_no'] ?? '');
+            if ($empNo !== '' && !isset($employeesByNo[$empNo])) {
+                $src = (string) ($row['_src'] ?? 'Row');
+                $errors[] = "{$src}: emp_no \"{$empNo}\" not found.";
+            }
+        }
+
         if (!empty($errors)) {
             return response()->json([
                 'message' => 'Import failed. Fix the errors and re-upload.',
@@ -587,9 +602,10 @@ class AttendanceController extends Controller
         }
 
         $summaryTouches = [];
-        DB::transaction(function () use ($rowsToUpsert, &$summaryTouches) {
+        DB::transaction(function () use ($rowsToUpsert, $employeesByNo, &$summaryTouches) {
             foreach ($rowsToUpsert as $row) {
-                $emp = Employee::where('emp_no', $row['emp_no'])->first();
+                $empNo = (string) ($row['emp_no'] ?? '');
+                $emp = $empNo !== '' ? ($employeesByNo[$empNo] ?? null) : null;
                 if (!$emp) {
                     continue;
                 }

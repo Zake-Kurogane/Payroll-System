@@ -12,6 +12,7 @@
 
     @yield('vite')
     @vite(['resources/css/profile_drawer.css'])
+    @vite(['resources/js/app.js'])
     @stack('styles')
 </head>
 

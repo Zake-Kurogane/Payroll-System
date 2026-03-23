@@ -91,6 +91,7 @@ class EmployeeDisciplineController extends Controller
 
         $errors = [];
         $created = 0;
+        $pending = [];
 
         $highestRow = $sheet->getHighestDataRow();
         for ($row = 2; $row <= $highestRow; $row++) {
@@ -113,12 +114,6 @@ class EmployeeDisciplineController extends Controller
                 continue;
             }
 
-            $employee = Employee::where('emp_no', $empNo)->first();
-            if (!$employee) {
-                $errors[] = "Row {$row}: emp_no {$empNo} not found.";
-                continue;
-            }
-
             $issuedAt = null;
             try {
                 $raw = $dateCell->getValue();
@@ -134,14 +129,38 @@ class EmployeeDisciplineController extends Controller
                 continue;
             }
 
-            EmployeeDisciplinaryRecord::create([
-                'employee_id' => $employee->id,
+            $pending[] = [
+                'row' => $row,
+                'emp_no' => $empNo,
                 'type' => $typeRaw,
                 'issued_at' => $issuedAt,
                 'remarks' => $remarks ?: null,
                 'reference' => $reference ?: null,
-            ]);
-            $created++;
+            ];
+        }
+
+        if ($pending) {
+            $empNos = array_values(array_unique(array_filter(array_map(fn ($r) => $r['emp_no'], $pending))));
+            $employeesByNo = Employee::query()
+                ->whereIn('emp_no', $empNos)
+                ->get(['id', 'emp_no'])
+                ->keyBy('emp_no');
+
+            foreach ($pending as $item) {
+                $employee = $employeesByNo[$item['emp_no']] ?? null;
+                if (!$employee) {
+                    $errors[] = "Row {$item['row']}: emp_no {$item['emp_no']} not found.";
+                    continue;
+                }
+                EmployeeDisciplinaryRecord::create([
+                    'employee_id' => $employee->id,
+                    'type' => $item['type'],
+                    'issued_at' => $item['issued_at'],
+                    'remarks' => $item['remarks'],
+                    'reference' => $item['reference'],
+                ]);
+                $created++;
+            }
         }
 
         if (!empty($errors)) {

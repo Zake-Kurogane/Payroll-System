@@ -408,26 +408,22 @@ h1 {
 
 /* Segmented pill (assignment filter) */
 .seg {
-    background: #fff;
+    display: inline-flex;
+    align-items: center;
     border: 1px solid var(--line);
     border-radius: 999px;
     overflow: hidden;
-    display: flex;
-    height: 44px;
+    background: #fff;
     flex: 0 0 auto;
 }
-.seg--pill { overflow: visible; }
-.seg--pill .seg__btn:first-child { border-radius: 999px 0 0 999px; }
-.seg--pill .seg__btn:last-child,
-.seg--pill .seg__btn-wrap:last-child .seg__btn { border-radius: 0 999px 999px 0; }
+.seg--pill { overflow: hidden; }
 .seg__btn {
-    border: none;
-    background: #fff;
-    padding: 0 18px;
-    font-weight: 1000;
+    border: 0;
+    background: transparent;
+    padding: 12px 24px;
+    font-weight: 900;
     cursor: pointer;
-    color: var(--muted);
-    height: 44px;
+    color: #51627c;
     white-space: nowrap;
 }
 .seg__btn:hover { background: rgba(156,29,60,0.06); color: var(--maroon); }
@@ -438,12 +434,12 @@ h1 {
     position: fixed;
     top: 0; left: 0;
     background: #fff;
-    border: 1px solid rgba(156,29,60,0.2);
-    border-radius: 12px;
-    box-shadow: 0 14px 28px rgba(156,29,60,0.18);
+    border: 1px solid rgba(0,0,0,0.45);
+    border-radius: 3px;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.12);
     z-index: 200;
     min-width: 180px;
-    padding: 6px 0;
+    padding: 4px 0;
     display: none;
     opacity: 0;
     transform: translateY(-4px);
@@ -457,22 +453,23 @@ h1 {
     width: 100%;
     background: none;
     border: none;
-    padding: 8px 16px 8px 28px;
+    padding: 7px 12px;
     text-align: left;
     font-size: 0.875rem;
     cursor: pointer;
-    color: var(--maroon);
+    color: #111;
     position: relative;
     word-break: break-word;
 }
 .seg__dropdown-item::before {
-    content: "•";
+    content: none;
     position: absolute;
     left: 14px; top: 7px;
     color: var(--maroon);
 }
-.seg__dropdown-item:hover { background: rgba(156,29,60,0.08); }
-.seg__dropdown-item.is-active { background: rgba(156,29,60,0.14); font-weight: 700; }
+.seg__dropdown-item:hover { background: rgba(156,29,60,0.08); color: var(--maroon); }
+.seg__dropdown-item.is-active { background: rgba(156,29,60,0.14); color: var(--maroon); font-weight: 600; }
+.seg__dropdown-item:focus-visible { outline: 2px solid rgba(156,29,60,0.45); outline-offset: -2px; }
 
 /* KPI */
 .kpis {

@@ -1,0 +1,100 @@
+:root {
+  --s2-line: var(--line, rgba(17, 24, 39, 0.14));
+  --s2-maroon: var(--maroon, #9c1d3c);
+  --s2-text: var(--text, #111827);
+  --s2-muted: var(--muted, #6b7280);
+}
+
+.select2-container {
+  width: 100% !important;
+  font-family: inherit;
+}
+
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+  border: 1px solid var(--s2-line);
+  border-radius: 14px;
+  min-height: 42px;
+  background: #fff;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color: var(--s2-text);
+  padding-left: 12px;
+  padding-right: 34px;
+  line-height: 40px;
+  font-weight: 900;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  height: 40px;
+  right: 10px;
+}
+
+.select2-container--default.select2-container--focus .select2-selection--single,
+.select2-container--default.select2-container--open .select2-selection--single,
+.select2-container--default.select2-container--focus .select2-selection--multiple,
+.select2-container--default.select2-container--open .select2-selection--multiple {
+  border-color: rgba(156, 29, 60, 0.45);
+  box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
+}
+
+.select2-dropdown {
+  border: 1px solid rgba(156, 29, 60, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 14px 28px rgba(156, 29, 60, 0.18);
+  overflow: hidden;
+}
+
+.select2-container--default .select2-results > .select2-results__options {
+  padding: 4px 0;
+  max-height: 260px;
+}
+
+.select2-container--default .select2-search--dropdown .select2-search__field {
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 10px;
+  padding: 8px 10px;
+  outline: none;
+  font-weight: 800;
+  color: var(--s2-text);
+}
+
+.select2-container--default .select2-results__option {
+  position: relative;
+  padding: 8px 16px 8px 28px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--s2-maroon);
+  word-break: break-word;
+}
+
+.select2-container--default .select2-results__option::before {
+  content: "\2022";
+  position: absolute;
+  left: 14px;
+  top: 7px;
+  color: var(--s2-maroon);
+  opacity: 0.9;
+}
+
+/* Force maroon hover/highlight (match assignment dropdown) */
+.select2-container--default .select2-results__option--highlighted.select2-results__option--selectable,
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.select2-container--default .select2-results__option--highlighted[aria-selected="false"],
+.select2-container--default .select2-results__option--selectable:hover {
+  background: rgba(156, 29, 60, 0.08) !important;
+  color: var(--s2-maroon) !important;
+}
+
+.select2-container--default .select2-results__option--selected {
+  background: rgba(156, 29, 60, 0.14) !important;
+  color: var(--s2-maroon) !important;
+  font-weight: 600;
+}
+
+/* Keep the clear (x) visible but subtle */
+.select2-container--default .select2-selection__clear {
+  color: var(--s2-muted);
+  margin-right: 28px;
+}

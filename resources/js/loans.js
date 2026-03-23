@@ -39,7 +39,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const toast = (message) => {
     if (message) alert(message);
   };
-  initCashAdvanceTransactions(toast, apiFetch, document.getElementById("cashAdvanceTxnNotice"));
+
+  // Lazy-init Cash Advance so it only loads/fetches when the Cash Advance tab is opened.
+  const cashAdvanceTxnNotice = document.getElementById("cashAdvanceTxnNotice");
+  let cashAdvanceInited = false;
+  function initCashAdvanceIfNeeded() {
+    if (cashAdvanceInited) return;
+    cashAdvanceInited = true;
+    initCashAdvanceTransactions(toast, apiFetch, cashAdvanceTxnNotice);
+  }
 
   // Elements
   const loanSearch = document.getElementById("loanSearch");
@@ -51,6 +59,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const loanDeptFilter = document.getElementById("loanDeptFilter");
   const loanMeta = document.getElementById("loanMeta");
   const loanTbody = document.getElementById("loanTbody");
+
+  // Tabs (Agency loans / Cash advance / Charges / Shortages)
+  const loansTabBtns = Array.from(document.querySelectorAll(".loansTab"));
+  const loansPanels = Array.from(document.querySelectorAll(".loansTabPanel"));
+
+  // Deduction Cases (Charges / Shortages)
+  const dcTitle = document.getElementById("dcTitle");
+  const dcFormTitle = document.getElementById("dcFormTitle");
+  const dcNewBtn = document.getElementById("dcNewBtn");
+  const dcCancelBtn = document.getElementById("dcCancelBtn");
+  const dcDrawer = document.getElementById("dcDrawer");
+  const dcDrawerOverlay = document.getElementById("dcDrawerOverlay");
+  const closeDcDrawer = document.getElementById("closeDcDrawer");
+  const dcFormEmployeeInput = document.getElementById("dcFormEmployeeInput");
+  const dcFormEmployeeEmpNo = document.getElementById("dcFormEmployeeEmpNo");
+  const dcFormEmployeeList = document.getElementById("dcFormEmployeeList");
+  const dcNotice = document.getElementById("dcNotice");
+  const dcEmployeeInput = document.getElementById("dcEmployeeInput");
+  const dcEmployeeEmpNo = document.getElementById("dcEmployeeEmpNo");
+  const dcEmployeeList = document.getElementById("dcEmployeeList");
+  const dcTbody = document.getElementById("dcTbody");
+  const dcForm = document.getElementById("dcForm");
+  const dcDescription = document.getElementById("dcDescription");
+  const dcAmountTotal = document.getElementById("dcAmountTotal");
+  const dcPlanType = document.getElementById("dcPlanType");
+  const dcInstallmentWrap = document.getElementById("dcInstallmentWrap");
+  const dcInstallmentCount = document.getElementById("dcInstallmentCount");
+  const dcStartMonth = document.getElementById("dcStartMonth");
+  const dcStartCutoff = document.getElementById("dcStartCutoff");
 
   const openAddLoanBtn = document.getElementById("openAddLoanBtn");
   const loanDrawer = document.getElementById("loanDrawer");
@@ -116,6 +153,212 @@ document.addEventListener("DOMContentLoaded", () => {
   let openDropdown = null;
   let openDropdownBtn = null;
   let assignDropdownEventsBound = false;
+
+  // Tab state
+  let activeLoansPanel = "agency";
+  let deductionType = "charge"; // charge | shortage
+  let deductionCases = [];
+
+  function flashNotice(message) {
+    if (!dcNotice) return;
+    if (!message) {
+      dcNotice.hidden = true;
+      dcNotice.textContent = "";
+      return;
+    }
+    dcNotice.textContent = message;
+    dcNotice.hidden = false;
+    window.clearTimeout(dcNotice.__t);
+    dcNotice.__t = window.setTimeout(() => {
+      dcNotice.hidden = true;
+    }, 2400);
+  }
+
+  function setLoansTab(panel, opts = {}) {
+    if (!panel) return;
+    activeLoansPanel = panel;
+    if (panel === "deductions" && opts.deductionType) {
+      deductionType = opts.deductionType;
+      try { localStorage.setItem("loans.deductionType", deductionType); } catch { /* ignore */ }
+    }
+
+    loansTabBtns.forEach((b) => {
+      const tab = b.getAttribute("data-loans-tab") || "";
+      const type = b.getAttribute("data-deduction-type") || "";
+      const isActive = tab === panel && (panel !== "deductions" || type === deductionType);
+      b.classList.toggle("is-active", isActive);
+    });
+
+    loansPanels.forEach((p) => {
+      const pName = p.getAttribute("data-loans-panel") || "";
+      p.hidden = pName !== panel;
+    });
+
+    if (panel === "deductions") {
+      const title = deductionType === "shortage" ? "Shortages" : "Charges";
+      const singular = deductionType === "shortage" ? "Shortage" : "Charge";
+      if (dcTitle) dcTitle.textContent = title;
+      if (dcFormTitle) dcFormTitle.textContent = `New ${singular}`;
+      if (dcNewBtn) dcNewBtn.textContent = `+ New ${singular}`;
+      hideDcForm();
+      renderDeductionCases();
+    }
+
+    if (panel === "cash") initCashAdvanceIfNeeded();
+
+    try { localStorage.setItem("loans.activeTab", panel); } catch { /* ignore */ }
+  }
+
+  function initLoansTabs() {
+    if (!loansTabBtns.length || !loansPanels.length) return;
+
+    let savedPanel = "agency";
+    let savedType = "charge";
+    try {
+      savedPanel = localStorage.getItem("loans.activeTab") || savedPanel;
+      savedType = localStorage.getItem("loans.deductionType") || savedType;
+    } catch {
+      // ignore
+    }
+    if (savedType !== "charge" && savedType !== "shortage") savedType = "charge";
+    if (!["agency", "cash", "deductions"].includes(savedPanel)) savedPanel = "agency";
+
+    setLoansTab(savedPanel, { deductionType: savedType });
+
+    loansTabBtns.forEach((b) => {
+      b.addEventListener("click", () => {
+        const tab = b.getAttribute("data-loans-tab") || "agency";
+        const type = b.getAttribute("data-deduction-type") || "";
+        setLoansTab(tab, type ? { deductionType: type } : {});
+      });
+    });
+  }
+
+  function renderDeductionCases() {
+    if (!dcTbody) return;
+    const empNo = String(dcEmployeeEmpNo?.value || "").trim();
+    if (!empNo) {
+      dcTbody.innerHTML = `<tr><td colspan="7" class="muted small">Select an employee to view ${deductionType === "shortage" ? "shortages" : "charges"}.</td></tr>`;
+      return;
+    }
+
+    const list = (deductionCases || []).filter((c) => String(c?.type || "") === deductionType);
+    if (!list.length) {
+      dcTbody.innerHTML = `<tr><td colspan="7" class="muted small">No ${deductionType === "shortage" ? "shortages" : "charges"} found.</td></tr>`;
+      return;
+    }
+
+    const safe = (s) => String(s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+
+    dcTbody.innerHTML = list.map((c) => {
+      const plan = c.plan_type === "installment"
+        ? `Installment${c.installment_count ? ` (${Number(c.installment_count)})` : ""}`
+        : "One-time";
+      const start = `${c.start_month || ""} ${c.start_cutoff || ""}`.trim();
+      const desc = c.description ? safe(c.description) : `<span class="muted small">(no description)</span>`;
+      const canClose = String(c.status || "") === "active";
+      return `
+        <tr>
+          <td>${desc}</td>
+          <td class="num">${money(Number(c.amount_total || 0))}</td>
+          <td class="num">${money(Number(c.amount_remaining || 0))}</td>
+          <td>${safe(plan)}</td>
+          <td>${safe(start)}</td>
+          <td>${safe(c.status || "")}</td>
+          <td class="num">
+            ${canClose ? `<button type="button" class="miniBtn miniBtn--danger" data-dc-close="${c.id}" title="Close">✕</button>` : ""}
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function showDcForm() {
+    showDrawer(dcDrawer, dcDrawerOverlay);
+
+    // Prefill drawer employee from currently selected employee (if any)
+    const currentEmpNo = String(dcEmployeeEmpNo?.value || "").trim();
+    const currentLabel = String(dcEmployeeInput?.value || "").trim();
+    if (currentEmpNo && dcFormEmployeeEmpNo && !String(dcFormEmployeeEmpNo.value || "").trim()) {
+      dcFormEmployeeEmpNo.value = currentEmpNo;
+      if (dcFormEmployeeInput) dcFormEmployeeInput.value = currentLabel;
+    }
+
+    // Start on the employee field for quicker encoding
+    if (dcFormEmployeeInput) {
+      dcFormEmployeeInput.focus();
+      const v = dcFormEmployeeInput.value || "";
+      try { dcFormEmployeeInput.setSelectionRange(v.length, v.length); } catch { /* ignore */ }
+      return;
+    }
+    if (dcAmountTotal) dcAmountTotal.focus();
+  }
+
+  function hideDcForm() {
+    hideDrawer(dcDrawer, dcDrawerOverlay);
+  }
+
+  async function loadDeductionCases() {
+    const empNo = String(dcEmployeeEmpNo?.value || "").trim();
+    if (!empNo || !dcTbody) return;
+    dcTbody.innerHTML = `<tr><td colspan="7" class="muted small">Loading...</td></tr>`;
+    try {
+      deductionCases = await apiFetch(`/employees/${encodeURIComponent(empNo)}/deduction-cases`);
+    } catch {
+      deductionCases = [];
+    }
+    renderDeductionCases();
+  }
+
+  async function createDeductionCase() {
+    const empNo = String(dcFormEmployeeEmpNo?.value || dcEmployeeEmpNo?.value || "").trim();
+    if (!empNo) {
+      alert("Select an employee first.");
+      return;
+    }
+
+    const planType = String(dcPlanType?.value || "installment");
+    const payload = {
+      type: deductionType,
+      description: String(dcDescription?.value || "").trim() || null,
+      amount_total: Number(dcAmountTotal?.value || 0),
+      plan_type: planType,
+      installment_count: planType === "installment" ? Number(dcInstallmentCount?.value || 0) : null,
+      start_month: String(dcStartMonth?.value || "").trim(),
+      start_cutoff: String(dcStartCutoff?.value || "").trim(),
+    };
+
+    try {
+      await apiFetch(`/employees/${encodeURIComponent(empNo)}/deduction-cases`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      flashNotice(`${deductionType === "shortage" ? "Shortage" : "Charge"} saved.`);
+      if (dcAmountTotal) dcAmountTotal.value = "";
+      if (dcDescription) dcDescription.value = "";
+      hideDcForm();
+      await loadDeductionCases();
+    } catch (err) {
+      alert(err.message || "Failed to save.");
+    }
+  }
+
+  async function closeDeductionCase(caseId) {
+    const empNo = String(dcEmployeeEmpNo?.value || "").trim();
+    if (!empNo || !caseId) return;
+    const ok = confirm("Close this item? Future scheduled lines will be voided.");
+    if (!ok) return;
+
+    try {
+      await apiFetch(`/employees/${encodeURIComponent(empNo)}/deduction-cases/${encodeURIComponent(caseId)}/close`, {
+        method: "POST",
+      });
+      flashNotice("Closed.");
+      await loadDeductionCases();
+    } catch (err) {
+      alert(err.message || "Failed to close.");
+    }
+  }
 
   function currentAssignmentFilter() {
     if (!loanAssignSeg) return assignmentFilter || "All";
@@ -385,7 +628,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (loanDrawerTitle) loanDrawerTitle.textContent = "Add Loan";
     [loanEmpSearch, loanEmpNo, loanEmpName, loanEmpAssign, loanEmpDept, loanEmpPos].forEach(el => el && (el.value = ""));
     [loanRef, loanApprovalDate, loanReleaseDate, loanNotes, loanPrincipal, loanInterest, loanTotalPayable, loanMonthly, loanPerCutoff, loanTerm, loanPriority, loanApprovedBy, loanEncodedBy].forEach(el => el && (el.value = ""));
-    if (loanType) loanType.value = "SSS Salary Loan";
+    if (loanType) loanType.value = loanType.querySelector("option")?.value || "";
     if (loanLender) loanLender.value = "SSS";
     if (loanStartCutoff) loanStartCutoff.value = "11-25";
     if (loanFrequency) loanFrequency.value = "every_cutoff";
@@ -637,6 +880,139 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Deduction cases: employee typeahead + actions
+  function safeText(s) {
+    return String(s || "").replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m]));
+  }
+
+  function clearDcTypeahead() {
+    if (!dcEmployeeList) return;
+    dcEmployeeList.hidden = true;
+    dcEmployeeList.innerHTML = "";
+  }
+
+  function clearDcFormTypeahead() {
+    if (!dcFormEmployeeList) return;
+    dcFormEmployeeList.hidden = true;
+    dcFormEmployeeList.innerHTML = "";
+  }
+
+  dcEmployeeInput && dcEmployeeInput.addEventListener("input", async () => {
+    const q = String(dcEmployeeInput.value || "").trim();
+    if (!dcEmployeeList) return;
+    if (q.length < 2) {
+      clearDcTypeahead();
+      return;
+    }
+    try {
+      const rows = await apiFetch(`/employees/suggest?q=${encodeURIComponent(q)}`);
+      if (!Array.isArray(rows) || !rows.length) {
+        clearDcTypeahead();
+        return;
+      }
+      dcEmployeeList.innerHTML = rows
+        .map((r) => `<button type="button" class="typeahead__item" data-emp="${r.emp_no}">${r.label}</button>`)
+        .join("");
+      dcEmployeeList.hidden = false;
+    } catch {
+      clearDcTypeahead();
+    }
+  });
+
+  dcEmployeeList && dcEmployeeList.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-emp]");
+    if (!btn) return;
+    const empNo = btn.getAttribute("data-emp") || "";
+    if (dcEmployeeEmpNo) dcEmployeeEmpNo.value = empNo;
+    if (dcEmployeeInput) dcEmployeeInput.value = btn.textContent || "";
+    clearDcTypeahead();
+    await loadDeductionCases();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (dcEmployeeList && dcEmployeeInput && !dcEmployeeList.contains(e.target) && !dcEmployeeInput.contains(e.target)) {
+      clearDcTypeahead();
+    }
+  });
+
+  // Drawer employee typeahead (used when creating new charge/shortage)
+  dcFormEmployeeInput && dcFormEmployeeInput.addEventListener("input", async () => {
+    const q = String(dcFormEmployeeInput.value || "").trim();
+    if (!dcFormEmployeeList) return;
+    if (q.length < 2) {
+      clearDcFormTypeahead();
+      return;
+    }
+    try {
+      const rows = await apiFetch(`/employees/suggest?q=${encodeURIComponent(q)}`);
+      if (!Array.isArray(rows) || !rows.length) {
+        clearDcFormTypeahead();
+        return;
+      }
+      dcFormEmployeeList.innerHTML = rows
+        .map((r) => `<button type="button" class="typeahead__item" data-emp="${safeText(r.emp_no)}">${safeText(r.label)}</button>`)
+        .join("");
+      dcFormEmployeeList.hidden = false;
+    } catch {
+      clearDcFormTypeahead();
+    }
+  });
+
+  dcFormEmployeeList && dcFormEmployeeList.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-emp]");
+    if (!btn) return;
+    const empNo = btn.getAttribute("data-emp") || "";
+    const label = btn.textContent || "";
+    if (dcFormEmployeeEmpNo) dcFormEmployeeEmpNo.value = empNo;
+    if (dcFormEmployeeInput) dcFormEmployeeInput.value = label;
+    clearDcFormTypeahead();
+
+    // Sync the selected employee to the list panel (so the table updates)
+    if (dcEmployeeEmpNo) dcEmployeeEmpNo.value = empNo;
+    if (dcEmployeeInput) dcEmployeeInput.value = label;
+    await loadDeductionCases();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (dcFormEmployeeList && dcFormEmployeeInput && !dcFormEmployeeList.contains(e.target) && !dcFormEmployeeInput.contains(e.target)) {
+      clearDcFormTypeahead();
+    }
+  });
+
+  dcPlanType && dcPlanType.addEventListener("change", () => {
+    const planType = String(dcPlanType.value || "installment");
+    const isInstallment = planType === "installment";
+    if (dcInstallmentWrap) dcInstallmentWrap.style.display = isInstallment ? "" : "none";
+    if (dcInstallmentCount) dcInstallmentCount.required = isInstallment;
+  });
+
+  dcNewBtn && dcNewBtn.addEventListener("click", () => {
+    showDcForm();
+  });
+
+  dcCancelBtn && dcCancelBtn.addEventListener("click", () => {
+    hideDcForm();
+  });
+
+  closeDcDrawer && closeDcDrawer.addEventListener("click", () => {
+    hideDcForm();
+  });
+
+  dcDrawerOverlay && dcDrawerOverlay.addEventListener("click", () => {
+    hideDcForm();
+  });
+
+  dcForm && dcForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    createDeductionCase();
+  });
+
+  dcTbody && dcTbody.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-dc-close]");
+    if (!btn) return;
+    closeDeductionCase(btn.getAttribute("data-dc-close") || "");
+  });
+
   // Auto-calc total payable
   function updateTotalPayable() {
     const principal = Number(loanPrincipal?.value || 0);
@@ -661,6 +1037,14 @@ document.addEventListener("DOMContentLoaded", () => {
   loanMethod && loanMethod.addEventListener("change", updateMonthlyFromTotal);
 
   // Init
+  initLoansTabs();
+  if (dcStartMonth && !dcStartMonth.value) {
+    const d = new Date();
+    dcStartMonth.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  if (dcPlanType) dcPlanType.dispatchEvent(new Event("change"));
+  renderDeductionCases();
+
   assignmentFilter = currentAssignmentFilter();
   if (loanAssignFilter) {
     loanAssignFilter.value = areaSubFilter ? `${assignmentFilter}|${areaSubFilter}` : assignmentFilter;
@@ -668,5 +1052,3 @@ document.addEventListener("DOMContentLoaded", () => {
   wireAssignButtons();
   loadFilters().then(loadLoans).catch(() => loadLoans());
 });
-
-

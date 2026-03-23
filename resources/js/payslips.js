@@ -265,6 +265,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = $("searchInput");
   const assignmentSeg = $("assignSeg");
   let segBtns = [];
+  let openDropdown = null;
+  let openDropdownBtn = null;
+  let assignDropdownEventsBound = false;
 
   const runSelect = $("runSelect");
   const runEmployees = $("runEmployees");
@@ -380,8 +383,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function closeAllDropdowns() {
     if (!assignmentSeg) return;
     assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
+      dd.classList.remove("is-open");
       dd.style.display = "none";
     });
+    openDropdown = null;
+    openDropdownBtn = null;
   }
 
   // =========================================================
@@ -1077,12 +1083,36 @@ document.addEventListener("DOMContentLoaded", () => {
   function bindAssignmentButtons() {
     if (!assignmentSeg) return;
 
+    function positionDropdown(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const rect = btn.getBoundingClientRect();
+      const viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+      const desired = Math.round(rect.width);
+      const maxWidth = Math.min(360, viewportW - 16);
+      const dropdownW = Math.min(Math.max(desired, 240), maxWidth);
+      let left = Math.round(rect.left);
+      if (left + dropdownW > viewportW - 8) {
+        left = Math.max(8, viewportW - dropdownW - 8);
+      }
+      const top = Math.round(rect.bottom + 8);
+      dropdown.style.left = `${left}px`;
+      dropdown.style.top = `${top}px`;
+      dropdown.style.minWidth = `${dropdownW}px`;
+      dropdown.style.maxWidth = `${dropdownW}px`;
+    }
+
+    function refreshOpenDropdownPosition() {
+      if (!openDropdown || !openDropdownBtn) return;
+      positionDropdown(openDropdownBtn, openDropdown);
+    }
+
     segBtns.forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const rawAssign = btn.getAttribute("data-assign");
         const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
         const dropdown = btn.closest(".seg__btn-wrap")?.querySelector(".seg__dropdown");
+        const wasOpen = dropdown && dropdown.style.display === "block";
 
         const isAlreadyActive = btn.classList.contains("is-active");
         closeAllDropdowns();
@@ -1094,8 +1124,19 @@ document.addEventListener("DOMContentLoaded", () => {
         page = 1;
         render();
 
-        if (dropdown && !isAlreadyActive) {
+        if (dropdown) {
+          if (isAlreadyActive && wasOpen) {
+            dropdown.classList.remove("is-open");
+            dropdown.style.display = "none";
+            openDropdown = null;
+            openDropdownBtn = null;
+            return;
+          }
+          positionDropdown(btn, dropdown);
           dropdown.style.display = "block";
+          dropdown.classList.add("is-open");
+          openDropdown = dropdown;
+          openDropdownBtn = btn;
         }
       });
     });
@@ -1118,9 +1159,14 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    document.addEventListener("click", (e) => {
-      if (!assignmentSeg.contains(e.target)) closeAllDropdowns();
-    }, { capture: true });
+    if (!assignDropdownEventsBound) {
+      document.addEventListener("click", (e) => {
+        if (!assignmentSeg.contains(e.target)) closeAllDropdowns();
+      }, { capture: true });
+      window.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
+      window.addEventListener("resize", refreshOpenDropdownPosition);
+      assignDropdownEventsBound = true;
+    }
   }
 
   // filters
