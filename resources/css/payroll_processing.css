@@ -905,6 +905,11 @@ tbody tr:hover {
     background: #fff;
     box-shadow: none;
     min-width: 84px;
+    outline: none;
+}
+.rowsSelect:focus {
+    border-color: rgba(156, 29, 60, 0.45);
+    box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
 }
 .dd summary {
     list-style: none;
@@ -1329,6 +1334,12 @@ tbody tr:hover {
     padding: 0 10px;
     font-weight: 900;
     background: #fff;
+    outline: none;
+}
+.adjRow select:focus,
+.adjRow input:focus {
+    border-color: rgba(156, 29, 60, 0.45);
+    box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
 }
 .adjRow .moneyInput {
     position: relative;

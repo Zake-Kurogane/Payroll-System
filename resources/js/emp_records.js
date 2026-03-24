@@ -3,6 +3,7 @@ import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { initSettingsSync } from "./shared/settingsSync";
 import { broadcastEmployeeUpdate } from "./shared/dataSync";
+import { initSelect2 } from "./shared/select2";
 
 document.addEventListener("DOMContentLoaded", async () => {
   initClock();
@@ -2362,6 +2363,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     if (!serverRendered) {
       await loadFilters();
+      // Ensure filter selects are select2-initialized after options are populated
+      const filterCard = document.querySelector(".filtersCard");
+      if (filterCard) initSelect2(filterCard);
     } else {
       const seed = Array.isArray(window.__serverEmployees) ? window.__serverEmployees : [];
       employees = seed.map(fromApi);
@@ -2371,6 +2375,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Always refresh filters from API (server-rendered dropdowns can be stale/empty)
     if (serverRendered) {
       await loadFilters();
+      const filterCard = document.querySelector(".filtersCard");
+      if (filterCard) initSelect2(filterCard);
     }
 
     try {

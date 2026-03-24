@@ -423,17 +423,16 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  async function loadRecords(options = {}) {
-    const qs = new URLSearchParams();
+	  async function loadRecords(options = {}) {
+	    const qs = new URLSearchParams();
     if (!options.ignoreCutoff) {
       if (cutoffMonthInput?.value) qs.set("month", cutoffMonthInput.value);
       if (cutoffSelect?.value) qs.set("cutoff", cutoffSelect.value);
     }
     if (assignmentFilter && assignmentFilter !== "All") {
       qs.set("assignment", assignmentFilter);
-      if (areaSubFilter) {
-        qs.set("area", areaSubFilter);
-      }
+      const areaVal = String(areaSubFilter || "").trim();
+      if (areaVal && areaVal.toLowerCase() !== "all") qs.set("area", areaVal);
     }
     const dateVal = dateInput?.value || "";
     if (dateVal) qs.set("date", dateVal);
@@ -442,10 +441,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const q = String(searchInput?.value || "").trim();
     if (q) qs.set("q", q);
 
-    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
-    const page = Number(pageState.page || 1);
-    qs.set("per_page", String(rows));
-    qs.set("page", String(page));
+	    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
+	    const page = Number(pageState.page || 1);
+	    qs.set("per_page", String(rows));
+	    qs.set("page", String(page));
+	    qs.set("sort", String(sortState.key || "name"));
+	    qs.set("dir", String(sortState.dir || "asc"));
 
     const url = qs.toString() ? `/attendance/records?${qs.toString()}` : "/attendance/records";
     const res = await apiFetch(url);
@@ -476,6 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let segBtns = [];
   let assignmentFilter = "All";
   let areaSubFilter = "";
+  let dateTouched = false;
   let openDropdown = null;
   let openDropdownBtn = null;
 
@@ -630,6 +632,22 @@ document.addEventListener("DOMContentLoaded", () => {
   let pageState = { page: 1, rows: 20 };
   let lastFilterSig = "";
 
+  async function loadLatestDateWithinFilters({ month, cutoff, assignment, area } = {}) {
+    const qs = new URLSearchParams();
+    qs.set("latest", "1");
+    if (month) qs.set("month", month);
+    if (cutoff) qs.set("cutoff", cutoff);
+    if (assignment) qs.set("assignment", assignment);
+    if (area) qs.set("area", area);
+
+    try {
+      const res = await apiFetch(`/attendance/records?${qs.toString()}`);
+      return String(res?.date || "");
+    } catch {
+      return "";
+    }
+  }
+
   async function refreshActiveCutoffAndLoad(options = {}) {
     // If cutoff UI exists => we require it
     const hasCutoffUI = !!(cutoffMonthInput && cutoffSelect);
@@ -662,35 +680,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear stale date filter and constrain to new period before loading
       if (dateInput) {
-        dateInput.value = "";
         dateInput.min = toYMD(c.range.start);
         dateInput.max = toYMD(c.range.end);
+        if (!dateTouched) {
+          dateInput.value = "";
+        } else if (dateInput.value && !isDateWithinCutoff(dateInput.value, c.range)) {
+          // If user-selected date is outside the new cutoff window, fall back to auto-select.
+          dateInput.value = "";
+          dateTouched = false;
+        }
       }
       if (f_date) {
         f_date.min = toYMD(c.range.start);
         f_date.max = toYMD(c.range.end);
       }
 
-      // Load full period to find the most recent attendance date
-      await loadRecords();
-
-      // Auto-select the most recent attendance date within the cutoff
-      if (dateInput) {
-        const latest = records
-          .map(r => r.date)
-          .filter(d => isDateWithinCutoff(d, c.range))
-          .sort()
-          .pop() || "";
+      // Auto-select the most recent attendance date within the cutoff (server-side)
+      if (dateInput && !dateTouched) {
+        const latest = await loadLatestDateWithinFilters({
+          month: cutoffMonthInput?.value || "",
+          cutoff: cutoffSelect?.value || "",
+          assignment: assignmentFilter || "All",
+          area: areaSubFilter || "",
+        });
 
         const today = toYMD(new Date());
         const preferred = latest || (isDateWithinCutoff(today, c.range) ? today : "");
-
-        if (preferred) {
-          dateInput.value = preferred;
-          pageState.page = 1;
-          await loadRecords();
-        }
+        dateInput.value = preferred;
       }
+
+      // Load records for the selected (latest) date.
+      pageState.page = 1;
+      await loadRecords();
 
       if (
         options.allowLatestFallback &&
@@ -714,6 +735,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // If cutoff UI DOES NOT exist, just load records
     activeCutoff = null;
+
+    // Default to the most recent attendance date that has data so the table isn't empty on load.
+    if (dateInput && !dateTouched && !dateInput.value) {
+      const latestForFilters = await loadLatestDateWithinFilters({
+        assignment: assignmentFilter || "All",
+        area: areaSubFilter || "",
+      });
+      dateInput.value = latestForFilters || latestAttendanceDate || "";
+    }
+
     await loadRecords();
     render();
   }
@@ -880,20 +911,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  document.querySelectorAll("th.sortable").forEach(th => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.sort;
-      if (!key) return;
-      if (sortState.key === key) {
-        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
-      } else {
-        sortState.key = key;
-        sortState.dir = "asc";
-      }
-      updateSortIcons();
-      render();
-    });
-  });
+	  document.querySelectorAll("th.sortable").forEach(th => {
+	    th.addEventListener("click", async () => {
+	      const key = th.dataset.sort;
+	      if (!key) return;
+	      if (sortState.key === key) {
+	        sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+	      } else {
+	        sortState.key = key;
+	        sortState.dir = "asc";
+	      }
+	      updateSortIcons();
+	      pageState.page = 1;
+	      await loadRecords();
+	      render();
+	    });
+	  });
 
   updateSortIcons();
 
@@ -1255,6 +1288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
   [dateInput, statusFilter].forEach(el => el && el.addEventListener("change", async () => {
+    if (el === dateInput) dateTouched = true;
     pageState.page = 1;
     await loadRecords();
     render();
@@ -1688,7 +1722,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const assignment = assignmentFilter || "All";
     let area = assignment !== "All" ? (areaSubFilter || "") : "";
     if (area === "All") area = "";
-    return { month, cutoff, assignment, area };
+    const date = dateInput?.value || "";
+    return { month, cutoff, assignment, area, date };
   }
 
   function openPreview() {
@@ -2021,6 +2056,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const fd = new FormData();
     fd.append("assignment", f.assignment);
     fd.append("area", f.area);
+    if (f.date) fd.append("date", f.date);
     fd.append("file", file);
 
     try {
@@ -2043,9 +2079,20 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      alert("Imported successfully.");
+      const importedDates = Array.isArray(data?.dates) ? data.dates.map(String) : [];
+      const importedMaxDate = String(data?.max_date || "").trim();
+      const importedLabel = importedMaxDate
+        ? `Imported successfully. Date: ${importedMaxDate}`
+        : "Imported successfully.";
+      alert(importedLabel);
       if (importFile) importFile.value = "";
       setImportUISelected(null);
+      const nextDate = importedMaxDate || (importedDates.length === 1 ? String(importedDates[0] || "") : "") || f.date || "";
+      if (dateInput && nextDate) {
+        dateTouched = true;
+        dateInput.value = nextDate;
+      }
+      await loadLatestAttendanceDate();
       await refreshActiveCutoffAndLoad();
       notifyAttendanceUpdated();
     } catch (err) {

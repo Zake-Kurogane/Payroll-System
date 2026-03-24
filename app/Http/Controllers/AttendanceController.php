@@ -73,10 +73,44 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         if ($request->boolean('latest')) {
-            $latestDate = AttendanceRecord::query()
-                ->whereNotNull('date')
-                ->orderByDesc('date')
-                ->value('date');
+            $v = Validator::make($request->query(), [
+                'month' => ['nullable', 'regex:/^\d{4}-\d{2}$/'],
+                'cutoff' => ['nullable', Rule::in(['A', 'B', '11-25', '26-10'])],
+                'assignment' => ['nullable', 'string'],
+                'area' => ['nullable', 'string'],
+                'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+                'emp_no' => ['nullable', 'string'],
+            ])->validate();
+
+            $q = AttendanceRecord::query()
+                ->whereNotNull('date');
+
+            $month = $v['month'] ?? null;
+            $cutoff = $v['cutoff'] ?? null;
+            if ($month && $cutoff) {
+                [$from, $to] = $this->cutoffRange($month, $cutoff);
+                $q->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+            }
+
+            $assignment = $v['assignment'] ?? null;
+            $area = $v['area'] ?? null;
+            if ($assignment && $assignment !== 'All') {
+                $q->whereHas('employee', fn ($qq) => $qq->where('assignment_type', $assignment));
+            }
+            if ($area && trim(strtolower($area)) !== 'all') {
+                $q->whereHas('employee', fn ($qq) => $qq->where('area_place', $area));
+            }
+
+            if (!empty($v['employee_id'])) {
+                $q->where('employee_id', (int) $v['employee_id']);
+            } elseif (!empty($v['emp_no'])) {
+                $empNo = trim((string) $v['emp_no']);
+                if ($empNo !== '') {
+                    $q->whereHas('employee', fn ($qq) => $qq->where('emp_no', $empNo));
+                }
+            }
+
+            $latestDate = $q->orderByDesc('date')->value('date');
 
             if (!$latestDate) {
                 return response()->json(['date' => null]);
@@ -97,28 +131,73 @@ class AttendanceController extends Controller
             'date' => ['nullable', 'date'],
             'status' => ['nullable', 'string'],
             'q' => ['nullable', 'string'],
+            'sort' => ['nullable', Rule::in(['date', 'empId', 'name', 'assignment', 'area'])],
+            'dir' => ['nullable', Rule::in(['asc', 'desc'])],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
             'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
             'emp_no' => ['nullable', 'string'],
         ])->validate();
 
+        $sort = $v['sort'] ?? 'name';
+        $dir = strtolower((string) ($v['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        $recordsTable = (new AttendanceRecord())->getTable();
+        $employeesTable = (new Employee())->getTable();
+
         $records = AttendanceRecord::query()
+            ->from($recordsTable)
             ->select([
-                'id',
-                'employee_id',
-                'date',
-                'status',
-                'area_place',
-                'clock_in',
-                'clock_out',
-                'minutes_late',
-                'minutes_undertime',
-                'ot_hours',
+                "{$recordsTable}.id",
+                "{$recordsTable}.employee_id",
+                "{$recordsTable}.date",
+                "{$recordsTable}.status",
+                "{$recordsTable}.area_place",
+                "{$recordsTable}.clock_in",
+                "{$recordsTable}.clock_out",
+                "{$recordsTable}.minutes_late",
+                "{$recordsTable}.minutes_undertime",
+                "{$recordsTable}.ot_hours",
             ])
+            ->leftJoin($employeesTable, "{$employeesTable}.id", '=', "{$recordsTable}.employee_id")
             ->with(['employee:id,emp_no,first_name,middle_name,last_name,department,position,assignment_type,area_place'])
-            ->orderByDesc('date')
-            ->orderByDesc('id');
+            ->when($sort === 'date', function ($q) use ($recordsTable, $dir) {
+                $q->orderBy("{$recordsTable}.date", $dir)->orderBy("{$recordsTable}.id", $dir);
+            })
+            ->when($sort === 'empId', function ($q) use ($employeesTable, $dir, $recordsTable) {
+                $q->orderBy("{$employeesTable}.emp_no", $dir)->orderBy("{$recordsTable}.date", 'desc')->orderBy("{$recordsTable}.id", 'desc');
+            })
+            ->when($sort === 'assignment', function ($q) use ($employeesTable, $dir, $recordsTable) {
+                $q->orderBy("{$employeesTable}.assignment_type", $dir)
+                  ->orderBy("{$employeesTable}.area_place", $dir)
+                  ->orderBy("{$employeesTable}.last_name", $dir)
+                  ->orderBy("{$employeesTable}.first_name", $dir)
+                  ->orderBy("{$recordsTable}.date", 'desc')
+                  ->orderBy("{$recordsTable}.id", 'desc');
+            })
+            ->when($sort === 'area', function ($q) use ($recordsTable, $dir, $employeesTable) {
+                $q->orderBy("{$recordsTable}.area_place", $dir)
+                  ->orderBy("{$employeesTable}.last_name", $dir)
+                  ->orderBy("{$employeesTable}.first_name", $dir)
+                  ->orderBy("{$recordsTable}.date", 'desc')
+                  ->orderBy("{$recordsTable}.id", 'desc');
+            })
+            ->when($sort === 'name', function ($q) use ($employeesTable, $dir, $recordsTable) {
+                $q->orderBy("{$employeesTable}.last_name", $dir)
+                  ->orderBy("{$employeesTable}.first_name", $dir)
+                  ->orderBy("{$employeesTable}.middle_name", $dir)
+                  ->orderBy("{$employeesTable}.emp_no", $dir)
+                  ->orderBy("{$recordsTable}.date", 'desc')
+                  ->orderBy("{$recordsTable}.id", 'desc');
+            });
+
+        // Fallback: always have a deterministic order (if invalid sort slipped through)
+        if (!in_array($sort, ['date', 'empId', 'assignment', 'area', 'name'], true)) {
+            $records->orderBy("{$employeesTable}.last_name", 'asc')
+                ->orderBy("{$employeesTable}.first_name", 'asc')
+                ->orderBy("{$recordsTable}.date", 'desc')
+                ->orderBy("{$recordsTable}.id", 'desc');
+        }
 
         $month = $v['month'] ?? null;
         $cutoff = $v['cutoff'] ?? null;
@@ -133,7 +212,7 @@ class AttendanceController extends Controller
         if ($assignment !== 'All') {
             $records->whereHas('employee', fn ($q) => $q->where('assignment_type', $assignment));
         }
-        if ($area) {
+        if ($area && trim(strtolower((string) $area)) !== 'all') {
             $records->whereHas('employee', fn ($q) => $q->where('area_place', $area));
         }
 
@@ -148,21 +227,21 @@ class AttendanceController extends Controller
 
         $date = $v['date'] ?? null;
         if ($date) {
-            $records->whereDate('date', $date);
+            $records->whereDate("{$recordsTable}.date", $date);
         }
 
         $status = $v['status'] ?? null;
         if ($status && strtolower($status) !== 'all') {
-            $records->where('status', $status);
+            $records->where("{$recordsTable}.status", $status);
         }
 
         $q = trim((string) ($v['q'] ?? ''));
         if ($q !== '') {
-            $records->where(function ($query) use ($q) {
-                $query->where('date', 'like', "%{$q}%")
-                    ->orWhere('status', 'like', "%{$q}%")
-                    ->orWhere('clock_in', 'like', "%{$q}%")
-                    ->orWhere('clock_out', 'like', "%{$q}%")
+            $records->where(function ($query) use ($q, $recordsTable) {
+                $query->where("{$recordsTable}.date", 'like', "%{$q}%")
+                    ->orWhere("{$recordsTable}.status", 'like', "%{$q}%")
+                    ->orWhere("{$recordsTable}.clock_in", 'like', "%{$q}%")
+                    ->orWhere("{$recordsTable}.clock_out", 'like', "%{$q}%")
                     ->orWhereHas('employee', function ($qq) use ($q) {
                         $qq->where('emp_no', 'like', "%{$q}%")
                             ->orWhere('first_name', 'like', "%{$q}%")
@@ -179,10 +258,10 @@ class AttendanceController extends Controller
         $leaveSet = ['Leave', 'Unpaid Leave', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
         $stats = [
             'total' => (int) (clone $baseQuery)->count(),
-            'present' => (int) (clone $baseQuery)->whereIn('status', ['Present', 'Half-day'])->count(),
-            'late' => (int) (clone $baseQuery)->where('status', 'Late')->count(),
-            'absent' => (int) (clone $baseQuery)->where('status', 'Absent')->count(),
-            'leave' => (int) (clone $baseQuery)->whereIn('status', $leaveSet)->count(),
+            'present' => (int) (clone $baseQuery)->whereIn("{$recordsTable}.status", ['Present', 'Half-day'])->count(),
+            'late' => (int) (clone $baseQuery)->where("{$recordsTable}.status", 'Late')->count(),
+            'absent' => (int) (clone $baseQuery)->where("{$recordsTable}.status", 'Absent')->count(),
+            'leave' => (int) (clone $baseQuery)->whereIn("{$recordsTable}.status", $leaveSet)->count(),
         ];
 
         $perPage = (int) ($v['per_page'] ?? 20);
@@ -454,10 +533,14 @@ class AttendanceController extends Controller
         $v = Validator::make($request->all(), [
             'assignment' => ['nullable', 'string'],
             'area' => ['nullable', 'string'],
+            // Optional override: allow UI-selected date for single-sheet imports.
+            'date' => ['nullable', 'date_format:Y-m-d'],
             'file' => ['required', 'file', 'mimes:xlsx'],
         ])->validate();
 
         $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
+        $overrideDate = $v['date'] ?? null;
+        $sheetCount = method_exists($spreadsheet, 'getSheetCount') ? (int) $spreadsheet->getSheetCount() : 0;
 
         $errors = [];
         $rowsToUpsert = [];
@@ -478,12 +561,15 @@ class AttendanceController extends Controller
         // Daily import: read all sheets; each sheet name must be a valid YYYY-MM-DD date
         foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
             $sheetName = $sheet->getTitle();
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $sheetName)) {
-                $errors[] = "{$sheetName}: Sheet name must be YYYY-MM-DD.";
-                continue;
+            if ($overrideDate && $sheetCount === 1) {
+                $workDate = Carbon::parse($overrideDate)->startOfDay();
+            } else {
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $sheetName)) {
+                    $errors[] = "{$sheetName}: Sheet name must be YYYY-MM-DD.";
+                    continue;
+                }
+                $workDate = Carbon::parse($sheetName)->startOfDay();
             }
-
-            $workDate = Carbon::parse($sheetName)->startOfDay();
 
             $header = [];
             foreach (range('A', 'K') as $col) {
@@ -642,7 +728,19 @@ class AttendanceController extends Controller
             }
         }
 
-        return response()->json(['message' => 'Imported successfully.']);
+        $dates = array_values(array_unique(array_map(
+            fn ($r) => (string) ($r['date'] ?? ''),
+            $rowsToUpsert
+        )));
+        $dates = array_values(array_filter($dates, fn ($d) => $d !== ''));
+        rsort($dates);
+        $maxDate = $dates[0] ?? null;
+
+        return response()->json([
+            'message' => 'Imported successfully.',
+            'max_date' => $maxDate,
+            'dates' => $dates,
+        ]);
     }
 
     private function validateRecord(Request $request): array

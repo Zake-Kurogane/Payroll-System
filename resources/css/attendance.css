@@ -746,6 +746,10 @@ h1 {
     font-weight: 1000;
     outline: none;
 }
+.bulkSelect:focus {
+    border-color: rgba(156, 29, 60, 0.45);
+    box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
+}
 
 /* Table */
 .tablewrap {
@@ -818,28 +822,28 @@ tbody tr:hover {
 } /* Name */
 .table:not(.table--preview) th:nth-child(5),
 .table:not(.table--preview) td:nth-child(5) {
-    width: 130px;
-} /* Department */
+    width: 150px;
+} /* Assignment */
 .table:not(.table--preview) th:nth-child(6),
 .table:not(.table--preview) td:nth-child(6) {
-    width: 110px;
-} /* Assignment */
+    width: 150px;
+} /* Area */
 .table:not(.table--preview) th:nth-child(7),
 .table:not(.table--preview) td:nth-child(7) {
-    width: 110px;
-} /* Area */
+    width: 140px;
+} /* Clock In/Out */
 .table:not(.table--preview) th:nth-child(8),
 .table:not(.table--preview) td:nth-child(8) {
-    width: 120px;
-} /* Clock In/Out */
-.table:not(.table--preview) th:nth-child(9),
-.table:not(.table--preview) td:nth-child(9) {
     width: 60px;
 } /* OT */
+.table:not(.table--preview) th:nth-child(9),
+.table:not(.table--preview) td:nth-child(9) {
+    width: 110px;
+} /* Status */
 .table:not(.table--preview) th:nth-child(10),
 .table:not(.table--preview) td:nth-child(10) {
-    width: 90px;
-} /* Status */
+    width: 140px;
+} /* Action */
 
 .tableFooter {
     display: flex;
@@ -916,6 +920,11 @@ tbody tr:hover {
     background: #fff;
     box-shadow: none;
     min-width: 84px;
+    outline: none;
+}
+.rowsSelect:focus {
+    border-color: rgba(156, 29, 60, 0.45);
+    box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
 }
 
 .empCell {

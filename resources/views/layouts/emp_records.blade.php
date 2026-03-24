@@ -25,7 +25,7 @@
                     </div>
                     <div class="field">
                         <label class="field__label">Department</label>
-                        <select id="deptFilter" name="department" class="field__control">
+                        <select id="deptFilter" name="department">
                             <option value="">All</option>
                             @foreach ($departments as $dept)
                                 <option value="{{ $dept }}" @selected(request('department') == $dept)>{{ $dept }}
@@ -35,7 +35,7 @@
                     </div>
                     <div class="field field--status">
                         <label class="field__label">Status</label>
-                        <select id="statusFilter" name="status" class="field__control">
+                        <select id="statusFilter" name="status">
                             <option value="">All</option>
                             @foreach ($statuses as $s)
                                 <option value="{{ $s->id }}" @selected(request('status') == $s->id)>{{ $s->label }}
@@ -103,20 +103,12 @@
                             <option value="">Set area place...</option>
                         </select>
 
-                        <button class="btn btn--maroon" type="button" id="bulkAssignApply" disabled>Apply</button>
-                    </div>
-                    <input type="file" id="disciplineFileInput" accept=".xlsx,.xls,.csv" hidden />
-                    <button class="btn btn--soft btn--icon" type="button" id="importDisciplineBtn">
-                        <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
-                            <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
-                        </svg>
-                        IMPORT DISCIPLINE
-                    </button>
-                    <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
-                        <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                            <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
-                            <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
+	                    <button class="btn btn--maroon" type="button" id="bulkAssignApply" disabled>Apply</button>
+	                </div>
+	                <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
+	                    <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+	                        <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
+	                        <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
                         </svg>
                         EXPORT
                     </button>
@@ -614,14 +606,6 @@
                     </div>
                 </div>
 
-                <div class="sectionTitle">Cash Advance</div>
-                <div class="grid2">
-                    <div class="field">
-                        <label>Cash Advance Eligibility</label>
-                        <input type="text" id="f_caEligible" readonly />
-                    </div>
-                </div>
-
                 <div class="sectionTitle">Government IDs</div>
                 <div class="grid2">
                     <div class="field">
@@ -671,31 +655,7 @@
                     </div>
                 </div>
 
-                <div class="sectionTitle">Charges / Shortages</div>
-                <div id="chargesCasesWrap">
-                    <div class="tablewrap tablewrap--preview" style="margin-bottom:10px;">
-                        <table class="table table--preview" id="chargesTable">
-                            <thead>
-                                <tr>
-                                    <th>Type</th>
-                                    <th>Description</th>
-                                    <th class="num">Total</th>
-                                    <th class="num">Remaining</th>
-                                    <th>Plan</th>
-                                    <th>Status</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody id="chargesTbody">
-                                <tr>
-                                    <td colspan="7" class="muted small">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <button class="btn btn--soft" type="button" id="addChargeBtn">+ Add Charge / Shortage</button>
-                </div>
-
+                @if (false)
                 <!-- Add Charge Form (hidden by default) -->
                 <div id="chargeFormWrap"
                     style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
@@ -786,6 +746,7 @@
                 </div>
                 <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns: emp_no,
                     type, date, remarks, reference).</div>
+                @endif
 
                 <div class="form__actions">
                     <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>

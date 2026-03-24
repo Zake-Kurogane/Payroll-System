@@ -10,12 +10,24 @@
   font-family: inherit;
 }
 
+.seg-s2-selection.select2-selection {
+  font-family: inherit;
+}
+
 .select2-container--default .select2-selection--single,
 .select2-container--default .select2-selection--multiple {
   border: 1px solid var(--s2-line);
   border-radius: 14px;
   min-height: 42px;
   background: #fff;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow b {
+  border-color: var(--s2-maroon) transparent transparent transparent;
+}
+
+.select2-container--default.select2-container--open .select2-selection--single .select2-selection__arrow b {
+  border-color: transparent transparent var(--s2-maroon) transparent;
 }
 
 .select2-container--default .select2-selection--single .select2-selection__rendered {
@@ -62,32 +74,28 @@
 
 .select2-container--default .select2-results__option {
   position: relative;
-  padding: 8px 16px 8px 28px;
+  padding: 8px 16px;
   font-size: 0.875rem;
   font-weight: 700;
-  color: var(--s2-maroon);
+  color: var(--s2-text);
   word-break: break-word;
 }
 
-.select2-container--default .select2-results__option::before {
-  content: "\2022";
-  position: absolute;
-  left: 14px;
-  top: 7px;
-  color: var(--s2-maroon);
-  opacity: 0.9;
-}
-
-/* Force maroon hover/highlight (match assignment dropdown) */
+/* Hover/highlight color (match screenshot) */
+.select2-results__option--highlighted,
 .select2-container--default .select2-results__option--highlighted.select2-results__option--selectable,
-.select2-container--default .select2-results__option--highlighted[aria-selected],
-.select2-container--default .select2-results__option--highlighted[aria-selected="false"],
-.select2-container--default .select2-results__option--selectable:hover {
-  background: rgba(156, 29, 60, 0.08) !important;
-  color: var(--s2-maroon) !important;
+.select2-container--classic .select2-results__option--highlighted.select2-results__option--selectable,
+.select2-container .select2-results__option--highlighted.select2-results__option--selectable,
+.select2-container .select2-results__option--highlighted[aria-selected],
+.select2-container .select2-results__option--highlighted[aria-selected="false"],
+.seg-s2-dropdown .select2-results__option--highlighted,
+.seg-s2-dropdown .select2-results__option--highlighted.select2-results__option--selectable,
+.select2-container .select2-results__option--selectable:hover {
+  background-color: var(--s2-maroon) !important;
+  color: #fff !important;
 }
 
-.select2-container--default .select2-results__option--selected {
+.select2-container .select2-results__option--selected {
   background: rgba(156, 29, 60, 0.14) !important;
   color: var(--s2-maroon) !important;
   font-weight: 600;

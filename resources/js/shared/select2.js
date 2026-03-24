@@ -14,12 +14,6 @@ function isSelectEligible(selectEl) {
   return true;
 }
 
-function visibleEnough(el) {
-  if (!el) return false;
-  if (el.closest("[hidden]")) return false;
-  return !!(el.offsetParent || el.getClientRects().length);
-}
-
 function resolveDropdownParent(selectEl) {
   return (
     selectEl.closest(".drawer.is-open") ||
@@ -53,13 +47,15 @@ export function initSelect2(root = document) {
   const selects = Array.from(root.querySelectorAll("select"));
   selects.forEach((selectEl) => {
     if (!isSelectEligible(selectEl)) return;
-    if (!visibleEnough(selectEl)) return;
 
     const placeholder = resolvePlaceholder(selectEl);
     const dropdownParent = resolveDropdownParent(selectEl);
     const opts = {
       width: "100%",
+      theme: "default",
       dropdownParent: $(dropdownParent),
+      dropdownCssClass: "seg-s2-dropdown",
+      selectionCssClass: "seg-s2-selection",
       allowClear: shouldAllowClear(selectEl),
       minimumResultsForSearch: minSearchFor(selectEl),
     };
@@ -104,7 +100,11 @@ export function initSelect2Auto() {
         });
       } else if (m.type === "attributes") {
         const el = m.target;
-        if (el && el.nodeType === 1) initSelect2(el);
+        if (el && el.nodeType === 1) {
+          // If the target itself is a select, search within its parent
+          const root = el.nodeName === "SELECT" ? (el.parentElement || document) : el;
+          initSelect2(root);
+        }
       }
     }
   });
@@ -113,6 +113,6 @@ export function initSelect2Auto() {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ["hidden", "class", "style"],
+    attributeFilter: ["hidden", "class", "style", "disabled", "data-no-select2"],
   });
 }

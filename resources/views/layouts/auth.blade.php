@@ -9,6 +9,7 @@
     <link rel="apple-touch-icon" href="{{ asset('image/logo.png') }}">
 
     @yield('vite')
+    @vite(['resources/js/app.js'])
 </head>
 
 <body>
