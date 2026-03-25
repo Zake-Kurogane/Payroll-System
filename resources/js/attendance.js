@@ -388,8 +388,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const empNo = emp?.empNo || r.emp_no || "";
     const empName = emp?.name || r.emp_name || (empNo ? empNo : "");
     const pos = emp?.position || r.position || "—";
-    const assignType = emp?.assignmentType || r.assignment_type || "";
-    const areaPlace = emp?.areaPlace || r.area_place || "";
+    const assignType = String(r.assignment_type || "").trim() || (emp?.assignmentType || "");
+    // Prefer the area saved on the attendance record (import/template), and only fall back
+    // to the employee master data if the record has no area.
+    const areaFromRecord = String(r.area_place || "").trim();
+    const areaFromEmployee = String(emp?.areaPlace || "").trim();
+    const areaPlace = areaFromRecord || areaFromEmployee;
     return {
       id: String(r.id),
       employeeId: String(r.employee_id || ""),
@@ -2044,6 +2048,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function extractYMDFromFilename(filename) {
+    const matches = String(filename || "").match(/\d{4}-\d{2}-\d{2}/g);
+    if (!matches) return "";
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const cand = matches[i];
+      if (parseYMD(cand)) return cand;
+    }
+    return "";
+  }
+
   async function uploadImportFile() {
     const file = importFile?.files?.[0];
     if (!file) {
@@ -2056,7 +2070,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const fd = new FormData();
     fd.append("assignment", f.assignment);
     fd.append("area", f.area);
-    if (f.date) fd.append("date", f.date);
+
+    // Only override import date when the user explicitly selected a date,
+    // otherwise prefer the date embedded in the template filename to avoid accidental mismatches.
+    const dateFromFilename = extractYMDFromFilename(file.name);
+    const dateOverride = (dateTouched && f.date) ? f.date : dateFromFilename;
+    if (dateOverride) fd.append("date", dateOverride);
     fd.append("file", file);
 
     try {
@@ -2314,6 +2333,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     await loadEmpRecords();
     renderEmpRecords();
+
+    // After loading drawer records, update the subheader based on the latest record in this drawer.
+    if (empDrawerSub) {
+      const empLatest = empRecords
+        .slice()
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      const assign = empLatest ? assignmentText(empLatest) : "â€”";
+
+      const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
+      const isRegular = employmentType === "regular";
+      const external = String(emp?.externalArea || "").trim() || "-";
+      const parts = [];
+      if (isRegular) {
+        parts.push(`External: <strong>${escapeHtml(external)}</strong>`);
+        parts.push(`External Position: <strong>${escapeHtml(pos)}</strong>`);
+      } else {
+        parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
+      }
+      parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
+      empDrawerSub.innerHTML = parts.join(" â€¢ ");
+    }
 
     if (empDrawer) {
       empDrawer.classList.add("is-open");

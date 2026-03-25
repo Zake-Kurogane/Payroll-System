@@ -162,6 +162,17 @@
             <span>LOANS</span>
         </a>
 
+        <a class="menu__item {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
+            href="{{ route('payslip.claims') }}">
+            <span class="menu__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="ico">
+                    <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
+                    <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
+                </svg>
+            </span>
+            <span>PAYSLIP<br />CLAIMS</span>
+        </a>
+
         @can('admin')
             <a class="menu__item {{ request()->routeIs('payroll.processing') ? 'is-active' : '' }}"
                 href="{{ route('payroll.processing') }}">

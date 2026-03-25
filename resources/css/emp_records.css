@@ -735,19 +735,19 @@ h1 {
 }
 #empTable[data-has-comp="1"] th:nth-child(3),
 #empTable[data-has-comp="1"] td:nth-child(3) {
-    width: 11%;
+    width: 13%;
 }
 #empTable[data-has-comp="1"] th:nth-child(4),
 #empTable[data-has-comp="1"] td:nth-child(4) {
-    width: 17%;
+    width: 15%;
 } /* Department */
 #empTable[data-has-comp="1"] th:nth-child(5),
 #empTable[data-has-comp="1"] td:nth-child(5) {
-    width: 13%;
+    width: 11%;
 }
 #empTable[data-has-comp="1"] th:nth-child(6),
 #empTable[data-has-comp="1"] td:nth-child(6) {
-    width: 11%;
+    width: 12%;
 }
 #empTable[data-has-comp="1"] th:nth-child(7),
 #empTable[data-has-comp="1"] td:nth-child(7) {
@@ -755,7 +755,7 @@ h1 {
 }
 #empTable[data-has-comp="1"] th:nth-child(8),
 #empTable[data-has-comp="1"] td:nth-child(8) {
-    width: 6%;
+    width: 5%;
 }
 #empTable[data-has-comp="1"] th:nth-child(9),
 #empTable[data-has-comp="1"] td:nth-child(9) {
@@ -763,11 +763,12 @@ h1 {
 } /* Total Salary */
 #empTable[data-has-comp="1"] th:nth-child(10),
 #empTable[data-has-comp="1"] td:nth-child(10) {
-    width: 8%;
+    width: 10%;
 }
 #empTable[data-has-comp="1"] th:nth-child(11),
 #empTable[data-has-comp="1"] td:nth-child(11) {
     width: 10%;
+    min-width: 140px;
 }
 
 /* WITHOUT compensation (8 cols): 1-check 2-emp 3-name 4-dept 5-position 6-assignment 7-payroll 8-actions */
@@ -802,6 +803,7 @@ h1 {
 #empTable[data-has-comp="0"] th:nth-child(8),
 #empTable[data-has-comp="0"] td:nth-child(8) {
     width: 10%;
+    min-width: 140px;
 }
 
 thead th {
@@ -846,10 +848,11 @@ input.empCheck,
     accent-color: var(--maroon);
 }
 
-.actions {
-    display: flex;
+.actionsRow {
+    display: inline-flex;
     gap: 6px;
     align-items: center;
+    flex-wrap: nowrap;
 }
 
 .iconbtn {
@@ -1460,11 +1463,11 @@ th.sortable.is-desc .sortIcon {
     font-size: 12px;
 }
 
-/* Total Salary column: nudge content to the right (closer to Payroll Required) */
+/* Total Salary column: align content to the left */
 #empTable th.col-salary,
 #empTable td.col-salary {
-    text-align: right;
-    padding-right: 8px;
+    text-align: left;
+    padding-left: 8px;
 }
 
 /* Add a small visual gap between Total Salary and Payroll Required */
@@ -1475,9 +1478,15 @@ th.sortable.is-desc .sortIcon {
 
 /* Actions column: never ellipsis/cut icons */
 #empTable td.actions {
+    display: table-cell;
     overflow: visible;
     text-overflow: clip;
     white-space: nowrap;
+    vertical-align: middle;
     padding-left: 2px;
     padding-right: 2px;
+}
+
+#empTable td.actions .iconbtn {
+    display: inline-grid;
 }

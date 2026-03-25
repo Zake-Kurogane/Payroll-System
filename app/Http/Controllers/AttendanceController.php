@@ -98,7 +98,7 @@ class AttendanceController extends Controller
                 $q->whereHas('employee', fn ($qq) => $qq->where('assignment_type', $assignment));
             }
             if ($area && trim(strtolower($area)) !== 'all') {
-                $q->whereHas('employee', fn ($qq) => $qq->where('area_place', $area));
+                $q->where('area_place', $area);
             }
 
             if (!empty($v['employee_id'])) {
@@ -213,7 +213,7 @@ class AttendanceController extends Controller
             $records->whereHas('employee', fn ($q) => $q->where('assignment_type', $assignment));
         }
         if ($area && trim(strtolower((string) $area)) !== 'all') {
-            $records->whereHas('employee', fn ($q) => $q->where('area_place', $area));
+            $records->where("{$recordsTable}.area_place", $area);
         }
 
         if (!empty($v['employee_id'])) {
@@ -267,32 +267,35 @@ class AttendanceController extends Controller
         $perPage = (int) ($v['per_page'] ?? 20);
         $paginator = $records->paginate($perPage)->withQueryString();
 
-        $payload = collect($paginator->items())->map(function (AttendanceRecord $r) {
-            $emp = $r->employee;
-            $name = $emp
-                ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
-                : '';
-            return [
-                'id' => (string) $r->id,
-                'employee_id' => $r->employee_id,
-                'emp_no' => $emp?->emp_no,
-                'emp_name' => $name ?: ($emp?->emp_no ?? ''),
-                'first_name' => $emp?->first_name,
-                'middle_name' => $emp?->middle_name,
-                'last_name' => $emp?->last_name,
-                'department' => $emp?->department,
-                'position' => $emp?->position,
-                'assignment_type' => $emp?->assignment_type,
-                'area_place' => $emp?->area_place,
-                'date' => $r->date?->format('Y-m-d'),
-                'status' => $r->status,
-                'clock_in' => $r->clock_in,
-                'clock_out' => $r->clock_out,
-                'minutes_late' => $r->minutes_late ?? 0,
-                'minutes_undertime' => $r->minutes_undertime ?? 0,
-                'ot_hours' => (float) ($r->ot_hours ?? 0),
-            ];
-        })->values();
+         $payload = collect($paginator->items())->map(function (AttendanceRecord $r) {
+             $emp = $r->employee;
+             $name = $emp
+                 ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
+                 : '';
+            $recordArea = is_string($r->area_place) ? trim($r->area_place) : '';
+            $employeeArea = is_string($emp?->area_place) ? trim((string) $emp?->area_place) : '';
+            $areaPlace = $recordArea !== '' ? $recordArea : ($employeeArea !== '' ? $employeeArea : null);
+             return [
+                 'id' => (string) $r->id,
+                 'employee_id' => $r->employee_id,
+                 'emp_no' => $emp?->emp_no,
+                 'emp_name' => $name ?: ($emp?->emp_no ?? ''),
+                 'first_name' => $emp?->first_name,
+                 'middle_name' => $emp?->middle_name,
+                 'last_name' => $emp?->last_name,
+                 'department' => $emp?->department,
+                 'position' => $emp?->position,
+                 'assignment_type' => $emp?->assignment_type,
+                 'area_place' => $areaPlace,
+                 'date' => $r->date?->format('Y-m-d'),
+                 'status' => $r->status,
+                 'clock_in' => $r->clock_in,
+                 'clock_out' => $r->clock_out,
+                 'minutes_late' => $r->minutes_late ?? 0,
+                 'minutes_undertime' => $r->minutes_undertime ?? 0,
+                 'ot_hours' => (float) ($r->ot_hours ?? 0),
+             ];
+         })->values();
 
         return response()->json([
             'data' => $payload,
@@ -472,6 +475,14 @@ class AttendanceController extends Controller
             );
             $sheet->setCellValue("I{$row}", $underFormula);
 
+            // OT hours: compute hours after 17:00 (rounded to 2 decimals)
+            $otFormula = sprintf(
+                '=IF($G%d="","",MAX(0,ROUND(($G%d-TIME(17,0,0))*24,2)))',
+                $row,
+                $row
+            );
+            $sheet->setCellValue("J{$row}", $otFormula);
+
             // Validation: block time/undertime/ot inputs for no-time statuses
             $rowFormula = str_replace('{row}', (string) $row, $noTimeFormula);
 
@@ -518,6 +529,7 @@ class AttendanceController extends Controller
 
         // Show AM/PM for time columns
         $sheet->getStyle("F2:G{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
+        $sheet->getStyle("J2:J{$row}")->getNumberFormat()->setFormatCode('0.00');
 
         $label = $area ? "{$assignment} - {$area}" : $assignment;
         $filename = "{$label} ATTENDANCE {$date->format('Y-m-d')}.xlsx";
@@ -623,6 +635,15 @@ class AttendanceController extends Controller
                 $late = $this->parseNumberCell($lateCell, $errors, "{$sheetName} row {$r}: minutes_late must be a number.");
                 $under = $this->parseNumberCell($underCell, $errors, "{$sheetName} row {$r}: minutes_undertime must be a number.");
                 $ot = $this->parseNumberCell($otCell, $errors, "{$sheetName} row {$r}: ot_hours must be a number.");
+
+                // If OT was manually typed and looks unrealistic vs the clock_out-derived OT, prefer the derived OT.
+                // This prevents common template mistakes (users entering total hours worked into the OT column).
+                $otFromClockOut = $this->computeOtHoursFromClockOut($clockOut);
+                if ($ot === null) {
+                    $ot = $otFromClockOut;
+                } elseif ($clockOut !== '' && $otFromClockOut !== null && $ot > ($otFromClockOut + 2.0)) {
+                    $ot = $otFromClockOut;
+                }
 
                 if ($status) {
                     $noTime = ['Absent', 'Leave', 'Unpaid Leave', 'Paid Leave', 'Day Off', 'LOA', 'Holiday'];
@@ -905,6 +926,22 @@ class AttendanceController extends Controller
         }
         $grace = (7 * 60) + 35; // 07:35
         return max(0, $minutesIn - $grace);
+    }
+
+    private function computeOtHoursFromClockOut(string $clockOut): ?float
+    {
+        if ($clockOut === '') {
+            return null;
+        }
+        $minutesOut = $this->parseTimeToMinutes($clockOut);
+        if ($minutesOut === null) {
+            return null;
+        }
+        $endOfWork = 17 * 60; // 17:00
+        if ($minutesOut <= $endOfWork) {
+            return 0.0;
+        }
+        return round(($minutesOut - $endOfWork) / 60, 2);
     }
 
     private function parseTimeToMinutes(string $value): ?int

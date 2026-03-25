@@ -88,12 +88,13 @@
                 </div>
             </article>
 
-            <article class="kpi">
+            <a class="kpi kpi--link" href="{{ $latestReleasedRunId ? route('payslip.claims', ['run_id' => $latestReleasedRunId]) : route('payslip.claims') }}"
+                aria-label="View payslip claims">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiUnclaimed">0</div>
+                    <div class="kpi__value" id="kpiUnclaimed">{{ number_format($unclaimedPayslips ?? 0) }}</div>
                     <div class="kpi__label">UNCLAIMED PAYSLIP</div>
                 </div>
-            </article>
+            </a>
         </div>
 
         <!-- GRID -->

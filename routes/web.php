@@ -9,6 +9,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\PayrollRunController;
 use App\Http\Controllers\PayslipController;
+use App\Http\Controllers\PayslipClaimController;
 use App\Http\Controllers\DeductionCaseController;
 use App\Http\Controllers\EmployeeLoanController;
 use App\Http\Controllers\DashboardController;
@@ -34,6 +35,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/employee-records', [EmployeeController::class, 'page'])->name('employee.records');
         Route::view('/attendance', 'layouts.attendance')->name('attendance');
         Route::get('/loans', [EmployeeLoanController::class, 'page'])->name('loans');
+
+        // Payslip claims (Admin + HR)
+        Route::get('/payslip-claims', [PayslipClaimController::class, 'page'])->name('payslip.claims');
+        Route::get('/payslip-claims/{run}/claim-sheet', [PayslipClaimController::class, 'downloadClaimSheet'])->name('payslip.claims.sheet');
+        Route::post('/payslip-claims/{run}/proofs', [PayslipClaimController::class, 'uploadProof'])->name('payslip.claims.proofs.upload');
+        Route::get('/payslip-claims/proofs/{proof}/download', [PayslipClaimController::class, 'downloadProof'])->name('payslip.claims.proofs.download');
 
         // Employee data endpoints used by pages
         Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
@@ -98,6 +105,7 @@ Route::middleware('auth')->group(function () {
         Route::view('/payroll-processing', 'layouts.payroll_processing')->name('payroll.processing');
         Route::get('/payroll-runs', [PayrollRunController::class, 'index'])->name('payroll_runs.index');
         Route::post('/payroll-runs', [PayrollRunController::class, 'store'])->name('payroll_runs.store');
+        Route::delete('/payroll-runs/{run}', [PayrollRunController::class, 'destroy'])->name('payroll_runs.destroy');
         Route::post('/payroll-runs/{run}/compute', [PayrollRunController::class, 'compute'])->name('payroll_runs.compute');
         Route::post('/payroll-runs/{run}/overrides', [PayrollRunController::class, 'saveOverride'])->name('payroll_runs.overrides');
         Route::get('/payroll-runs/{run}/rows', [PayrollRunController::class, 'rows'])->name('payroll_runs.rows');

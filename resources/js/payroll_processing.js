@@ -1156,7 +1156,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     currentRun = payload;
-    if (stickyHint) stickyHint.textContent = "New run created (Draft). Compute preview then lock.";
+    if (stickyHint) stickyHint.textContent = payload?.reused
+      ? "Existing run loaded. Compute preview then lock."
+      : "New run created (Draft). Compute preview then lock.";
     applyRunUi();
 
     await computePreview();
@@ -1283,12 +1285,12 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       processedRuns = await apiFetch("/payroll-runs");
     } catch (err) {
-      runsTbody.innerHTML = `<tr><td colspan="5" class="muted small">Failed to load runs.</td></tr>`;
+      runsTbody.innerHTML = `<tr><td colspan="6" class="muted small">Failed to load runs.</td></tr>`;
       return;
     }
 
     if (!processedRuns.length) {
-      runsTbody.innerHTML = `<tr><td colspan="5" class="muted small">No processed runs yet.</td></tr>`;
+      runsTbody.innerHTML = `<tr><td colspan="6" class="muted small">No processed runs yet.</td></tr>`;
       return;
     }
 
@@ -1301,6 +1303,9 @@ document.addEventListener("DOMContentLoaded", () => {
         : isDraft
           ? `<button class="linkRun" type="button" data-action="open" data-id="${r.id}" title="Open draft run">${periodLabel}</button>`
           : `<strong>${periodLabel}</strong>`;
+      const actionsCell = isDraft
+        ? `<button class="linkDanger" type="button" data-action="delete" data-id="${r.id}" title="Delete draft run">Delete</button>`
+        : "";
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${periodCell}</td>
@@ -1308,6 +1313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num">${r.headcount ?? 0}</td>
         <td class="num">${money(r.net ?? 0)}</td>
         <td><span class="st st--ok">${r.status}</span></td>
+        <td class="num">${actionsCell}</td>
       `;
       runsTbody.appendChild(tr);
     });
@@ -1382,6 +1388,29 @@ document.addEventListener("DOMContentLoaded", () => {
       renderTable();
       renderRunSummary();
       await renderRuns();
+      return;
+    }
+
+    if (action === "delete") {
+      if (run.status !== "Draft") return;
+      const ok = confirm(`Delete draft payroll run ${run.run_code || run.id}? This cannot be undone.`);
+      if (!ok) return;
+      try {
+        await apiFetch(`/payroll-runs/${run.id}`, { method: "DELETE" });
+        if (currentRun && String(currentRun.id) === String(run.id)) {
+          currentRun = null;
+          overrides = {};
+          previewRows = [];
+          selectedEmpIds.clear();
+          applyRunUi();
+          renderTable();
+          renderRunSummary();
+        }
+        await renderRuns();
+        if (stickyHint) stickyHint.textContent = "Draft run deleted.";
+      } catch (err) {
+        alert(err.message || "Failed to delete run.");
+      }
       return;
     }
   });

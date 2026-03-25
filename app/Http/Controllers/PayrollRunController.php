@@ -95,13 +95,37 @@ class PayrollRunController extends Controller
             return response()->json(['message' => 'External runs must target a specific assignment.'], 422);
         }
 
+        $areaFilter = $validated['area_place_filter'] ?? null;
+        $existing = PayrollRun::query()
+            ->where('period_month', $validated['period_month'])
+            ->where('cutoff', $validated['cutoff'])
+            ->where('run_type', $validated['run_type'])
+            ->where('assignment_filter', $validated['assignment_filter'])
+            ->when(
+                $areaFilter === null,
+                fn ($q) => $q->whereNull('area_place_filter'),
+                fn ($q) => $q->where('area_place_filter', $areaFilter)
+            )
+            ->whereIn('status', ['Draft', 'Locked'])
+            ->orderByDesc('id')
+            ->first();
+
+        // Prevent duplicate runs for the same period + filters. Reuse the existing run instead.
+        if ($existing) {
+            $existing->load(['createdBy']);
+            $payload = $existing->toArray();
+            $payload['created_by_name'] = $existing->createdBy?->name;
+            $payload['reused'] = true;
+            return response()->json($payload, 200);
+        }
+
         $run = PayrollRun::create([
             'run_code' => 'RUN-' . strtoupper(Str::random(6)),
             'period_month' => $validated['period_month'],
             'cutoff' => $validated['cutoff'],
             'run_type' => $validated['run_type'],
             'assignment_filter' => $validated['assignment_filter'],
-            'area_place_filter' => $validated['area_place_filter'] ?? null,
+            'area_place_filter' => $areaFilter,
             'status' => 'Draft',
             'created_by' => Auth::id(),
         ]);
@@ -109,7 +133,29 @@ class PayrollRunController extends Controller
         $run->load(['createdBy']);
         $payload = $run->toArray();
         $payload['created_by_name'] = $run->createdBy?->name;
+        $payload['reused'] = false;
         return response()->json($payload, 201);
+    }
+
+    public function destroy(PayrollRun $run)
+    {
+        if ($run->status !== 'Draft') {
+            return response()->json(['message' => 'Only Draft runs can be deleted.'], 409);
+        }
+
+        DB::transaction(function () use ($run) {
+            // Most related tables have FK cascade; still explicitly delete core children for safety.
+            PayrollRunRow::query()->where('payroll_run_id', $run->id)->delete();
+            PayrollRunLoanItem::query()->where('payroll_run_id', $run->id)->delete();
+            PayrollRunRowOverride::query()->where('payroll_run_id', $run->id)->delete();
+            PayslipAdjustment::query()
+                ->whereHas('payslip', fn ($q) => $q->where('payroll_run_id', $run->id))
+                ->delete();
+            Payslip::query()->where('payroll_run_id', $run->id)->delete();
+            $run->delete();
+        });
+
+        return response()->json(['message' => 'Payroll run deleted.']);
     }
 
     public function compute(Request $request, PayrollRun $run, PayrollCalculator $calculator)

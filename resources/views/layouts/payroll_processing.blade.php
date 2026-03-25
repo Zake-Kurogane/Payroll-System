@@ -214,6 +214,7 @@
                                     <th class="num">Employees</th>
                                     <th class="num">Total Net</th>
                                     <th>Status</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody id="runsTbody">

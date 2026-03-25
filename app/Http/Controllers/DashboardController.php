@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AreaPlace;
 use App\Models\Assignment;
 use App\Models\Employee;
+use App\Models\PayrollRun;
+use App\Models\PayrollRunRow;
+use App\Models\PayslipClaim;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -41,10 +44,27 @@ class DashboardController extends Controller
 
         $totalEmployees = Employee::count();
 
+        $latestReleasedRun = PayrollRun::query()
+            ->where('status', 'Released')
+            ->orderByDesc('id')
+            ->first();
+
+        $unclaimedPayslips = 0;
+        if ($latestReleasedRun) {
+            $totalInRun = PayrollRunRow::query()->where('payroll_run_id', $latestReleasedRun->id)->count();
+            $claimedInRun = PayslipClaim::query()
+                ->where('payroll_run_id', $latestReleasedRun->id)
+                ->whereNotNull('claimed_at')
+                ->count();
+            $unclaimedPayslips = max(0, (int) $totalInRun - (int) $claimedInRun);
+        }
+
         return view('layouts.dashboard', [
             'totalEmployees' => $totalEmployees,
             'assignments' => $assignments,
             'groupedAreaPlaces' => $groupedAreaPlaces,
+            'unclaimedPayslips' => $unclaimedPayslips,
+            'latestReleasedRunId' => $latestReleasedRun?->id,
         ]);
     }
 }

@@ -138,6 +138,17 @@ body {
     cursor: pointer;
 }
 
+.linkDanger {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: #b91c1c;
+    font-weight: 900;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
 .toast {
     position: fixed;
     right: 20px;

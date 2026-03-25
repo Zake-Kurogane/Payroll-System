@@ -103,12 +103,12 @@
                             <option value="">Set area place...</option>
                         </select>
 
-	                    <button class="btn btn--maroon" type="button" id="bulkAssignApply" disabled>Apply</button>
-	                </div>
-	                <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
-	                    <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-	                        <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
-	                        <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
+                        <button class="btn btn--maroon" type="button" id="bulkAssignApply" disabled>Apply</button>
+                    </div>
+                    <button class="btn btn--soft btn--icon" type="button" id="exportBtn">
+                        <svg class="btn__icon btn__icon--solid" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M5 18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3h-4v2H9v-2H5v3z" />
+                            <path d="M12 4l5 5h-3v6h-4V9H7l5-5z" />
                         </svg>
                         EXPORT
                     </button>
@@ -123,8 +123,7 @@
                             <th class="col-check">
                                 <input type="checkbox" id="selectAll" aria-label="Select all" />
                             </th>
-                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon"
-                                    aria-hidden="true"></span>
+                            <th class="sortable" data-sort="empId">Emp ID <span class="sortIcon" aria-hidden="true"></span>
                             </th>
                             <th class="sortable" data-sort="name">Name <span class="sortIcon" aria-hidden="true"></span>
                             </th>
@@ -236,33 +235,35 @@
                                     @endif
                                 </td>
                                 <td class="actions">
-                                    <button class="iconbtn" type="button" data-action="edit"
-                                        data-id="{{ $emp->emp_no }}" title="Edit" aria-label="Edit">
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                            <path d="M12 20h9"></path>
-                                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
-                                        </svg>
-                                    </button>
-                                    @if ($emp->assignment_type === 'Field')
-                                        <button class="iconbtn" type="button" data-action="history"
-                                            data-id="{{ $emp->emp_no }}" title="Area History"
-                                            aria-label="Area History">
+                                    <div class="actionsRow">
+                                        <button class="iconbtn" type="button" data-action="edit"
+                                            data-id="{{ $emp->emp_no }}" title="Edit" aria-label="Edit">
                                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                                <circle cx="12" cy="12" r="9"></circle>
-                                                <path d="M12 7v5l3 3"></path>
+                                                <path d="M12 20h9"></path>
+                                                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
                                             </svg>
                                         </button>
-                                    @endif
-                                    <button class="iconbtn" type="button" data-action="delete"
-                                        data-id="{{ $emp->emp_no }}" title="Delete" aria-label="Delete">
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                            <path d="M3 6h18"></path>
-                                            <path d="M8 6V4h8v2"></path>
-                                            <path d="M19 6l-1 14H6L5 6"></path>
-                                            <path d="M10 11v6"></path>
-                                            <path d="M14 11v6"></path>
-                                        </svg>
-                                    </button>
+                                        @if ($emp->assignment_type === 'Field')
+                                            <button class="iconbtn" type="button" data-action="history"
+                                                data-id="{{ $emp->emp_no }}" title="Area History"
+                                                aria-label="Area History">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                    <circle cx="12" cy="12" r="9"></circle>
+                                                    <path d="M12 7v5l3 3"></path>
+                                                </svg>
+                                            </button>
+                                        @endif
+                                        <button class="iconbtn" type="button" data-action="delete"
+                                            data-id="{{ $emp->emp_no }}" title="Delete" aria-label="Delete">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <path d="M3 6h18"></path>
+                                                <path d="M8 6V4h8v2"></path>
+                                                <path d="M19 6l-1 14H6L5 6"></path>
+                                                <path d="M10 11v6"></path>
+                                                <path d="M14 11v6"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -656,96 +657,97 @@
                 </div>
 
                 @if (false)
-                <!-- Add Charge Form (hidden by default) -->
-                <div id="chargeFormWrap"
-                    style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
-                    <div class="sectionTitle" style="margin-top:0;">New Charge / Shortage</div>
-                    <div class="grid2">
-                        <div class="field">
-                            <label>Type</label>
-                            <select id="cf_type">
-                                <option value="shortage">Shortage</option>
-                                <option value="charge">Charge</option>
-                            </select>
+                    <!-- Add Charge Form (hidden by default) -->
+                    <div id="chargeFormWrap"
+                        style="display:none; margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:6px;">
+                        <div class="sectionTitle" style="margin-top:0;">New Charge / Shortage</div>
+                        <div class="grid2">
+                            <div class="field">
+                                <label>Type</label>
+                                <select id="cf_type">
+                                    <option value="shortage">Shortage</option>
+                                    <option value="charge">Charge</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>Amount (Total)</label>
+                                <input type="number" id="cf_amount" min="0.01" step="0.01"
+                                    placeholder="e.g. 3000" />
+                            </div>
+                            <div class="field field--full">
+                                <label>Description / Notes</label>
+                                <input type="text" id="cf_description" placeholder="Reason or details (optional)" />
+                            </div>
+                            <div class="field">
+                                <label>Payment Plan</label>
+                                <select id="cf_planType">
+                                    <option value="one_time">One-time (next cutoff)</option>
+                                    <option value="installment">Installment</option>
+                                </select>
+                            </div>
+                            <div class="field" id="cf_installmentWrap" style="display:none;">
+                                <label>No. of Cutoffs</label>
+                                <input type="number" id="cf_installmentCount" min="2" max="24"
+                                    placeholder="e.g. 3" />
+                            </div>
+                            <div class="field">
+                                <label>Start Month</label>
+                                <input type="month" id="cf_startMonth" />
+                            </div>
+                            <div class="field">
+                                <label>Start Cutoff</label>
+                                <select id="cf_startCutoff">
+                                    <option value="11-25">11–25</option>
+                                    <option value="26-10">26–10</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="field">
-                            <label>Amount (Total)</label>
-                            <input type="number" id="cf_amount" min="0.01" step="0.01"
-                                placeholder="e.g. 3000" />
-                        </div>
-                        <div class="field field--full">
-                            <label>Description / Notes</label>
-                            <input type="text" id="cf_description" placeholder="Reason or details (optional)" />
-                        </div>
-                        <div class="field">
-                            <label>Payment Plan</label>
-                            <select id="cf_planType">
-                                <option value="one_time">One-time (next cutoff)</option>
-                                <option value="installment">Installment</option>
-                            </select>
-                        </div>
-                        <div class="field" id="cf_installmentWrap" style="display:none;">
-                            <label>No. of Cutoffs</label>
-                            <input type="number" id="cf_installmentCount" min="2" max="24"
-                                placeholder="e.g. 3" />
-                        </div>
-                        <div class="field">
-                            <label>Start Month</label>
-                            <input type="month" id="cf_startMonth" />
-                        </div>
-                        <div class="field">
-                            <label>Start Cutoff</label>
-                            <select id="cf_startCutoff">
-                                <option value="11-25">11–25</option>
-                                <option value="26-10">26–10</option>
-                            </select>
+                        <div style="display:flex; gap:8px; margin-top:10px;">
+                            <button class="btn btn--soft" type="button" id="cancelChargeBtn">Cancel</button>
+                            <button class="btn btn--maroon" type="button" id="saveChargeBtn">Save</button>
                         </div>
                     </div>
-                    <div style="display:flex; gap:8px; margin-top:10px;">
-                        <button class="btn btn--soft" type="button" id="cancelChargeBtn">Cancel</button>
-                        <button class="btn btn--maroon" type="button" id="saveChargeBtn">Save</button>
-                    </div>
-                </div>
 
-                <div class="sectionTitle">Attendance Tardiness (view only)</div>
-                <div class="tardyGrid">
-                    <div class="metricCard">
-                        <div class="metricCard__label">This Month</div>
-                        <div class="metricCard__value" id="tardyMonth">â€”</div>
-                        <div class="metricCard__sub">minutes late</div>
+                    <div class="sectionTitle">Attendance Tardiness (view only)</div>
+                    <div class="tardyGrid">
+                        <div class="metricCard">
+                            <div class="metricCard__label">This Month</div>
+                            <div class="metricCard__value" id="tardyMonth">â€”</div>
+                            <div class="metricCard__sub">minutes late</div>
+                        </div>
+                        <div class="metricCard">
+                            <div class="metricCard__label">This Year</div>
+                            <div class="metricCard__value" id="tardyYear">â€”</div>
+                            <div class="metricCard__sub">minutes late</div>
+                        </div>
+                        <div class="metricCard metricCard--wide">
+                            <div class="metricCard__label">All Time</div>
+                            <div class="metricCard__value" id="tardyTotal">â€”</div>
+                            <div class="metricCard__sub" id="tardyLateDays">â€” late days</div>
+                        </div>
                     </div>
-                    <div class="metricCard">
-                        <div class="metricCard__label">This Year</div>
-                        <div class="metricCard__value" id="tardyYear">â€”</div>
-                        <div class="metricCard__sub">minutes late</div>
-                    </div>
-                    <div class="metricCard metricCard--wide">
-                        <div class="metricCard__label">All Time</div>
-                        <div class="metricCard__value" id="tardyTotal">â€”</div>
-                        <div class="metricCard__sub" id="tardyLateDays">â€” late days</div>
-                    </div>
-                </div>
 
-                <div class="sectionTitle">Memos / Sanctions / NTE</div>
-                <div class="tablewrap tablewrap--preview" style="margin-bottom:6px;">
-                    <table class="table table--preview" id="disciplineTable">
-                        <thead>
-                            <tr>
-                                <th>Type</th>
-                                <th>Date</th>
-                                <th>Reference</th>
-                                <th>Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody id="disciplineTbody">
-                            <tr>
-                                <td colspan="4" class="muted small">No records yet.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns: emp_no,
-                    type, date, remarks, reference).</div>
+                    <div class="sectionTitle">Memos / Sanctions / NTE</div>
+                    <div class="tablewrap tablewrap--preview" style="margin-bottom:6px;">
+                        <table class="table table--preview" id="disciplineTable">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Reference</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody id="disciplineTbody">
+                                <tr>
+                                    <td colspan="4" class="muted small">No records yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="muted tiny" id="disciplineHint">Import via the "IMPORT DISCIPLINE" button (columns:
+                        emp_no,
+                        type, date, remarks, reference).</div>
                 @endif
 
                 <div class="form__actions">

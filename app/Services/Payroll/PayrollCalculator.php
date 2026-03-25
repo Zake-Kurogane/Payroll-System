@@ -282,11 +282,15 @@ class PayrollCalculator
                 ->orWhereRaw('LOWER(status) NOT IN (?, ?)', ['inactive', 'resigned']);
         });
 
-        if ($runType === 'External') {
-            $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) = 'regular'");
-        } else {
-            // Internal runs cover non-regular employees (e.g., probationary, trainees).
-            $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) != 'regular'");
+        // If the run targets "All" assignments, include both regular and non-regular employees.
+        // (Users expect "All" to mean full headcount, not split by run type.)
+        if ($assignment !== 'All') {
+            if ($runType === 'External') {
+                $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) = 'regular'");
+            } else {
+                // Internal runs cover non-regular employees (e.g., probationary, trainees).
+                $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) != 'regular'");
+            }
         }
 
         if ($assignment !== 'All') {
