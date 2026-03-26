@@ -32,6 +32,31 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
+  const normalizeDateTimeInput = (value) => {
+    if (!value) return "";
+    let s = String(value).trim();
+    // Normalize "YYYY-MM-DD HH:mm:ss" -> ISO-ish
+    s = s.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(.*)$/, "$1T$2$3");
+    // Trim microseconds to milliseconds for broader browser compatibility
+    s = s.replace(/(\.\d{3})\d+(?=Z?$)/, "$1");
+    return s;
+  };
+
+  const formatDateTime12h = (value) => {
+    if (!value) return "-";
+    const raw = String(value).trim();
+    const d = new Date(normalizeDateTimeInput(raw));
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   const sumAmounts = (arr) =>
     (Array.isArray(arr) ? arr : []).reduce((a, r) => a + Number(r?.amount || 0), 0);
 
@@ -428,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     safeText("runEmployees", String(run.headcount ?? 0));
     safeText("runTotalNet", peso(run.total_net ?? 0));
-    safeText("runProcessedAt", run.locked_at ? new Date(run.locked_at).toLocaleString() : "-");
+    safeText("runProcessedAt", run.locked_at ? formatDateTime12h(run.locked_at) : "-");
     safeText("runProcessedBy", run.created_by_name || "-");
     setTopActionsEnabled(true);
     if (sendEmailBtn) {
@@ -1333,8 +1358,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportCsvBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const ids = selectedIds();
-      const useCsv = confirm("Download CSV instead of XLSX?");
-      const format = useCsv ? "csv" : "xlsx";
+      const format = "xlsx";
       const qs = new URLSearchParams({
         run_id: selectedRunId,
         format,
@@ -1349,12 +1373,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const ids = selectedIds();
       const qs = new URLSearchParams({
         run_id: selectedRunId,
-        autoprint: "1",
       });
       if (ids.length) qs.set("ids", ids.join(","));
-      const url = `/payslips/print?${qs.toString()}`;
-      const w = window.open(url, "_blank");
-      if (!w) alert("Popup blocked. Please allow popups for this site to print.");
+      window.location.href = `/payslips/export-pdf?${qs.toString()}`;
     });
 
   printBtn &&

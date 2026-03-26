@@ -3,7 +3,7 @@
 @section('title', 'Payslip Claims')
 
 @section('vite')
-    @vite(['resources/css/payslips.css'])
+    @vite(['resources/css/payslips.css', 'resources/js/payslip_claims.js'])
 @endsection
 
 @section('content')
@@ -38,7 +38,7 @@
                                 <option value="" selected>- Select a released run -</option>
                                 @foreach ($runs as $r)
                                     <option value="{{ $r->id }}" @selected($selectedRun && $selectedRun->id === $r->id)>
-                                        {{ $r->displayLabel() }}
+                                        {{ ($r->run_code ?: ('RUN-' . $r->id)) . ' • ' . ($r->period_month ?: '-') . ' (' . ($r->cutoff ?: '-') . ') • ' . $r->displayLabel() }}
                                     </option>
                                 @endforeach
                             </select>
@@ -192,4 +192,3 @@
         @endif
     </section>
 @endsection
-

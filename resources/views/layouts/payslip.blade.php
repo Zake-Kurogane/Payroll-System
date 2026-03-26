@@ -19,7 +19,7 @@
             <div class="headline__actions">
                 <button class="btn btn--soft" id="sendEmailBtn" disabled>Send Payslips via Email</button>
                 <button class="btn btn--soft" id="exportPdfBtn" disabled>Export PDF (Selected / All)</button>
-                <button class="btn btn--soft" id="exportCsvBtn" disabled>Export Excel/CSV</button>
+                <button class="btn btn--soft" id="exportCsvBtn" disabled>Export Excel</button>
                 <button class="btn btn--maroon" id="printBtn" disabled>Print (Selected / All)</button>
             </div>
         </div>
@@ -102,8 +102,8 @@
                 </div>
             </div>
 
-            <div class="tablewrap">
-                <table class="table" aria-label="Payslips table">
+            <div class="tablewrap tablewrap--payslipsList">
+                <table class="table table--payslipsList" aria-label="Payslips table">
                     <thead>
                         <tr>
                             <th class="col-check">

@@ -13,7 +13,7 @@
 
     <nav class="menu" id="sidebarMenu">
         <style>
-            /* Keep sidebar footer (time/date) visible by scrolling the nav area only when Employee Records dropdown is open. */
+            /* Keep sidebar footer (time/date) visible by scrolling the nav area only when a dropdown is open. */
             .side > .menu.menu--scroll {
                 flex: 1 1 auto;
                 min-height: 0;
@@ -102,7 +102,11 @@
                     </svg>
                 </span>
                 <a class="menu__parent-link" href="{{ route('employee.records') }}">EMPLOYEE<br />RECORDS</a>
-                <span class="menu__chevron" aria-hidden="true">▾</span>
+                <span class="menu__chevron" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
+                        <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                </span>
             </summary>
             <div class="submenu">
                 <a class="menu__item menu__item--child {{ request()->routeIs('employee.records') ? 'is-active' : '' }}"
@@ -128,18 +132,6 @@
             </div>
         </details>
 
-        <script>
-            (function() {
-                const menu = document.getElementById('sidebarMenu');
-                const group = document.getElementById('employeeRecordsGroup');
-                if (!menu || !group) return;
-
-                const sync = () => menu.classList.toggle('menu--scroll', !!group.open);
-                sync();
-                group.addEventListener('toggle', sync);
-            })();
-        </script>
-
         <a class="menu__item {{ request()->routeIs('attendance') ? 'is-active' : '' }}"
             href="{{ route('attendance') }}">
             <span class="menu__icon" aria-hidden="true">
@@ -162,17 +154,6 @@
             <span>LOANS</span>
         </a>
 
-        <a class="menu__item {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
-            href="{{ route('payslip.claims') }}">
-            <span class="menu__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" class="ico">
-                    <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
-                    <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
-                </svg>
-            </span>
-            <span>PAYSLIP<br />CLAIMS</span>
-        </a>
-
         @can('admin')
             <a class="menu__item {{ request()->routeIs('payroll.processing') ? 'is-active' : '' }}"
                 href="{{ route('payroll.processing') }}">
@@ -186,18 +167,55 @@
             </a>
         @endcan
 
-        @can('admin')
-            <a class="menu__item {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
-                href="{{ route('payslip') }}">
+        <details id="payslipGroup"
+            class="menu__group {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-open' : '' }}"
+            {{ request()->routeIs('payslip', 'payslip.claims') ? 'open' : '' }}>
+            <summary
+                class="menu__item menu__item--parent {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-active' : '' }}">
                 <span class="menu__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="ico">
                         <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
                         <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
                     </svg>
                 </span>
-                <span>PAYSLIP</span>
-            </a>
-        @endcan
+                <a class="menu__parent-link" href="{{ Gate::allows('admin') ? route('payslip') : route('payslip.claims') }}">PAYSLIP</a>
+                <span class="menu__chevron" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
+                        <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                </span>
+            </summary>
+            <div class="submenu">
+                @can('admin')
+                    <a class="menu__item menu__item--child {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
+                        href="{{ route('payslip') }}">
+                        <span class="menu__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="ico">
+                                <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
+                                <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
+                            </svg>
+                        </span>
+                        <span>Payslips</span>
+                    </a>
+                @endcan
+                <a class="menu__item menu__item--child {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
+                    href="{{ route('payslip.claims') }}">
+                    <span class="menu__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
+                            <!-- Signature (stroke only) -->
+                            <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
+                                style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
+                            <!-- Pen at end of signature (filled, kept inside viewBox to avoid clipping) -->
+                            <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
+                                style="fill:currentColor;stroke:none" />
+                            <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
+                                style="fill:currentColor;stroke:none" />
+                        </svg>
+                    </span>
+                    <span>Claims</span>
+                </a>
+            </div>
+        </details>
 
         @can('admin')
             <a class="menu__item {{ request()->routeIs('report') ? 'is-active' : '' }}"
@@ -211,6 +229,25 @@
                 <span>REPORT</span>
             </a>
         @endcan
+
+        <script>
+            (function() {
+                const menu = document.getElementById('sidebarMenu');
+                if (!menu) return;
+                const empGroup = document.getElementById('employeeRecordsGroup');
+                const payslipGroup = document.getElementById('payslipGroup');
+
+                const sync = () => {
+                    const open = !!(empGroup && empGroup.open) || !!(payslipGroup && payslipGroup.open);
+                    menu.classList.toggle('menu--scroll', open);
+                };
+
+                sync();
+                window.addEventListener('pageshow', sync);
+                empGroup && empGroup.addEventListener('toggle', sync);
+                payslipGroup && payslipGroup.addEventListener('toggle', sync);
+            })();
+        </script>
     </nav>
 
     <div class="side__footer">

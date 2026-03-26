@@ -60,11 +60,13 @@ class PayslipMail extends Mailable
         $cutoff = (string) ($this->payslip['cutoff'] ?? ($this->run?->cutoff ?? ''));
         $payDate = $this->resolvePayDate($periodMonth, $cutoff);
 
-        $html = view('print.payslip_email', [
+        $html = view('print.payslip_pdf', [
             'company' => $this->company,
             'run' => $this->run,
-            'payslip' => $this->payslip,
+            'payslips' => [$this->payslip],
             'payDate' => $payDate,
+            'autoprint' => false,
+            'inModal' => false,
         ])->render();
 
         $options = new \Dompdf\Options();

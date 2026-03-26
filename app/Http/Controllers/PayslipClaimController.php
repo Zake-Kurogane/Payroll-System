@@ -58,7 +58,7 @@ class PayslipClaimController extends Controller
 
         $company = CompanySetup::query()->first();
         $rows = $this->runEmployeesForClaimSheet($run);
-        $pages = array_chunk($rows->all(), 25);
+        $pages = $this->buildClaimSheetPages($rows, 25);
 
         $html = view('print.payslip_claim_sheet', [
             'company' => $company,
@@ -133,6 +133,7 @@ class PayslipClaimController extends Controller
         return PayrollRunRow::query()
             ->where('payroll_run_id', $run->id)
             ->join('employees', 'employees.id', '=', 'payroll_run_rows.employee_id')
+            ->orderByRaw("LOWER(COALESCE(NULLIF(TRIM(employees.area_place), ''), 'zzzz'))")
             ->orderBy('employees.last_name')
             ->orderBy('employees.first_name')
             ->orderBy('employees.emp_no')
@@ -157,6 +158,48 @@ class PayslipClaimController extends Controller
                     'area_place' => (string) ($r->area_place ?? ''),
                 ];
             });
+    }
+
+    private function buildClaimSheetPages($rows, int $rowsPerPage = 25): array
+    {
+        $items = collect($rows)->map(function ($r) {
+            $area = is_array($r) ? ($r['area_place'] ?? '') : ($r->area_place ?? '');
+            $area = is_string($area) ? trim($area) : '';
+            return array_merge(is_array($r) ? $r : (array) $r, [
+                'area_place' => $area,
+                'area_label' => $area !== '' ? $area : '-',
+            ]);
+        });
+
+        $groups = $items->groupBy(fn ($r) => (string) ($r['area_label'] ?? '-'));
+        $areas = $groups->keys()->sort()->values();
+
+        $pages = [];
+        foreach ($areas as $area) {
+            $rowsInArea = $groups->get($area, collect())->values();
+            $chunks = array_chunk($rowsInArea->all(), $rowsPerPage);
+            $areaPages = max(1, count($chunks));
+
+            $areaSeq = 0;
+            foreach ($chunks as $areaPageIndex => $chunk) {
+                $pageRows = [];
+                foreach ($chunk as $row) {
+                    $areaSeq++;
+                    $pageRows[] = array_merge($row, [
+                        'no' => $areaSeq,
+                    ]);
+                }
+
+                $pages[] = [
+                    'area' => (string) $area,
+                    'area_page' => (int) $areaPageIndex + 1,
+                    'area_pages' => (int) $areaPages,
+                    'rows' => $pageRows,
+                ];
+            }
+        }
+
+        return $pages;
     }
 
     private function runEmployeesWithClaimStatus(PayrollRun $run)
@@ -195,16 +238,28 @@ class PayslipClaimController extends Controller
     {
         $rowsPerPage = 25;
         $employees = $this->runEmployeesForClaimSheet($run)->values();
+        $pages = $this->buildClaimSheetPages($employees, $rowsPerPage);
         $scanner = new ClaimSheetScanner();
+        $usedPageIndexes = [];
 
         foreach (array_values($proofs) as $i => $proof) {
             $pageIndex = $this->inferPageIndexFromFilename($proof->original_name);
-            if ($pageIndex === null) {
+            if ($pageIndex === null || !isset($pages[$pageIndex]) || isset($usedPageIndexes[$pageIndex])) {
                 $pageIndex = $i;
             }
+            // If the fallback index is still invalid (e.g., sparse uploads), map to the next available page.
+            if (!isset($pages[$pageIndex]) || isset($usedPageIndexes[$pageIndex])) {
+                $candidate = 0;
+                while (isset($pages[$candidate]) && isset($usedPageIndexes[$candidate])) {
+                    $candidate++;
+                }
+                $pageIndex = isset($pages[$candidate]) ? $candidate : $pageIndex;
+            }
+            $usedPageIndexes[$pageIndex] = true;
 
-            $slice = $employees->slice($pageIndex * $rowsPerPage, $rowsPerPage)->values();
-            $expectedRows = $slice->count();
+            $page = $pages[$pageIndex] ?? null;
+            $slice = $page ? (array) ($page['rows'] ?? []) : [];
+            $expectedRows = count($slice);
 
             if ($expectedRows === 0) {
                 $proof->processed_at = now();
@@ -225,7 +280,9 @@ class PayslipClaimController extends Controller
                 $scan = $scanner->scanImageFile($imgPath, $expectedRows);
                 $rowsScanned = min($expectedRows, count($scan));
 
-                $empIds = $slice->pluck('employee_id')->all();
+                $empIds = array_values(array_filter(array_map(function ($r) {
+                    return (int) ($r['employee_id'] ?? 0);
+                }, $slice)));
                 $existing = PayslipClaim::query()
                     ->where('payroll_run_id', $run->id)
                     ->whereIn('employee_id', $empIds)

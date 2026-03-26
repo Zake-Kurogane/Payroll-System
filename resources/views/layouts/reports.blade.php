@@ -289,7 +289,7 @@
                                 <th>Name</th>
                                 <th class="num">Gross Pay</th>
                                 <th class="num">Deductions</th>
-                                <th class="num">Shortages</th>
+                                <th class="num">Attendance Deduction</th>
                                 <th class="num">Charges</th>
                                 <th class="num">Net Pay</th>
                             </tr>
@@ -311,7 +311,7 @@
                                 <th>Name</th>
                                 <th class="num">Gross Pay</th>
                                 <th class="num">Deductions</th>
-                                <th class="num">Shortages</th>
+                                <th class="num">Attendance Deduction</th>
                                 <th class="num">Charges</th>
                                 <th class="num">Net Pay</th>
                             </tr>

@@ -98,15 +98,66 @@ class PayslipController extends Controller
         $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
         $company = CompanySetup::query()->first();
 
-        $pages = array_chunk($payload, 4);
-        return view('print.payslips', [
+        return view('print.payslip_pdf', [
             'company' => $company,
             'run' => $run,
-            'pages' => $pages,
+            'payslips' => $payload,
             'autoprint' => (bool) ($validated['autoprint'] ?? false),
             'inModal' => (bool) ($validated['in_modal'] ?? false),
             'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
         ]);
+    }
+
+    public function exportPdf(Request $request, PayrollCalculator $calculator)
+    {
+        $validated = $request->validate([
+            'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
+            'ids' => ['nullable', 'string'],
+        ]);
+
+        $run = PayrollRun::query()->findOrFail($validated['run_id']);
+        $query = Payslip::query()
+            ->with(['employee', 'adjustments'])
+            ->where('payroll_run_id', $run->id)
+            ->orderBy('id');
+
+        if (!empty($validated['ids'])) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $validated['ids']))));
+            if ($ids) {
+                $query->whereIn('id', $ids);
+            }
+        }
+
+        $payslips = $query->get();
+        $payload = $this->buildPayslipPayload($run, $payslips, $calculator);
+        $company = CompanySetup::query()->first();
+
+        if (count($payload) === 0) {
+            return response()->json(['message' => 'No payslips found for this run/selection.'], 404);
+        }
+
+        $html = view('print.payslip_pdf', [
+            'company' => $company,
+            'run' => $run,
+            'payslips' => $payload,
+            'autoprint' => false,
+            'inModal' => false,
+            'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
+        ])->render();
+
+        $options = new \Dompdf\Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('isHtml5ParserEnabled', true);
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->render();
+
+        $filename = 'payslips_' . ($run->run_code ?: $run->id) . '.pdf';
+        return response()->streamDownload(function () use ($dompdf) {
+            echo $dompdf->output();
+        }, $filename, ['Content-Type' => 'application/pdf']);
     }
 
     public function export(Request $request, PayrollCalculator $calculator)

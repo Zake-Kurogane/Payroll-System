@@ -49,7 +49,7 @@ class ClaimSheetScanner
         }
 
         $hLines = $this->pickDenseLines($rowDens, 0.65, 6);
-        if (count($hLines) < 6) {
+        if (count($hLines) < 4) {
             // Fallback: assume template geometry (less reliable).
             return $this->fallbackScanByProportions($img, $expectedRows);
         }
@@ -58,7 +58,7 @@ class ClaimSheetScanner
         $minY = (int) round($h * 0.10);
         $maxY = (int) round($h * 0.95);
         $hLines = array_values(array_filter($hLines, fn ($y) => $y >= $minY && $y <= $maxY));
-        if (count($hLines) < 6) {
+        if (count($hLines) < 4) {
             return $this->fallbackScanByProportions($img, $expectedRows);
         }
 
@@ -196,4 +196,3 @@ class ClaimSheetScanner
         return $results;
     }
 }
-

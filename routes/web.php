@@ -120,6 +120,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/payslips', [PayslipController::class, 'index'])->name('payslips.index');
         Route::get('/payslips/print', [PayslipController::class, 'printView'])->name('payslips.print');
         Route::get('/payslips/export', [PayslipController::class, 'export'])->name('payslips.export');
+        Route::get('/payslips/export-pdf', [PayslipController::class, 'exportPdf'])->name('payslips.export_pdf');
         Route::post('/payslips/send-email', [PayslipController::class, 'sendEmail'])->name('payslips.send_email');
         Route::post('/payslips/release', [PayslipController::class, 'releaseSelected'])->name('payslips.release');
         Route::post('/payslips/runs/{run}/release-all', [PayslipController::class, 'releaseAll'])->name('payslips.release_all');

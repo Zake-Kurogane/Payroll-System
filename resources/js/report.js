@@ -26,6 +26,29 @@ document.addEventListener("DOMContentLoaded", () => {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
+  const normalizeDateTimeInput = (value) => {
+    if (!value) return "";
+    let s = String(value).trim();
+    s = s.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(.*)$/, "$1T$2$3");
+    s = s.replace(/(\.\d{3})\d+(?=Z?$)/, "$1");
+    return s;
+  };
+
+  const formatDateTime12h = (value) => {
+    if (!value || value === "—") return "—";
+    const raw = String(value).trim();
+    const d = new Date(normalizeDateTimeInput(raw));
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   // =========================================================
   // DATA (loaded from backend)
   // =========================================================
@@ -137,10 +160,10 @@ document.addEventListener("DOMContentLoaded", () => {
       status: run.status || "—",
       employees: Number(run.headcount || 0),
       totalNet: Number(run.net || 0),
-      processedAt: run.locked_at || run.created_at || "—",
+      processedAt: formatDateTime12h(run.locked_at || run.created_at || "—"),
       processedBy: run.created_by_name || "—",
-      payslipsGeneratedAt: run.payslips_generated_at || "—",
-      releasedAt: run.released_at || "—",
+      payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "—"),
+      releasedAt: formatDateTime12h(run.released_at || "—"),
       runType: run.run_type || "External",
       displayLabel: run.display_label || `${run.run_type || "External"} · ${assignmentText}`,
     };
@@ -719,7 +742,7 @@ document.addEventListener("DOMContentLoaded", () => {
       0
     );
     const charges = rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
-    const shortages = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
+    const attendanceDeduction = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
 
     overallTbody.innerHTML = "";
 
@@ -730,7 +753,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["Statutory Deductions (EE)", statutory],
       ["Withholding Tax", tax],
       ["Charges", charges],
-      ["Shortages", shortages],
+      ["Attendance Deduction", attendanceDeduction],
     ];
 
     metrics.forEach(([label, value]) => {
@@ -1043,7 +1066,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return String(a.empName || "").localeCompare(String(b.empName || ""));
         });
 
-      const headers = ["External", "Name", "Gross Pay", "Deductions", "Shortages", "Charges", "Net Pay"];
+      const headers = ["External", "Name", "Gross Pay", "Deductions", "Attendance Deduction", "Charges", "Net Pay"];
       const csv = [
         headers.join(","),
         ...list.map((r) =>
@@ -1071,7 +1094,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return String(a.empName || "").localeCompare(String(b.empName || ""));
         });
 
-      const headers = ["Company", "Name", "Gross Pay", "Deductions", "Shortages", "Charges", "Net Pay"];
+      const headers = ["Company", "Name", "Gross Pay", "Deductions", "Attendance Deduction", "Charges", "Net Pay"];
       const csv = [
         headers.join(","),
         ...list.map((r) =>
@@ -1100,7 +1123,7 @@ document.addEventListener("DOMContentLoaded", () => {
         0
       );
       const charges = rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
-      const shortages = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
+    const attendanceDeduction = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
 
       const totals = [
         ["Total Gross", gross],
@@ -1109,7 +1132,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["Statutory Deductions (EE)", statutory],
         ["Withholding Tax", tax],
         ["Charges", charges],
-        ["Shortages", shortages],
+        ["Attendance Deduction", attendanceDeduction],
       ];
       const csv = [
         ["Metric", "Amount"].join(","),

@@ -108,7 +108,8 @@
 </head>
 
 <body>
-    @foreach ($pages as $pageIndex => $rows)
+    @foreach ($pages as $pageIndex => $page)
+        @php($rows = $page['rows'] ?? [])
         <div class="meta">
             <div>
                 <h1 class="title">Payslip Claim Sheet</h1>
@@ -118,7 +119,17 @@
             </div>
 
             <div class="runbox">
-                <div><span class="k">Run:</span> {{ $run->displayLabel() }}</div>
+                <div>
+                    <span class="k">Run:</span>
+                    {{ $run->run_code ?: ('RUN-' . $run->id) }}
+                    {{ $run->period_month ? (' • ' . $run->period_month) : '' }}
+                    {{ $run->cutoff ? (' (' . $run->cutoff . ')') : '' }}
+                    {{ ' • ' . $run->displayLabel() }}
+                </div>
+                <div><span class="k">Area:</span> {{ $page['area'] ?? '—' }}</div>
+                @if (!empty($page['area_page']) && !empty($page['area_pages']))
+                    <div><span class="k">Area Page:</span> {{ $page['area_page'] }} of {{ $page['area_pages'] }}</div>
+                @endif
                 <div><span class="k">Generated:</span> {{ now()->format('Y-m-d H:i') }}</div>
             </div>
         </div>
@@ -137,7 +148,7 @@
             <tbody>
                 @foreach ($rows as $i => $r)
                     <tr>
-                        <td class="col-no">{{ ($pageIndex * 25) + $i + 1 }}</td>
+                        <td class="col-no">{{ $r['no'] ?? '' }}</td>
                         <td class="col-emp">{{ $r['emp_no'] }}</td>
                         <td class="col-name">{{ $r['name'] }}</td>
                         <td class="col-assign">{{ $r['assignment_type'] ?: '-' }}</td>
@@ -145,17 +156,6 @@
                         <td class="col-sign">&nbsp;</td>
                     </tr>
                 @endforeach
-
-                @for ($k = count($rows); $k < 25; $k++)
-                    <tr>
-                        <td class="col-no">&nbsp;</td>
-                        <td class="col-emp">&nbsp;</td>
-                        <td class="col-name">&nbsp;</td>
-                        <td class="col-assign">&nbsp;</td>
-                        <td class="col-area">&nbsp;</td>
-                        <td class="col-sign">&nbsp;</td>
-                    </tr>
-                @endfor
             </tbody>
         </table>
 
@@ -171,4 +171,3 @@
 </body>
 
 </html>
-
