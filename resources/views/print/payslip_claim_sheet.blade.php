@@ -16,11 +16,23 @@
             color: #111;
         }
 
-        .meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
+        /* Use table layout for reliable PDF rendering (Dompdf flex can be inconsistent). */
+        .metaTable {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
             margin-bottom: 8px;
+        }
+        .metaTable td {
+            border: 0 !important;
+            padding: 0;
+            vertical-align: top;
+        }
+        .metaLeft {
+            width: 62%;
+        }
+        .metaRight {
+            width: 38%;
         }
 
         .title {
@@ -38,6 +50,7 @@
         .runbox {
             text-align: right;
             font-size: 11px;
+            margin-top: 0;
         }
 
         .runbox .k {
@@ -110,29 +123,33 @@
 <body>
     @foreach ($pages as $pageIndex => $page)
         @php($rows = $page['rows'] ?? [])
-        <div class="meta">
-            <div>
-                <h1 class="title">Payslip Claim Sheet</h1>
-                <div class="sub">
-                    {{ $company?->company_name ?: 'Company' }}
-                </div>
-            </div>
+        <table class="metaTable">
+            <tr>
+                <td class="metaLeft">
+                    <h1 class="title">Payslip Claim Sheet</h1>
+                    <div class="sub">
+                        {{ $company?->company_name ?: 'Company' }}
+                    </div>
+                </td>
 
-            <div class="runbox">
-                <div>
-                    <span class="k">Run:</span>
-                    {{ $run->run_code ?: ('RUN-' . $run->id) }}
-                    {{ $run->period_month ? (' • ' . $run->period_month) : '' }}
-                    {{ $run->cutoff ? (' (' . $run->cutoff . ')') : '' }}
-                    {{ ' • ' . $run->displayLabel() }}
-                </div>
-                <div><span class="k">Area:</span> {{ $page['area'] ?? '—' }}</div>
-                @if (!empty($page['area_page']) && !empty($page['area_pages']))
-                    <div><span class="k">Area Page:</span> {{ $page['area_page'] }} of {{ $page['area_pages'] }}</div>
-                @endif
-                <div><span class="k">Generated:</span> {{ now()->format('Y-m-d H:i') }}</div>
-            </div>
-        </div>
+                <td class="metaRight">
+                    <div class="runbox">
+                        <div>
+                            <span class="k">Run:</span>
+                            {{ $run->run_code ?: ('RUN-' . $run->id) }}
+                            {{ $run->period_month ? (' • ' . $run->period_month) : '' }}
+                            {{ $run->cutoff ? (' (' . $run->cutoff . ')') : '' }}
+                            {{ ' • ' . $run->displayLabel() }}
+                        </div>
+                        <div><span class="k">Area:</span> {{ $page['area'] ?? '—' }}</div>
+                        @if (!empty($page['area_page']) && !empty($page['area_pages']))
+                            <div><span class="k">Area Page:</span> {{ $page['area_page'] }} of {{ $page['area_pages'] }}</div>
+                        @endif
+                        <div><span class="k">Generated:</span> {{ now()->format('Y-m-d H:i') }}</div>
+                    </div>
+                </td>
+            </tr>
+        </table>
 
         <table>
             <thead>

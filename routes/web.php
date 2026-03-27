@@ -41,6 +41,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/payslip-claims/{run}/claim-sheet', [PayslipClaimController::class, 'downloadClaimSheet'])->name('payslip.claims.sheet');
         Route::post('/payslip-claims/{run}/proofs', [PayslipClaimController::class, 'uploadProof'])->name('payslip.claims.proofs.upload');
         Route::get('/payslip-claims/proofs/{proof}/download', [PayslipClaimController::class, 'downloadProof'])->name('payslip.claims.proofs.download');
+        Route::delete('/payslip-claims/proofs/{proof}', [PayslipClaimController::class, 'destroyProof'])->name('payslip.claims.proofs.destroy');
 
         // Employee data endpoints used by pages
         Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
@@ -84,6 +85,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/settings/cash-advances', [SettingsController::class, 'getCashAdvances'])->name('settings.cash_advance.list');
         Route::post('/settings/cash-advances', [SettingsController::class, 'saveCashAdvance'])->name('settings.cash_advance.create');
         Route::patch('/settings/cash-advances/{cashAdvance}', [SettingsController::class, 'updateCashAdvanceStatus'])->name('settings.cash_advance.update');
+        Route::delete('/settings/cash-advances/{cashAdvance}', [SettingsController::class, 'destroyCashAdvance'])->name('settings.cash_advance.delete');
     });
 
     // Admin-only

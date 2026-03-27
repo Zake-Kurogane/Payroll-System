@@ -6,8 +6,24 @@
     @vite(['resources/css/payslips.css', 'resources/js/payslip_claims.js'])
 @endsection
 
+@section('body_end')
+    <!-- Claim Sheet print modal (stays on page; no download) -->
+    <div class="overlay" id="claimPrintOverlay" hidden></div>
+    <aside class="modal" id="claimPrintModal" aria-hidden="true" hidden>
+        <div class="modal__head">
+            <div class="modal__title">Claim Sheet (Print)</div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <button class="btn btn--soft" type="button" id="claimPrintBtn" disabled>Print</button>
+                <button class="btn" type="button" id="claimPrintCloseBtn">Close</button>
+            </div>
+        </div>
+        <div id="claimPrintLoading" class="muted small" style="padding: 12px 14px;">Loading PDF…</div>
+        <iframe class="modal__frame" id="claimPrintFrame" title="Claim Sheet Print Preview" hidden></iframe>
+    </aside>
+@endsection
+
 @section('content')
-    <section class="content">
+    <section class="content content--claims">
         <div class="headline headline--withActions">
             <div>
                 <h1>PAYSLIP CLAIMS</h1>
@@ -68,6 +84,10 @@
                         <a class="btn btn--soft" href="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id]) }}">
                             Download Claim Sheet (PDF)
                         </a>
+                        <button class="btn btn--soft" type="button" id="printClaimSheetBtn"
+                            data-url="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id]) }}">
+                            Print Claim Sheet
+                        </button>
                     </div>
                 @endif
             </div>
@@ -128,13 +148,25 @@
                                             $s = $p->processed_summary ?? [];
                                             $txt = '';
                                             if (!empty($s['claimed_new'])) $txt .= "Claimed(new): {$s['claimed_new']} ";
+                                            if (!empty($s['claimed_rows_detected'])) $txt .= "Rows(claimed): " . implode(',', (array) $s['claimed_rows_detected']) . " ";
+                                            if (!empty($s['claimed_emp_nos_detected'])) $txt .= "Emp(claimed): " . implode(',', (array) $s['claimed_emp_nos_detected']) . " ";
                                             if (!empty($s['pages'])) $txt .= "Pages: {$s['pages']} ";
                                             if (!empty($s['rows_scanned'])) $txt .= "Rows: {$s['rows_scanned']} ";
+                                            if (!empty($s['ink_strict_max'])) $txt .= "Ink(max): {$s['ink_strict_max']} ";
+                                            if (!empty($s['slice_first_emp_no']) && !empty($s['slice_last_emp_no'])) $txt .= "Slice: {$s['slice_first_emp_no']}â€“{$s['slice_last_emp_no']} ";
                                         @endphp
                                         <span class="muted small">{{ trim($txt) ?: '—' }}</span>
                                     </td>
                                     <td>
-                                        <a class="btn btn--soft" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}">Download</a>
+                                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                            <a class="btn btn--soft" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}">Download</a>
+                                            <form method="POST" action="{{ route('payslip.claims.proofs.destroy', ['proof' => $p->id]) }}"
+                                                onsubmit="return confirm('Delete this proof file? This will also undo any auto-claims detected from it.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn btn--soft" type="submit">Delete</button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             @empty

@@ -287,6 +287,10 @@ body {
     align-items: center;
     flex-wrap: wrap;
 }
+.content--claims .btn {
+    font-size: 14px;
+    white-space: nowrap;
+}
 
 h1 {
     margin: 0;
@@ -312,6 +316,7 @@ h1 {
 }
 
 .btn {
+    font-family: inherit;
     height: 42px;
     border-radius: 14px;
     padding: 0 14px;
@@ -320,6 +325,12 @@ h1 {
     cursor: pointer;
     font-weight: 1000;
     transition: transform 0.12s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1;
+    text-decoration: none;
 }
 .btn:hover {
     transform: translateY(-1px);
@@ -339,6 +350,45 @@ h1 {
     background: rgba(156, 29, 60, 0.08);
     border-color: rgba(156, 29, 60, 0.18);
     color: var(--maroon);
+}
+
+/* File input (Choose Files) alignment */
+input[type="file"] {
+    font: inherit;
+}
+/* The generic .f input rule sets a fixed height (44px). File inputs render their
+   internal button/text slightly top-biased in some browsers unless we add a bit
+   of vertical padding + line-height. */
+.f input[type="file"] {
+    padding: 4px 12px;
+    line-height: 34px;
+    font-weight: 700; /* "No file chosen" text */
+}
+input[type="file"]::file-selector-button {
+    height: 34px;
+    border-radius: 10px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-weight: 600; /* lighter than the filename text */
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 34px; /* more consistent vertical centering across browsers */
+    vertical-align: middle;
+    margin-right: 10px;
+}
+input[type="file"]::-webkit-file-upload-button {
+    height: 34px;
+    border-radius: 10px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    line-height: 34px;
+    vertical-align: middle;
+    margin-right: 10px;
 }
 
 .btnMini {
@@ -882,26 +932,6 @@ th.sortable.is-desc .sortIcon {
     background: #fff;
     cursor: pointer;
     font-weight: 1000;
-}
-
-.btn {
-    height: 42px;
-    border-radius: 14px;
-    padding: 0 14px;
-    border: 1px solid rgba(17, 24, 39, 0.1);
-    background: #fff;
-    cursor: pointer;
-    font-weight: 1000;
-}
-.btn--soft {
-    background: rgba(156, 29, 60, 0.08);
-    border-color: rgba(156, 29, 60, 0.18);
-    color: #9c1d3c;
-}
-.btn--maroon {
-    border-color: transparent;
-    background: #9c1d3c;
-    color: #fff;
 }
 
 /* Payslip paper */

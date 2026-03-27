@@ -470,16 +470,85 @@ class SettingsController extends Controller
     public function updateCashAdvanceStatus(Request $request, CashAdvance $cashAdvance)
     {
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['Active', 'Completed'])],
+            'status' => ['nullable', Rule::in(['Active', 'Completed'])],
+            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'term_months' => ['nullable', 'integer', 'min:1'],
+            'start_month' => ['nullable', 'date_format:Y-m'],
+            'method' => ['nullable', Rule::in(['salary_deduction', 'manual_payment'])],
+            'full_deduct' => ['nullable', 'boolean'],
         ]);
 
-        $updates = ['status' => $validated['status']];
-        if ($validated['status'] === 'Completed') {
-            $updates['balance_remaining'] = 0;
+        $isStatusOnly = array_key_exists('status', $validated) && count(array_filter($validated, fn ($v) => $v !== null)) === 1;
+        if ($isStatusOnly) {
+            $updates = ['status' => $validated['status']];
+            if ($validated['status'] === 'Completed') {
+                $updates['balance_remaining'] = 0;
+                $updates['per_cutoff_deduction'] = 0;
+            }
+            $cashAdvance->update($updates);
+            return response()->json($cashAdvance);
         }
-        $cashAdvance->update($updates);
+
+        $policy = CashAdvancePolicy::query()->first();
+        $cutoffsPerMonth = 2;
+
+        $employee = Employee::query()->find($cashAdvance->employee_id);
+        $employmentType = strtolower(trim((string) ($employee?->employment_type ?? '')));
+
+        $amount = (float) ($validated['amount'] ?? $cashAdvance->amount);
+        $termMonths = (int) ($validated['term_months'] ?? $cashAdvance->term_months ?? 1);
+        $method = (string) ($validated['method'] ?? $cashAdvance->method ?? 'salary_deduction');
+        $fullDeduct = (bool) ($validated['full_deduct'] ?? $cashAdvance->full_deduct ?? false);
+
+        // Enforce policy defaults/constraints.
+        if ($employmentType === 'trainees' || $employmentType === 'trainee') {
+            $fullDeduct = (bool) ($policy?->trainee_force_full_deduct ?? true);
+            if ($fullDeduct) $termMonths = 1;
+        } elseif ($employmentType === 'probationary') {
+            $fullDeduct = false;
+        } else {
+            if (!$policy || !$policy->allow_full_deduct) {
+                $fullDeduct = false;
+            }
+            if ($fullDeduct) $termMonths = 1;
+        }
+
+        $maxMonths = (int) ($policy?->max_payback_months ?? 0);
+        if ($maxMonths > 0) {
+            $termMonths = min($termMonths, $maxMonths);
+        }
+        $termMonths = max(1, (int) $termMonths);
+
+        $startMonth = $validated['start_month'] ?? null;
+        $startDate = $startMonth ? ($startMonth . '-01') : ($cashAdvance->start_month?->format('Y-m-d') ?? now()->format('Y-m-01'));
+
+        $amountDeducted = (float) ($cashAdvance->amount_deducted ?? 0);
+        $balanceRemaining = max(0, $amount - $amountDeducted);
+        $totalCutoffs = max(1, $termMonths * $cutoffsPerMonth);
+        $perCutoff = $fullDeduct ? $balanceRemaining : ($balanceRemaining / $totalCutoffs);
+
+        $cashAdvance->update([
+            'amount' => $amount,
+            'term_months' => $termMonths,
+            'start_month' => $startDate,
+            'method' => $method,
+            'full_deduct' => $fullDeduct,
+            'balance_remaining' => $balanceRemaining,
+            'per_cutoff_deduction' => $perCutoff,
+        ]);
 
         return response()->json($cashAdvance);
+    }
+
+    public function destroyCashAdvance(CashAdvance $cashAdvance)
+    {
+        $deducted = (float) ($cashAdvance->amount_deducted ?? 0);
+        if ($deducted > 0) {
+            return response()->json(['message' => 'Cannot delete: cash advance already has deductions applied.'], 422);
+        }
+
+        $cashAdvance->delete();
+        return response()->json(['ok' => true]);
     }
     public function getPayrollCalendar()
     {

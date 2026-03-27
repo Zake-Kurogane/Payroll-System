@@ -95,7 +95,8 @@ class PayslipClaimController extends Controller
 
         $files = $validated['proofs'];
         usort($files, function ($a, $b) {
-            return strcmp((string) $a->getClientOriginalName(), (string) $b->getClientOriginalName());
+            // Natural sort so IMG_2 comes before IMG_10 (reduces page/order mismatches).
+            return strnatcasecmp((string) $a->getClientOriginalName(), (string) $b->getClientOriginalName());
         });
 
         $storedProofs = [];
@@ -126,6 +127,35 @@ class PayslipClaimController extends Controller
         }
         $filename = $proof->original_name ?: ('proof_' . $proof->id);
         return $disk->download($proof->storage_path, $filename);
+    }
+
+    public function destroyProof(PayslipClaimProof $proof)
+    {
+        $runId = (int) ($proof->payroll_run_id ?? 0);
+
+        DB::transaction(function () use ($proof) {
+            // If we delete the proof, the FK will null-out automatically, but the "claimed_at"
+            // would still be set. Clear any auto-claims derived from this proof first.
+            PayslipClaim::query()
+                ->where('payslip_claim_proof_id', $proof->id)
+                ->update([
+                    'claimed_at' => null,
+                    'claimed_by_user_id' => null,
+                    'payslip_claim_proof_id' => null,
+                    'ink_ratio' => null,
+                ]);
+
+            try {
+                Storage::disk('local')->delete($proof->storage_path);
+            } catch (\Throwable $e) {
+                // Best-effort: still remove DB record even if the file is already gone.
+            }
+
+            $proof->delete();
+        });
+
+        return redirect()->route('payslip.claims', ['run_id' => $runId ?: null])
+            ->with('success', 'Proof deleted.');
     }
 
     private function runEmployeesForClaimSheet(PayrollRun $run)
@@ -260,6 +290,8 @@ class PayslipClaimController extends Controller
             $page = $pages[$pageIndex] ?? null;
             $slice = $page ? (array) ($page['rows'] ?? []) : [];
             $expectedRows = count($slice);
+            $sliceFirst = $slice[0] ?? null;
+            $sliceLast = $slice[$expectedRows - 1] ?? null;
 
             if ($expectedRows === 0) {
                 $proof->processed_at = now();
@@ -274,11 +306,23 @@ class PayslipClaimController extends Controller
             $claimedDetected = 0;
             $rowsScanned = 0;
             $error = null;
+            $inkSoft = [];
+            $inkStrict = [];
+            $claimedRowIndexes = [];
+            $claimedEmpNos = [];
 
             try {
                 $imgPath = Storage::disk('local')->path($proof->storage_path);
                 $scan = $scanner->scanImageFile($imgPath, $expectedRows);
                 $rowsScanned = min($expectedRows, count($scan));
+                for ($k = 0; $k < $rowsScanned; $k++) {
+                    $inkSoft[] = (float) ($scan[$k]['ink_ratio'] ?? 0);
+                    $inkStrict[] = (float) ($scan[$k]['ink_ratio_strict'] ?? 0);
+                    if (($scan[$k]['claimed'] ?? false) && isset($slice[$k])) {
+                        $claimedRowIndexes[] = $k + 1; // 1-based row number on the page
+                        $claimedEmpNos[] = (string) ($slice[$k]['emp_no'] ?? '');
+                    }
+                }
 
                 $empIds = array_values(array_filter(array_map(function ($r) {
                     return (int) ($r['employee_id'] ?? 0);
@@ -340,6 +384,14 @@ class PayslipClaimController extends Controller
                 'rows_scanned' => $rowsScanned,
                 'claimed_detected' => $claimedDetected,
                 'claimed_new' => $claimedNew,
+                'claimed_rows_detected' => $claimedRowIndexes,
+                'claimed_emp_nos_detected' => array_values(array_filter($claimedEmpNos, fn ($v) => $v !== '')),
+                'slice_first_emp_no' => (string) ($sliceFirst['emp_no'] ?? ''),
+                'slice_last_emp_no' => (string) ($sliceLast['emp_no'] ?? ''),
+                'ink_soft_avg' => !empty($inkSoft) ? round(array_sum($inkSoft) / max(1, count($inkSoft)), 5) : null,
+                'ink_soft_max' => !empty($inkSoft) ? round(max($inkSoft), 5) : null,
+                'ink_strict_avg' => !empty($inkStrict) ? round(array_sum($inkStrict) / max(1, count($inkStrict)), 5) : null,
+                'ink_strict_max' => !empty($inkStrict) ? round(max($inkStrict), 5) : null,
                 'error' => $error,
             ], fn ($v) => $v !== null && $v !== '');
             $proof->save();
@@ -354,10 +406,6 @@ class PayslipClaimController extends Controller
         if (preg_match('/(?:page|pg)[^0-9]*([0-9]{1,3})/i', $name, $m)) {
             $n = (int) $m[1];
             return $n > 0 ? ($n - 1) : null;
-        }
-        if (preg_match('/\\b([0-9]{1,3})\\b/', $name, $m)) {
-            $n = (int) $m[1];
-            if ($n > 0 && $n <= 999) return $n - 1;
         }
 
         return null;
