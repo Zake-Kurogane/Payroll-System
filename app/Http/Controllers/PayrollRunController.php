@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Assignment;
+use App\Models\AttendanceRecord;
 use App\Models\Employee;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
@@ -15,9 +16,11 @@ use App\Models\DeductionSchedule;
 use App\Models\EmployeeLoanSchedule;
 use App\Models\EmployeeLoan;
 use App\Models\EmployeeLoanHistory;
+use App\Models\PayrollCalendarSetting;
 use App\Models\PayrollRunLoanItem;
 use App\Models\PayrollDeductionPolicy;
 use App\Services\Payroll\PayrollCalculator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -313,6 +316,175 @@ class PayrollRunController extends Controller
             });
 
         return response()->json($rows);
+    }
+
+    public function fieldAreaAllocations(PayrollRun $run, PayrollCalculator $calculator)
+    {
+        $periodMonth = (string) ($run->period_month ?? '');
+        $cutoff = (string) ($run->cutoff ?? '');
+        if ($periodMonth === '' || $cutoff === '') {
+            return response()->json(['message' => 'Run is missing period_month/cutoff.'], 409);
+        }
+
+        [$start, $end] = $calculator->cutoffRangePublic($periodMonth, $cutoff);
+
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
+        $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
+
+        $runRows = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->with(['employee'])
+            ->get();
+
+        $employees = [];
+        foreach ($runRows as $r) {
+            $emp = $r->employee;
+            if (!$emp) continue;
+            if (strcasecmp((string) ($emp->assignment_type ?? ''), 'Field') !== 0) continue;
+
+            $name = trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''));
+            $basePay = (float) ($r->basic_pay_cutoff ?? 0) + (float) ($r->allowance_cutoff ?? 0);
+
+            $employees[(int) $emp->id] = [
+                'employee' => $emp,
+                'employee_id' => (int) $emp->id,
+                'emp_no' => (string) ($emp->emp_no ?? ''),
+                'name' => $name,
+                'base_pay' => $basePay,
+            ];
+        }
+
+        $empIds = array_keys($employees);
+        if (empty($empIds)) {
+            return response()->json([
+                'range' => [
+                    'from' => $start->toDateString(),
+                    'to' => $end->toDateString(),
+                    'work_mon_sat' => $workMonSat,
+                ],
+                'employees' => [],
+                'area_totals' => [],
+            ]);
+        }
+
+        $q = AttendanceRecord::query()
+            ->whereIn('employee_id', $empIds)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+        if ($workMonSat) {
+            $q->whereRaw("DAYOFWEEK(`date`) != 1");
+        } else {
+            $q->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
+        }
+
+        $records = $q
+            ->orderBy('employee_id')
+            ->orderBy('date')
+            ->get(['employee_id', 'date', 'status', 'area_place']);
+
+        $byEmp = $records->groupBy('employee_id');
+        $areaTotals = [];
+        $areaEmployees = [];
+
+        foreach ($employees as $empId => $meta) {
+            $emp = $meta['employee'];
+            $basePay = (float) ($meta['base_pay'] ?? 0);
+
+            $rows = $byEmp->get($empId, collect());
+            $items = [];
+            $totalUnits = 0.0;
+
+            foreach ($rows as $rec) {
+                $units = $this->paidUnitsForStatus((string) ($rec->status ?? ''));
+                if ($units <= 0) continue;
+
+                $date = $rec->date instanceof \DateTimeInterface
+                    ? $rec->date->format('Y-m-d')
+                    : Carbon::parse((string) $rec->date)->format('Y-m-d');
+
+                $area = trim((string) ($rec->area_place ?? ''));
+                if ($area === '') {
+                    $area = trim((string) ($emp->resolveAreaForDate($date) ?? ''));
+                }
+                if ($area === '') $area = '—';
+
+                $items[] = ['area_place' => $area, 'date' => $date, 'units' => $units];
+                $totalUnits += $units;
+            }
+
+            $areas = [];
+            foreach ($items as $it) {
+                $area = $it['area_place'];
+                if (!isset($areas[$area])) {
+                    $areas[$area] = ['area_place' => $area, 'paid_units' => 0.0, 'dates' => []];
+                }
+                $areas[$area]['paid_units'] += (float) $it['units'];
+                $areas[$area]['dates'][] = (string) $it['date'];
+            }
+
+            $dailyRate = ($totalUnits > 0 && $basePay > 0) ? ($basePay / $totalUnits) : 0.0;
+
+            $allocs = [];
+            foreach ($areas as $area => $a) {
+                $paidUnits = (float) ($a['paid_units'] ?? 0);
+                $amount = $dailyRate > 0 ? ($dailyRate * $paidUnits) : 0.0;
+
+                $allocs[] = [
+                    'area_place' => $area,
+                    'paid_units' => $paidUnits,
+                    'amount' => round($amount, 2),
+                    'date_ranges' => $this->compressDateRanges((array) ($a['dates'] ?? [])),
+                ];
+
+                if (!isset($areaTotals[$area])) {
+                    $areaTotals[$area] = ['area_place' => $area, 'amount' => 0.0, 'paid_units' => 0.0];
+                }
+                $areaTotals[$area]['amount'] += $amount;
+                $areaTotals[$area]['paid_units'] += $paidUnits;
+
+                if (!isset($areaEmployees[$area])) {
+                    $areaEmployees[$area] = [];
+                }
+                $areaEmployees[$area][] = [
+                    'employee_id' => (int) $meta['employee_id'],
+                    'emp_no' => (string) $meta['emp_no'],
+                    'name' => (string) $meta['name'],
+                    'daily_rate' => round($dailyRate, 2),
+                    'paid_units' => $paidUnits, // days (can be 0.5)
+                    'date_ranges' => $this->compressDateRanges((array) ($a['dates'] ?? [])),
+                    'allocated_amount' => round($amount, 2),
+                ];
+            }
+        }
+
+        $areaTotalsList = array_values(array_map(function ($a) {
+            $a['amount'] = round((float) ($a['amount'] ?? 0), 2);
+            $a['paid_units'] = (float) ($a['paid_units'] ?? 0);
+            return $a;
+        }, $areaTotals));
+        usort($areaTotalsList, fn ($a, $b) => strcmp((string) $a['area_place'], (string) $b['area_place']));
+
+        $areasList = [];
+        foreach ($areaEmployees as $area => $rows) {
+            usort($rows, fn ($a, $b) => strcmp((string) $a['name'], (string) $b['name']));
+            $tot = collect($areaTotalsList)->firstWhere('area_place', $area);
+            $areasList[] = [
+                'area_place' => (string) $area,
+                'rows' => $rows,
+                'total_paid_units' => (float) ($tot['paid_units'] ?? 0),
+                'total_allocated_amount' => (float) ($tot['amount'] ?? 0),
+            ];
+        }
+        usort($areasList, fn ($a, $b) => strcmp((string) $a['area_place'], (string) $b['area_place']));
+
+        return response()->json([
+            'range' => [
+                'from' => $start->toDateString(),
+                'to' => $end->toDateString(),
+                'work_mon_sat' => $workMonSat,
+            ],
+            'areas' => $areasList,
+            'area_totals' => $areaTotalsList,
+        ]);
     }
 
     public function saveOverride(Request $request, PayrollRun $run, PayrollCalculator $calculator)
@@ -767,6 +939,42 @@ class PayrollRunController extends Controller
                 PayslipAdjustment::query()->insert($adjRows);
             }
         });
+    }
+
+    private function paidUnitsForStatus(string $status): float
+    {
+        $s = trim($status);
+        if ($s === '') return 0.0;
+        if (in_array($s, ['Present', 'Late', 'Paid Leave', 'Holiday', 'Day Off'], true)) return 1.0;
+        if ($s === 'Half-day') return 0.5;
+        return 0.0;
+    }
+
+    private function compressDateRanges(array $dates): array
+    {
+        $dates = array_values(array_filter(array_map(fn ($d) => (string) $d, $dates), fn ($d) => $d !== ''));
+        sort($dates);
+        $dates = array_values(array_unique($dates));
+        if (empty($dates)) return [];
+
+        $ranges = [];
+        $start = $dates[0];
+        $prev = $dates[0];
+
+        for ($i = 1; $i < count($dates); $i++) {
+            $cur = $dates[$i];
+            $prevDate = Carbon::parse($prev);
+            $curDate = Carbon::parse($cur);
+            if ($prevDate->copy()->addDay()->toDateString() === $curDate->toDateString()) {
+                $prev = $cur;
+                continue;
+            }
+            $ranges[] = ($start === $prev) ? $start : ($start . ' to ' . $prev);
+            $start = $cur;
+            $prev = $cur;
+        }
+        $ranges[] = ($start === $prev) ? $start : ($start . ' to ' . $prev);
+        return $ranges;
     }
 
     private function uniquePayslipNo(string $base): string

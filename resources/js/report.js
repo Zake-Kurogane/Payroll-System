@@ -99,6 +99,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const remitTbody = $("remitTbody");
   const externalGrossTbody = $("externalGrossTbody");
   const externalPayslipsTbody = $("externalPayslipsTbody");
+  const fieldAreasTbody = $("fieldAreasTbody");
+  const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
   const overallTbody = $("overallTbody");
   const auditTbody = $("auditTbody");
@@ -114,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let sortKey = "empName";
   let sortDir = "asc"; // asc/desc
   let activeTab = "register";
+  let FIELD_AREA_ALLOC = null;
 
   // =========================================================
   // DEFAULTS
@@ -194,6 +197,7 @@ document.addEventListener("DOMContentLoaded", () => {
       otPay: Number(row.ot_pay || 0),
       attendanceDeduction: Number(row.attendance_deduction || 0),
       chargesDeduction: charges,
+      loanDeduction: loanDeduction,
       otherDeductions: charges + loanDeduction + cashAdvance,
       sssEe: Number(row.sss_ee || 0),
       philhealthEe: Number(row.philhealth_ee || 0),
@@ -613,34 +617,47 @@ document.addEventListener("DOMContentLoaded", () => {
     Array.from(groups.keys()).sort().forEach((external) => {
       const items = groups.get(external) || [];
       appendGroupHeader(externalPayslipsTbody, external, 6);
+      {
+        const tr = document.createElement("tr");
+        tr.className = "row-group-columns";
+        tr.innerHTML = `
+          <td>Name</td>
+          <td>Gross Pay</td>
+          <td>Employee Share</td>
+          <td>Employer Share</td>
+          <td>Loans</td>
+          <td>Net Pay</td>
+        `;
+        externalPayslipsTbody.appendChild(tr);
+      }
 
       let totalGross = 0;
-      let totalDed = 0;
-      let totalShort = 0;
-      let totalCharges = 0;
+      let totalEe = 0;
+      let totalEr = 0;
+      let totalLoans = 0;
       let totalNet = 0;
 
       items.forEach((r) => {
         const gross = Number(r.gross || 0);
-        const ded = Number(r.deductionsEe || 0);
-        const shortages = Number(r.attendanceDeduction || 0);
-        const charges = Number(r.chargesDeduction || 0);
+        const ee = Number(r.deductionsEe || 0);
+        const er = Number(r.employerShare || 0);
+        const loans = Number(r.loanDeduction || 0);
         const net = Number(r.netPay || 0);
 
         totalGross += gross;
-        totalDed += ded;
-        totalShort += shortages;
-        totalCharges += charges;
+        totalEe += ee;
+        totalEr += er;
+        totalLoans += loans;
         totalNet += net;
 
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${escapeHtml(r.empName)}</td>
-          <td class="num">${escapeHtml(peso(gross))}</td>
-          <td class="num">${escapeHtml(peso(ded))}</td>
-          <td class="num">${escapeHtml(peso(shortages))}</td>
-          <td class="num">${escapeHtml(peso(charges))}</td>
-          <td class="num"><strong>${escapeHtml(peso(net))}</strong></td>
+          <td>${escapeHtml(peso(gross))}</td>
+          <td>${escapeHtml(peso(ee))}</td>
+          <td>${escapeHtml(peso(er))}</td>
+          <td>${escapeHtml(peso(loans))}</td>
+          <td><strong>${escapeHtml(peso(net))}</strong></td>
         `;
         externalPayslipsTbody.appendChild(tr);
       });
@@ -649,11 +666,11 @@ document.addEventListener("DOMContentLoaded", () => {
       tr.className = "row-total";
       tr.innerHTML = `
         <td><strong>TOTAL</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalGross))}</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalDed))}</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalShort))}</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalCharges))}</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalNet))}</strong></td>
+        <td><strong>${escapeHtml(peso(totalGross))}</strong></td>
+        <td><strong>${escapeHtml(peso(totalEe))}</strong></td>
+        <td><strong>${escapeHtml(peso(totalEr))}</strong></td>
+        <td><strong>${escapeHtml(peso(totalLoans))}</strong></td>
+        <td><strong>${escapeHtml(peso(totalNet))}</strong></td>
       `;
       externalPayslipsTbody.appendChild(tr);
     });
@@ -726,6 +743,96 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num"><strong>${escapeHtml(peso(totalNet))}</strong></td>
       `;
       companyPayslipsTbody.appendChild(tr);
+    });
+  }
+
+  function renderFieldAreaAllocations(payload) {
+    if (!fieldAreasTbody || !fieldAreasTotalsTbody) return;
+
+    fieldAreasTbody.innerHTML = "";
+    fieldAreasTotalsTbody.innerHTML = "";
+
+    if (!selectedRunId) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">Select a payroll run to view allocations.</td>`;
+      fieldAreasTbody.appendChild(tr);
+      return;
+    }
+
+    if (!payload) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocationsâ€¦</td>`;
+      fieldAreasTbody.appendChild(tr);
+      return;
+    }
+
+    const areas = Array.isArray(payload?.areas) ? payload.areas : [];
+    if (!areas.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">No Field area allocations found for this run (or no paid attendance days).</td>`;
+      fieldAreasTbody.appendChild(tr);
+    } else {
+      areas.forEach((g) => {
+        appendGroupHeader(fieldAreasTbody, g.area_place || "â€”", 6);
+
+        const head = document.createElement("tr");
+        head.className = "row-group-columns";
+        head.innerHTML = `
+          <td>ID</td>
+          <td>Name</td>
+          <td>Daily Rate</td>
+          <td>No. of Days</td>
+          <td>Dates</td>
+          <td>Allocated Amount</td>
+        `;
+        fieldAreasTbody.appendChild(head);
+
+        const rows = Array.isArray(g.rows) ? g.rows : [];
+        rows.forEach((r) => {
+          const dates = Array.isArray(r.date_ranges) ? r.date_ranges.join(", ") : "";
+          const days = Number(r.paid_units || 0);
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${escapeHtml(r.emp_no || "â€”")}</td>
+            <td>${escapeHtml(r.name || "â€”")}</td>
+            <td>${escapeHtml(peso(r.daily_rate || 0))}</td>
+            <td>${escapeHtml(String(days))}</td>
+            <td>${escapeHtml(dates || "â€”")}</td>
+            <td><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
+          `;
+          fieldAreasTbody.appendChild(tr);
+        });
+
+        const tr = document.createElement("tr");
+        tr.className = "row-total";
+        tr.innerHTML = `
+          <td><strong>TOTAL</strong></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td><strong>${escapeHtml(peso(g.total_allocated_amount || 0))}</strong></td>
+        `;
+        fieldAreasTbody.appendChild(tr);
+      });
+    }
+
+    const totals = Array.isArray(payload?.area_totals) ? payload.area_totals : [];
+    if (!totals.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="3" class="muted small">No area totals.</td>`;
+      fieldAreasTotalsTbody.appendChild(tr);
+      return;
+    }
+
+    totals.forEach((t) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(t.area_place || "â€”")}</td>
+        <td class="num">${escapeHtml(String(Number(t.paid_units || 0)))}</td>
+        <td class="num"><strong>${escapeHtml(peso(t.amount || 0))}</strong></td>
+      `;
+      fieldAreasTotalsTbody.appendChild(tr);
     });
   }
 
@@ -803,6 +910,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRemittance(sorted);
     renderExternalGross(sorted);
     renderExternalPayslips(sorted);
+    renderFieldAreaAllocations(FIELD_AREA_ALLOC);
     renderCompanyPayslips(sorted);
     renderOverall(sorted);
     renderAudit();
@@ -821,7 +929,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["register", "breakdown", "remit", "externalGross", "externalPayslips", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["register", "breakdown", "remit", "externalGross", "externalPayslips", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -985,21 +1093,32 @@ document.addEventListener("DOMContentLoaded", () => {
     setRunUI(run);
 
     REGISTER = [];
+    FIELD_AREA_ALLOC = null;
     renderAll();
 
     if (!selectedRunId) return;
     setTopActionsEnabled(false);
-    apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/rows`)
+
+    const pRows = apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/rows`)
       .then((rows) => {
         REGISTER = Array.isArray(rows) ? rows.map(mapRow) : [];
       })
       .catch(() => {
         REGISTER = [];
-      })
-      .finally(() => {
-        setTopActionsEnabled(true);
-        renderAll();
       });
+
+    const pAlloc = apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/field-area-allocations`)
+      .then((payload) => {
+        FIELD_AREA_ALLOC = payload || { employees: [], area_totals: [] };
+      })
+      .catch(() => {
+        FIELD_AREA_ALLOC = { employees: [], area_totals: [] };
+      });
+
+    Promise.allSettled([pRows, pAlloc]).finally(() => {
+      setTopActionsEnabled(true);
+      renderAll();
+    });
   });
 
   // =========================================================
@@ -1066,7 +1185,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return String(a.empName || "").localeCompare(String(b.empName || ""));
         });
 
-      const headers = ["External", "Name", "Gross Pay", "Deductions", "Attendance Deduction", "Charges", "Net Pay"];
+      const headers = ["External", "Name", "Gross Pay", "Employee Share", "Employer Share", "Loans", "Net Pay"];
       const csv = [
         headers.join(","),
         ...list.map((r) =>
@@ -1075,8 +1194,8 @@ document.addEventListener("DOMContentLoaded", () => {
             r.empName,
             Number(r.gross || 0).toFixed(2),
             Number(r.deductionsEe || 0).toFixed(2),
-            Number(r.attendanceDeduction || 0).toFixed(2),
-            Number(r.chargesDeduction || 0).toFixed(2),
+            Number(r.employerShare || 0).toFixed(2),
+            Number(r.loanDeduction || 0).toFixed(2),
             Number(r.netPay || 0).toFixed(2),
           ].map(quote).join(",")
         ),

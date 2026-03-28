@@ -57,7 +57,7 @@ class PayslipClaimController extends Controller
         }
 
         $company = CompanySetup::query()->first();
-        $rows = $this->runEmployeesForClaimSheet($run);
+        $rows = $this->runEmployeesWithClaimStatus($run);
         $pages = $this->buildClaimSheetPages($rows, 25);
 
         $html = view('print.payslip_claim_sheet', [
@@ -127,6 +127,27 @@ class PayslipClaimController extends Controller
         }
         $filename = $proof->original_name ?: ('proof_' . $proof->id);
         return $disk->download($proof->storage_path, $filename);
+    }
+
+    public function toggleClaim(Request $request, PayrollRun $run, int $employeeId)
+    {
+        $claim = PayslipClaim::firstOrNew([
+            'payroll_run_id' => $run->id,
+            'employee_id'    => $employeeId,
+        ]);
+
+        if ($claim->claimed_at) {
+            $claim->claimed_at             = null;
+            $claim->claimed_by_user_id     = null;
+            $claim->payslip_claim_proof_id = null;
+            $claim->ink_ratio              = null;
+        } else {
+            $claim->claimed_at         = now();
+            $claim->claimed_by_user_id = Auth::id();
+        }
+        $claim->save();
+
+        return redirect()->route('payslip.claims', ['run_id' => $run->id]);
     }
 
     public function destroyProof(PayslipClaimProof $proof)
@@ -314,6 +335,7 @@ class PayslipClaimController extends Controller
             try {
                 $imgPath = Storage::disk('local')->path($proof->storage_path);
                 $scan = $scanner->scanImageFile($imgPath, $expectedRows);
+                $scanDebug = $scanner->getLastDebug();
                 $rowsScanned = min($expectedRows, count($scan));
                 for ($k = 0; $k < $rowsScanned; $k++) {
                     $inkSoft[] = (float) ($scan[$k]['ink_ratio'] ?? 0);
@@ -393,6 +415,7 @@ class PayslipClaimController extends Controller
                 'ink_strict_avg' => !empty($inkStrict) ? round(array_sum($inkStrict) / max(1, count($inkStrict)), 5) : null,
                 'ink_strict_max' => !empty($inkStrict) ? round(max($inkStrict), 5) : null,
                 'error' => $error,
+                'geo' => !empty($scanDebug) ? $scanDebug : null,
             ], fn ($v) => $v !== null && $v !== '');
             $proof->save();
         }

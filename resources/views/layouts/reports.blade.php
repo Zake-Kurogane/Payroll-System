@@ -159,6 +159,8 @@
                         Gross</button>
                     <button class="tabBtn" type="button" data-tab="externalPayslips" aria-selected="false">External
                         Payslips</button>
+                    <button class="tabBtn" type="button" data-tab="fieldAreas" aria-selected="false">Field
+                        Areas</button>
                     <button class="tabBtn" type="button" data-tab="companyPayslips" aria-selected="false">Company
                         Payslips</button>
                     <button class="tabBtn" type="button" data-tab="overall" aria-selected="false">Overall
@@ -284,17 +286,33 @@
 
                 <div class="tablewrap mt12">
                     <table class="table" aria-label="External payslips table">
+                        <tbody id="externalPayslipsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: Field Area Allocations -->
+            <div class="tabPane" id="tab-fieldAreas" hidden>
+                <div class="card__title big">Field Area Allocations</div>
+                <div class="muted small">Splits base pay (basic + allowance) by area place based on paid attendance dates within the selected run period.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="Field area allocations table">
+                        <tbody id="fieldAreasTbody"></tbody>
+                    </table>
+                </div>
+
+                <div class="card__title" style="margin-top:14px;">Area Totals</div>
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="Field area totals table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th class="num">Gross Pay</th>
-                                <th class="num">Deductions</th>
-                                <th class="num">Attendance Deduction</th>
-                                <th class="num">Charges</th>
-                                <th class="num">Net Pay</th>
+                                <th>Area Place</th>
+                                <th class="num">Paid Units</th>
+                                <th class="num">Allocated Amount</th>
                             </tr>
                         </thead>
-                        <tbody id="externalPayslipsTbody"></tbody>
+                        <tbody id="fieldAreasTotalsTbody"></tbody>
                     </table>
                 </div>
             </div>

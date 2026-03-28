@@ -636,14 +636,6 @@ class SettingsController extends Controller
                     'notes' => '',
                 ],
                 [
-                    'code' => 'UL',
-                    'description' => 'Unpaid Leave',
-                    'counts_as_present' => false,
-                    'counts_as_paid' => false,
-                    'affects_deductions' => true,
-                    'notes' => '',
-                ],
-                [
                     'code' => 'A',
                     'description' => 'Absent',
                     'counts_as_present' => false,
@@ -670,12 +662,33 @@ class SettingsController extends Controller
             ]);
         }
 
+        // Unpaid Leave is treated the same as Absent; keep the settings list clean.
+        AttendanceCode::query()
+            ->whereIn('code', ['UL', 'LWOP'])
+            ->orWhere('description', 'Unpaid Leave')
+            ->delete();
+
         $defaults = AttendanceCodeSetting::query()->first();
         if (!$defaults) {
             $defaults = AttendanceCodeSetting::create([
                 'default_no_log_code' => 'A',
                 'default_sunday_code' => 'OFF',
             ]);
+        } else {
+            $changed = false;
+            $noLog = strtoupper((string) ($defaults->default_no_log_code ?? ''));
+            $sun = strtoupper((string) ($defaults->default_sunday_code ?? ''));
+            if (in_array($noLog, ['UL', 'LWOP'], true)) {
+                $defaults->default_no_log_code = 'A';
+                $changed = true;
+            }
+            if (in_array($sun, ['UL', 'LWOP'], true)) {
+                $defaults->default_sunday_code = 'OFF';
+                $changed = true;
+            }
+            if ($changed) {
+                $defaults->save();
+            }
         }
 
         return response()->json([
@@ -698,7 +711,31 @@ class SettingsController extends Controller
             'defaults.default_sunday_code' => ['nullable', 'string', 'max:10'],
         ]);
 
-        DB::transaction(function () use ($validated) {
+        $codes = array_values(array_filter($validated['codes'], function ($c) {
+            $code = strtoupper((string) ($c['code'] ?? ''));
+            $desc = trim((string) ($c['description'] ?? ''));
+            if (in_array($code, ['UL', 'LWOP'], true)) return false;
+            if (strcasecmp($desc, 'Unpaid Leave') === 0) return false;
+            return true;
+        }));
+
+        if (count($codes) < 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'codes' => 'At least one attendance code is required.',
+            ]);
+        }
+
+        $defaults = $validated['defaults'] ?? [];
+        $noLog = strtoupper((string) ($defaults['default_no_log_code'] ?? ''));
+        $sun = strtoupper((string) ($defaults['default_sunday_code'] ?? ''));
+        if (in_array($noLog, ['UL', 'LWOP'], true)) {
+            $defaults['default_no_log_code'] = 'A';
+        }
+        if (in_array($sun, ['UL', 'LWOP'], true)) {
+            $defaults['default_sunday_code'] = 'OFF';
+        }
+
+        DB::transaction(function () use ($codes, $defaults) {
             AttendanceCode::query()->delete();
             $rows = array_map(function ($c) {
                 return [
@@ -709,10 +746,9 @@ class SettingsController extends Controller
                     'affects_deductions' => $c['affects_deductions'],
                     'notes' => $c['notes'] ?? null,
                 ];
-            }, $validated['codes']);
+            }, $codes);
             AttendanceCode::query()->insert($rows);
 
-            $defaults = $validated['defaults'] ?? [];
             $settings = AttendanceCodeSetting::query()->first();
             if (!$settings) {
                 AttendanceCodeSetting::create([

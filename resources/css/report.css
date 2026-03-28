@@ -625,6 +625,18 @@ tbody tr.row-group-header td {
 tbody tr.row-group-header:hover {
     background: var(--maroon);
 }
+tbody tr.row-group-columns td {
+    background: rgba(156, 29, 60, 0.06);
+    color: var(--muted);
+    font-weight: 1000;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+    padding: 10px 10px;
+    white-space: nowrap;
+}
+tbody tr.row-group-columns:hover {
+    background: rgba(156, 29, 60, 0.06);
+}
 tbody tr.row-total td {
     background: #f3f4f6;
     color: var(--text);

@@ -201,6 +201,10 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
       toast("Code + Description are required.", "error");
       return;
     }
+    if (code === "UL" || code === "LWOP" || desc.toLowerCase() === "unpaid leave") {
+      toast('Unpaid Leave is treated the same as Absent. Please use code "A" (Absent).', "error");
+      return;
+    }
 
     const exists = codes.some((x) => x.code === code);
     if (!editCodeKey && exists) {

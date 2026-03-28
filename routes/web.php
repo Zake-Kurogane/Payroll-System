@@ -42,6 +42,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/payslip-claims/{run}/proofs', [PayslipClaimController::class, 'uploadProof'])->name('payslip.claims.proofs.upload');
         Route::get('/payslip-claims/proofs/{proof}/download', [PayslipClaimController::class, 'downloadProof'])->name('payslip.claims.proofs.download');
         Route::delete('/payslip-claims/proofs/{proof}', [PayslipClaimController::class, 'destroyProof'])->name('payslip.claims.proofs.destroy');
+        Route::post('/payslip-claims/{run}/employees/{employeeId}/toggle', [PayslipClaimController::class, 'toggleClaim'])->name('payslip.claims.toggle');
 
         // Employee data endpoints used by pages
         Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
@@ -111,6 +112,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/payroll-runs/{run}/compute', [PayrollRunController::class, 'compute'])->name('payroll_runs.compute');
         Route::post('/payroll-runs/{run}/overrides', [PayrollRunController::class, 'saveOverride'])->name('payroll_runs.overrides');
         Route::get('/payroll-runs/{run}/rows', [PayrollRunController::class, 'rows'])->name('payroll_runs.rows');
+        Route::get('/payroll-runs/{run}/field-area-allocations', [PayrollRunController::class, 'fieldAreaAllocations'])->name('payroll_runs.field_area_allocations');
         Route::post('/payroll-runs/{run}/lock', [PayrollRunController::class, 'lock'])->name('payroll_runs.lock');
         Route::post('/payroll-runs/{run}/unlock', [PayrollRunController::class, 'unlock'])->name('payroll_runs.unlock');
         Route::post('/payroll-runs/{run}/release', [PayrollRunController::class, 'release'])->name('payroll_runs.release');

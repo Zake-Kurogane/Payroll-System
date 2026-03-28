@@ -87,11 +87,11 @@
         }
 
         .col-name {
-            width: 26%;
+            width: 25%;
         }
 
         .col-assign {
-            width: 18%;
+            width: 17%;
         }
 
         .col-area {
@@ -99,11 +99,30 @@
         }
 
         .col-sign {
-            width: 20%;
+            width: 14%;
+        }
+
+        .col-rec {
+            width: 8%;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 10px;
+            padding: 2px 2px;
         }
 
         tbody td {
             height: 10mm;
+        }
+
+        .receivedBox {
+            width: 8mm;
+            height: 8mm;
+            border: 1.4px solid #111;
+            margin: 0 auto;
+        }
+
+        .receivedBox--claimed {
+            background: #111;
         }
 
         .page-break {
@@ -160,6 +179,7 @@
                     <th class="col-assign">Assignment</th>
                     <th class="col-area">Area</th>
                     <th class="col-sign">Signature</th>
+                    <th class="col-rec">Received</th>
                 </tr>
             </thead>
             <tbody>
@@ -171,13 +191,17 @@
                         <td class="col-assign">{{ $r['assignment_type'] ?: '-' }}</td>
                         <td class="col-area">{{ $r['area_place'] ?: '-' }}</td>
                         <td class="col-sign">&nbsp;</td>
+                        <td class="col-rec">
+                            @php($claimed = !empty($r['claimed_at']))
+                            <div class="receivedBox {{ $claimed ? 'receivedBox--claimed' : '' }}"></div>
+                        </td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
 
         <div class="footer">
-            <div>Note: Employees must sign beside their name upon claiming their payslip.</div>
+            <div>Note: Employees must sign and shade the Received box upon claiming their payslip.</div>
             <div>Page {{ $pageIndex + 1 }} of {{ count($pages) }}</div>
         </div>
 

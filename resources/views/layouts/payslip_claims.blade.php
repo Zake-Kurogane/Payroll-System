@@ -152,7 +152,15 @@
                                             if (!empty($s['claimed_emp_nos_detected'])) $txt .= "Emp(claimed): " . implode(',', (array) $s['claimed_emp_nos_detected']) . " ";
                                             if (!empty($s['pages'])) $txt .= "Pages: {$s['pages']} ";
                                             if (!empty($s['rows_scanned'])) $txt .= "Rows: {$s['rows_scanned']} ";
-                                            if (!empty($s['ink_strict_max'])) $txt .= "Ink(max): {$s['ink_strict_max']} ";
+                                            if (!empty($s['ink_strict_max'])) $txt .= "Ink strict(max): {$s['ink_strict_max']} ";
+                                            if (!empty($s['ink_soft_max'])) $txt .= "Ink soft(max): {$s['ink_soft_max']} ";
+                                            if (!empty($s['geo'])) {
+                                                $g = $s['geo'];
+                                                $txt .= "geo[img:{$g['img_w']}x{$g['img_h']} tbl:{$g['table_left']}-{$g['table_right']}x{$g['table_top']}-{$g['table_bottom']} rec:{$g['rec_x1']}-{$g['rec_x2']} rowH:{$g['row_h']}] ";
+                                                if (!empty($g['row_ink_soft']))   $txt .= "ink_soft(rows):[{$g['row_ink_soft']}] ";
+                                                if (!empty($g['row_ink_strict'])) $txt .= "ink_strict(rows):[{$g['row_ink_strict']}] ";
+                                                if (!empty($g['row_bg_ink']))     $txt .= "bg_ink(rows):[{$g['row_bg_ink']}] ";
+                                            }
                                             if (!empty($s['slice_first_emp_no']) && !empty($s['slice_last_emp_no'])) $txt .= "Slice: {$s['slice_first_emp_no']}â€“{$s['slice_last_emp_no']} ";
                                         @endphp
                                         <span class="muted small">{{ trim($txt) ?: '—' }}</span>
@@ -183,7 +191,7 @@
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big">Employees (Claim Status)</div>
-                        <div class="muted small">Auto-claimed employees are detected from uploaded signature boxes.</div>
+                        <div class="muted small">Auto-claimed employees are detected from uploaded claim sheets (Received box / signature column).</div>
                     </div>
                 </div>
                 <div class="tablewrap">
@@ -194,6 +202,7 @@
                                 <th>Name</th>
                                 <th>Assignment</th>
                                 <th>Area</th>
+                                <th>Received</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
@@ -204,6 +213,20 @@
                                     <td>{{ $e['name'] }}</td>
                                     <td>{{ $e['assignment_type'] ?: '—' }}</td>
                                     <td>{{ $e['area_place'] ?: '—' }}</td>
+                                    <td style="text-align:center;">
+                                        <form method="POST"
+                                            action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
+                                            style="display:inline;">
+                                            @csrf
+                                            <button type="submit"
+                                                title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"
+                                                style="background:none;border:none;cursor:pointer;padding:0;">
+                                                <input type="checkbox" @checked($e['claimed_at'])
+                                                    style="cursor:pointer;width:16px;height:16px;pointer-events:none;"
+                                                    aria-label="Toggle claimed" />
+                                            </button>
+                                        </form>
+                                    </td>
                                     <td>
                                         @if ($e['claimed_at'])
                                             <span class="badge badge--success">Claimed</span>
@@ -214,7 +237,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="muted">No employees found for this run.</td>
+                                    <td colspan="6" class="muted">No employees found for this run.</td>
                                 </tr>
                             @endforelse
                         </tbody>
