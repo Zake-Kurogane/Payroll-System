@@ -92,6 +92,7 @@ Route::middleware('auth')->group(function () {
     // Admin-only
     Route::middleware('role:admin')->group(function () {
         Route::get('/index', [DashboardController::class, 'index'])->name('index');
+        Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
         // Employee CRUD
         Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
         Route::put('/employees/{emp_no}', [EmployeeController::class, 'update'])->name('employees.update');

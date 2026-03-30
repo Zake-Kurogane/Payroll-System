@@ -210,7 +210,6 @@
                                 <th class="sortable" data-sort="payslipStatus">Payslip Status <span class="sortIcon"
                                         aria-hidden="true"></span>
                                 </th>
-                                <th class="col-actions">Action</th>
                             </tr>
                         </thead>
                         <tbody id="regTbody"></tbody>

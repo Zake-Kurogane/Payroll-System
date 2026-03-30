@@ -384,6 +384,19 @@ h1 {
     border-color: rgba(156, 29, 60, 0.45);
     box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
 }
+
+#runSelect {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: none;
+    pointer-events: none;
+    cursor: default;
+}
+
+#runSelect::-ms-expand {
+    display: none;
+}
 .filterbar__row--bottom .f--grow {
     min-width: 420px;
 }
@@ -573,6 +586,10 @@ h1 {
     text-align: right;
 }
 
+#tab-register .num {
+    text-align: left;
+}
+
 /* Table */
 .tablewrap {
     border-radius: 16px;
@@ -589,6 +606,25 @@ h1 {
     border-spacing: 0;
     min-width: 1200px;
     background: #fff;
+}
+
+.table-scroll-float {
+    position: fixed;
+    bottom: 10px;
+    left: 8px;
+    z-index: 70;
+    display: none;
+    height: 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 6px 18px rgba(17, 24, 39, 0.12);
+}
+
+.table-scroll-float__inner {
+    height: 1px;
 }
 thead th {
     position: sticky;

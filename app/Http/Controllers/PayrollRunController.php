@@ -238,7 +238,7 @@ class PayrollRunController extends Controller
         return response()->json($payload);
     }
 
-    public function rows(PayrollRun $run)
+    public function rows(PayrollRun $run, PayrollCalculator $calculator)
     {
         $overrides = PayrollRunRowOverride::query()
             ->where('payroll_run_id', $run->id)
@@ -251,15 +251,37 @@ class PayrollRunController extends Controller
             ->get()
             ->groupBy('employee_id');
 
-        $rows = PayrollRunRow::query()
+        $rawRows = PayrollRunRow::query()
             ->where('payroll_run_id', $run->id)
             ->with(['employee'])
-            ->get()
-            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems) {
+            ->get();
+
+        $employeeIds = $rawRows->pluck('employee_id')->filter()->values()->all();
+        $attendanceAgg = collect();
+        if (!empty($employeeIds) && !empty($run->period_month) && !empty($run->cutoff)) {
+            [$start, $end] = $calculator->cutoffRangePublic((string) $run->period_month, (string) $run->cutoff);
+
+            $aggQuery = AttendanceRecord::query()
+                ->selectRaw("
+                    employee_id,
+                    SUM(CASE WHEN status IN ('Present','Late','Half-day') THEN 1 ELSE 0 END) as present_days,
+                    SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
+                    SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days
+                ")
+                ->whereIn('employee_id', $employeeIds)
+                ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+                ->groupBy('employee_id');
+
+            $attendanceAgg = $aggQuery->get()->keyBy('employee_id');
+        }
+
+        $rows = $rawRows
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                     : '';
+                $summary = $attendanceAgg->get($r->employee_id);
                 $ov = null;
                 $rowOverride = $overrides->get($r->employee_id);
                 if ($rowOverride) {
@@ -280,6 +302,10 @@ class PayrollRunController extends Controller
                     'assignment' => $emp?->assignment_type,
                     'area_place' => $emp?->area_place,
                     'external_area' => $emp?->external_area,
+                    'present_days' => (float) ($summary?->present_days ?? 0),
+                    'absent_days' => (float) ($summary?->absent_days ?? 0),
+                    'leave_days' => (float) ($summary?->leave_days ?? 0),
+                    'daily_rate' => round(((float) ($emp?->basic_pay ?? 0)) / 26, 2),
                     'basic_pay_cutoff' => (float) $r->basic_pay_cutoff,
                     'allowance_cutoff' => (float) $r->allowance_cutoff,
                     'ot_hours' => (float) $r->ot_hours,

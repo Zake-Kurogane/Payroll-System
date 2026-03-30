@@ -62,36 +62,36 @@
         <div class="kpis">
             <a class="kpi kpi--link" href="{{ route('employee.records') }}" aria-label="View employee records">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiEmployees">{{ number_format($totalEmployees ?? 0) }}</div>
+                    <div class="kpi__value" id="kpiEmployees">0</div>
                     <div class="kpi__label">TOTAL EMPLOYEE</div>
                 </div>
             </a>
 
-            <article class="kpi">
+            <a class="kpi kpi--link" id="kpiGrossLink" href="{{ route('report') }}" aria-label="Open reports for gross">
                 <div class="kpi__meta">
                     <div class="kpi__value" id="kpiGross">₱ 0</div>
                     <div class="kpi__label">GROSS</div>
                 </div>
-            </article>
+            </a>
 
-            <article class="kpi">
+            <a class="kpi kpi--link" id="kpiDedLink" href="{{ route('report') }}" aria-label="Open reports for deductions">
                 <div class="kpi__meta">
                     <div class="kpi__value" id="kpiDed">₱ 0</div>
                     <div class="kpi__label">DEDUCTIONS</div>
                 </div>
-            </article>
+            </a>
 
-            <article class="kpi">
+            <a class="kpi kpi--link" id="kpiNetLink" href="{{ route('report') }}" aria-label="Open reports for net pay">
                 <div class="kpi__meta">
                     <div class="kpi__value" id="kpiNet">₱ 0</div>
                     <div class="kpi__label">NET PAY</div>
                 </div>
-            </article>
+            </a>
 
-            <a class="kpi kpi--link" href="{{ $latestReleasedRunId ? route('payslip.claims', ['run_id' => $latestReleasedRunId]) : route('payslip.claims') }}"
+            <a class="kpi kpi--link" href="{{ $latestProcessedRunId ? route('payslip.claims', ['run_id' => $latestProcessedRunId]) : route('payslip.claims') }}"
                 aria-label="View payslip claims">
                 <div class="kpi__meta">
-                    <div class="kpi__value" id="kpiUnclaimed">{{ number_format($unclaimedPayslips ?? 0) }}</div>
+                    <div class="kpi__value" id="kpiUnclaimed">0</div>
                     <div class="kpi__label">UNCLAIMED PAYSLIP</div>
                 </div>
             </a>

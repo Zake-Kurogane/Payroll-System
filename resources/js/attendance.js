@@ -2455,8 +2455,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const statusLabel = String(r.status || "").toUpperCase();
       const showStatus = noTimeStatuses.has(r.status);
-      const timeInDisplay = showStatus ? statusLabel : (r.timeIn || "—");
-      const timeOutDisplay = showStatus ? "—" : (r.timeOut || "—");
+      const timeInDisplay = showStatus ? statusLabel : fmtTime(r.timeIn);
+      const timeOutDisplay = showStatus ? "—" : fmtTime(r.timeOut);
 
       const areaDisplay = r.assignType === "Field" ? (r.areaPlace || "—") : (r.assignType || "—");
 

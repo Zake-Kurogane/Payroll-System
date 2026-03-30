@@ -49,6 +49,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  const query = new URLSearchParams(window.location.search);
+  const initialMonthParam = query.get("month") || "";
+  const normalizeCutoffParam = (value) => {
+    const v = String(value || "").trim().toLowerCase();
+    if (v === "11-25") return "11-25";
+    if (v === "26-10") return "26-10";
+    return "All";
+  };
+  const initialCutoffParam = normalizeCutoffParam(query.get("cutoff"));
+  const initialAssignmentParam = (query.get("assignment") || "").trim();
+  const initialPlaceParam = (query.get("place") || "").trim();
+  const initialRunIdParam = (query.get("run_id") || "").trim();
+
   // =========================================================
   // DATA (loaded from backend)
   // =========================================================
@@ -107,6 +120,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const issuesTbody = $("issuesTbody");
 
   const resultsMeta = $("resultsMeta");
+  const registerPane = $("tab-register");
+  const registerTableWrap = registerPane?.querySelector(".tablewrap") || null;
+  const contentScroller = document.querySelector(".content");
 
   // =========================================================
   // STATE
@@ -117,15 +133,26 @@ document.addEventListener("DOMContentLoaded", () => {
   let sortDir = "asc"; // asc/desc
   let activeTab = "register";
   let FIELD_AREA_ALLOC = null;
+  let floatingRegisterScroll = null;
+  let floatingRegisterInner = null;
+  let syncingRegisterScroll = false;
+  let initialAssignmentApplied = false;
 
   // =========================================================
   // DEFAULTS
   // =========================================================
-  if (monthInput && !monthInput.value) {
-    const d = new Date();
-    monthInput.value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  if (monthInput) {
+    if (/^\d{4}-\d{2}$/.test(initialMonthParam)) {
+      monthInput.value = initialMonthParam;
+    } else if (!monthInput.value) {
+      const d = new Date();
+      monthInput.value = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+    }
   }
-  if (cutoffSelect && !cutoffSelect.value) cutoffSelect.value = "All";
+  if (cutoffSelect) {
+    cutoffSelect.value = initialCutoffParam || cutoffSelect.value || "All";
+    if (!cutoffSelect.value) cutoffSelect.value = "All";
+  }
   function closeAllDropdowns() {
     if (!assignmentSeg) return;
     assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
@@ -136,17 +163,112 @@ document.addEventListener("DOMContentLoaded", () => {
     openDropdownBtn = null;
   }
 
+  function initFloatingRegisterScrollbar() {
+    if (!registerTableWrap || floatingRegisterScroll) return;
+
+    const bar = document.createElement("div");
+    bar.className = "table-scroll-float";
+    bar.setAttribute("aria-hidden", "true");
+    const inner = document.createElement("div");
+    inner.className = "table-scroll-float__inner";
+    bar.appendChild(inner);
+    document.body.appendChild(bar);
+
+    floatingRegisterScroll = bar;
+    floatingRegisterInner = inner;
+
+    registerTableWrap.addEventListener("scroll", () => {
+      if (!floatingRegisterScroll || syncingRegisterScroll) return;
+      syncingRegisterScroll = true;
+      floatingRegisterScroll.scrollLeft = registerTableWrap.scrollLeft;
+      syncingRegisterScroll = false;
+    });
+
+    floatingRegisterScroll.addEventListener("scroll", () => {
+      if (!registerTableWrap || syncingRegisterScroll) return;
+      syncingRegisterScroll = true;
+      registerTableWrap.scrollLeft = floatingRegisterScroll.scrollLeft;
+      syncingRegisterScroll = false;
+    });
+  }
+
+  function refreshFloatingRegisterScrollbar() {
+    if (!registerTableWrap || !floatingRegisterScroll || !floatingRegisterInner) return;
+
+    const rect = registerTableWrap.getBoundingClientRect();
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const hasOverflow = registerTableWrap.scrollWidth > registerTableWrap.clientWidth + 1;
+    const isVisible = rect.top < viewportH && rect.bottom > 0;
+    const nativeScrollbarVisible = rect.bottom <= (viewportH - 4);
+    const shouldShow = activeTab === "register" && hasOverflow && isVisible && !nativeScrollbarVisible;
+
+    if (!shouldShow) {
+      floatingRegisterScroll.style.display = "none";
+      return;
+    }
+
+    floatingRegisterScroll.style.display = "block";
+    floatingRegisterScroll.style.left = `${Math.max(8, rect.left)}px`;
+    floatingRegisterScroll.style.width = `${Math.max(120, rect.width)}px`;
+    floatingRegisterInner.style.width = `${registerTableWrap.scrollWidth}px`;
+    floatingRegisterScroll.scrollLeft = registerTableWrap.scrollLeft;
+  }
+
   // =========================================================
   // RUN SELECT INIT
   // =========================================================
-  function initRunSelect() {
+  function pickDefaultRunId(runs) {
+    if (!runs.length) return "";
+    // Prefer newest (highest numeric id) if ids are numeric-like.
+    const sorted = runs
+      .slice()
+      .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+    return sorted[0]?.id || "";
+  }
+
+  function syncRunSelectInteractivity() {
     if (!runSelect) return;
+    runSelect.disabled = true;
+  }
+
+  function initRunSelect({ autoPick = false } = {}) {
+    if (!runSelect) return;
+    syncRunSelectInteractivity();
+
+    const list = RUNS.filter(runMatchesFilters);
     runSelect.innerHTML =
       `<option value="">— Select a payroll run —</option>` +
-      RUNS.filter(runMatchesFilters).map((r) => {
-        const label = `${r.month} (${r.cutoffLabel}) • ${r.displayLabel} • ${r.status} • ${r.employees} employees`;
-        return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
-      }).join("");
+      list
+        .map((r) => {
+          const label = `${r.runCode} • ${r.month} (${r.cutoffLabel}) • ${r.displayLabel} • ${r.status} • ${r.employees} employees`;
+          return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
+        })
+        .join("");
+
+    const stillExists = !!(selectedRunId && list.some((r) => r.id === selectedRunId));
+    if (stillExists) {
+      runSelect.value = selectedRunId;
+      return;
+    }
+
+    const cutoffVal = cutoffSelect?.value || "All";
+    const shouldAutoPick = autoPick && cutoffVal !== "All";
+    const nextId = shouldAutoPick ? pickDefaultRunId(list) : "";
+
+    if (nextId) {
+      // Trigger the normal run loading pipeline.
+      runSelect.value = nextId;
+      runSelect.dispatchEvent(new Event("change"));
+      return;
+    }
+
+    // No valid selection under current filters; clear UI + actions.
+    selectedRunId = "";
+    runSelect.value = "";
+    setRunUI(null);
+    REGISTER = [];
+    FIELD_AREA_ALLOC = null;
+    setTopActionsEnabled(false);
   }
 
   function mapRun(run) {
@@ -156,6 +278,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return {
       id: String(run.id),
+      runCode: run.run_code || String(run.id),
       month: run.period_month,
       cutoff: run.cutoff,
       cutoffLabel: run.cutoff || "—",
@@ -222,6 +345,12 @@ document.addEventListener("DOMContentLoaded", () => {
       RUNS = [];
     }
     initRunSelect();
+    if (initialRunIdParam && runSelect && RUNS.some((r) => r.id === initialRunIdParam)) {
+      runSelect.value = initialRunIdParam;
+      runSelect.dispatchEvent(new Event("change"));
+    } else if ((cutoffSelect?.value || "All") !== "All") {
+      initRunSelect({ autoPick: true });
+    }
     renderAudit();
   }
 
@@ -358,7 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (runMeta) runMeta.textContent = `${run.month} (${run.cutoff}) • Assignment: ${run.assignment}`;
+    if (runMeta) runMeta.textContent = `${run.runCode} • ${run.month} (${run.cutoff}) • Assignment: ${run.assignment}`;
     if (runBadge) runBadge.textContent = run.status;
     if (runEmployees) runEmployees.textContent = String(run.employees);
     if (runTotalNet) runTotalNet.textContent = peso(run.totalNet);
@@ -366,7 +495,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (runProcessedBy) runProcessedBy.textContent = run.processedBy;
 
     if (reportTitle) {
-      reportTitle.textContent = `Payroll Reports — ${run.month} (${run.cutoff}) — ${run.assignment}`;
+      reportTitle.textContent = `Payroll Reports — ${run.runCode} — ${run.month} (${run.cutoff}) — ${run.assignment}`;
     }
     setTopActionsEnabled(true);
   }
@@ -410,20 +539,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num">${escapeHtml(peso(r.gross))}</td>
         <td class="num"><strong>${escapeHtml(peso(r.netPay))}</strong></td>
         <td>${escapeHtml(r.payslipStatus || "—")}</td>
-        <td class="col-actions">
-          <div class="iconrow">
-            <button class="iconbtn" type="button" data-action="viewPayslip" data-emp="${escapeHtml(r.empId)}" title="View Payslip">👁</button>
-            <button class="iconbtn" type="button" data-action="printPayslip" data-emp="${escapeHtml(r.empId)}" title="Print Payslip">🖨</button>
-            <button class="iconbtn" type="button" data-action="downloadPayslip" data-emp="${escapeHtml(r.empId)}" title="Download Payslip">⬇</button>
-          </div>
-        </td>
       `;
       regTbody.appendChild(tr);
     });
 
     if (!rows.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="15" class="muted small">No rows found.</td>`;
+      tr.innerHTML = `<td colspan="14" class="muted small">No rows found.</td>`;
       regTbody.appendChild(tr);
     }
 
@@ -915,6 +1037,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderOverall(sorted);
     renderAudit();
     renderIssues(sorted);
+    refreshFloatingRegisterScrollbar();
   }
 
   // =========================================================
@@ -934,6 +1057,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!pane) return;
       pane.hidden = k !== tab;
     });
+
+    refreshFloatingRegisterScrollbar();
   }
 
   tabBtns.forEach((b) => {
@@ -945,7 +1070,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   [monthInput, cutoffSelect, deptSelect, statusSelect].forEach((el) => {
     el && el.addEventListener("change", () => {
-      initRunSelect();
+      initRunSelect({ autoPick: true });
       renderAll();
     });
   });
@@ -997,6 +1122,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     segBtns = Array.from(assignmentSeg.querySelectorAll(".seg__btn--emp"));
     bindAssignmentButtons();
+    applyInitialAssignmentFromQuery();
+  }
+
+  function applyInitialAssignmentFromQuery() {
+    if (initialAssignmentApplied) return;
+    if (!assignmentSeg || !segBtns.length) return;
+    if (!initialAssignmentParam && !initialPlaceParam) {
+      initialAssignmentApplied = true;
+      return;
+    }
+
+    const desiredAssign = initialAssignmentParam || "All";
+    const btn = segBtns.find((b) => (b.dataset.assign || "All") === desiredAssign);
+    if (!btn) {
+      initialAssignmentApplied = true;
+      return;
+    }
+
+    btn.click();
+
+    if (initialPlaceParam && desiredAssign !== "All") {
+      const item = Array.from(assignmentSeg.querySelectorAll(".seg__dropdown-item"))
+        .find((el) => {
+          const place = el.getAttribute("data-place") || "";
+          const group = el.closest(".seg__dropdown")?.getAttribute("data-group") || "";
+          return place === initialPlaceParam && group === desiredAssign;
+        });
+      item && item.click();
+    }
+
+    initialAssignmentApplied = true;
   }
 
   function bindAssignmentButtons() {
@@ -1096,7 +1252,10 @@ document.addEventListener("DOMContentLoaded", () => {
     FIELD_AREA_ALLOC = null;
     renderAll();
 
-    if (!selectedRunId) return;
+    if (!selectedRunId) {
+      setTopActionsEnabled(false);
+      return;
+    }
     setTopActionsEnabled(false);
 
     const pRows = apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/rows`)
@@ -1396,22 +1555,6 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("View Payroll Run: link this button to Payroll Processing run page later.");
     });
 
-  // =========================================================
-  // Table row actions (demo)
-  // =========================================================
-  regTbody &&
-    regTbody.addEventListener("click", (e) => {
-      const btn = e.target.closest("button[data-action]");
-      if (!btn) return;
-      const action = btn.dataset.action;
-      const emp = btn.dataset.emp;
-      if (!emp) return;
-
-      if (action === "viewPayslip") alert(`View payslip for ${emp} (demo)`);
-      if (action === "printPayslip") alert(`Print payslip for ${emp} (demo)`);
-      if (action === "downloadPayslip") alert(`Download payslip for ${emp} (demo)`);
-    });
-
   function loadFilterOptions() {
     return apiFetch("/employees/filters")
       .then((data) => {
@@ -1430,6 +1573,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // First render (no run selected)
   // =========================================================
+  initFloatingRegisterScrollbar();
+  window.addEventListener("resize", refreshFloatingRegisterScrollbar);
+  window.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
+  contentScroller && contentScroller.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
   setRunUI(null);
   setActiveTab("register");
   loadFilterOptions()

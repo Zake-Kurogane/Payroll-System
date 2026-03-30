@@ -54,6 +54,8 @@ class AttendanceController extends Controller
     ];
 
     private const TEMPLATE_CODES = ['P', 'L', 'A', 'UL', 'RNR', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
+    private const NO_TIME_STATUSES = ['Absent', 'Leave', 'Unpaid Leave', 'Paid Leave', 'Day Off', 'Holiday', 'LOA', 'RNR'];
+    private const TIME_TRACKED_STATUSES = ['Present', 'Late', 'Half-day'];
 
     public function resolveArea(Request $request)
     {
@@ -311,7 +313,7 @@ class AttendanceController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $this->validateRecord($request);
+        $validated = $this->normalizeComputedFields($this->validateRecord($request));
         if (($validated['status'] ?? '') === 'Paid Leave') {
             $this->checkPLBalance($validated['employee_id'], $validated['date']);
         }
@@ -328,7 +330,7 @@ class AttendanceController extends Controller
     {
         $prevEmployeeId = (int) $record->employee_id;
         $prevDate = $record->date?->format('Y-m-d') ?? (string) $record->date;
-        $validated = $this->validateRecord($request);
+        $validated = $this->normalizeComputedFields($this->validateRecord($request));
         if (($validated['status'] ?? '') === 'Paid Leave') {
             $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id);
         }
@@ -387,7 +389,7 @@ class AttendanceController extends Controller
         $spreadsheet->removeSheetByIndex(0);
 
         $statusListFormula = '"' . implode(',', self::TEMPLATE_CODES) . '"';
-        $noTimeFormula = 'OR($K{row}="A",$K{row}="UL",$K{row}="PL",$K{row}="OFF",$K{row}="HOL",$K{row}="LOA")';
+        $noTimeFormula = 'OR($K{row}="A",$K{row}="UL",$K{row}="PL",$K{row}="OFF",$K{row}="HOL",$K{row}="LOA",$K{row}="RNR")';
         $timeRequiredFormula = 'OR($K{row}="P",$K{row}="L",$K{row}="HD")';
 
         $sheet = $spreadsheet->createSheet();
@@ -636,19 +638,24 @@ class AttendanceController extends Controller
                 $under = $this->parseNumberCell($underCell, $errors, "{$sheetName} row {$r}: minutes_undertime must be a number.");
                 $ot = $this->parseNumberCell($otCell, $errors, "{$sheetName} row {$r}: ot_hours must be a number.");
 
-                // If OT was manually typed and looks unrealistic vs the clock_out-derived OT, prefer the derived OT.
-                // This prevents common template mistakes (users entering total hours worked into the OT column).
+                $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut);
                 $otFromClockOut = $this->computeOtHoursFromClockOut($clockOut);
-                if ($ot === null) {
+
+                // Normalize undertime and OT from clock_out when available so values are always consistent.
+                if ($underFromClockOut !== null) {
+                    $under = $underFromClockOut;
+                } elseif ($under === null) {
+                    $under = 0;
+                }
+
+                if ($otFromClockOut !== null) {
                     $ot = $otFromClockOut;
-                } elseif ($clockOut !== '' && $otFromClockOut !== null && $ot > ($otFromClockOut + 2.0)) {
-                    $ot = $otFromClockOut;
+                } elseif ($ot === null) {
+                    $ot = 0;
                 }
 
                 if ($status) {
-                    $noTime = ['Absent', 'Leave', 'Unpaid Leave', 'Paid Leave', 'Day Off', 'LOA', 'Holiday'];
-
-                    if (in_array($status, $noTime, true)) {
+                    if (in_array($status, self::NO_TIME_STATUSES, true)) {
                         if ($clockIn !== '' || $clockOut !== '') {
                             $errors[] = "{$sheetName} row {$r}: clock_in/out must be empty for {$status}.";
                         }
@@ -659,7 +666,7 @@ class AttendanceController extends Controller
                     // Clock times are optional for Present, Late, Half-day, etc.
                 }
 
-                if (in_array($status, ['Late', 'Present'], true)) {
+                if (in_array($status, self::TIME_TRACKED_STATUSES, true)) {
                     $computedLate = $this->computeLateMinutes($clockIn);
                     if ($computedLate !== null) {
                         $late = $computedLate;
@@ -777,6 +784,28 @@ class AttendanceController extends Controller
             'minutes_undertime' => ['nullable', 'integer', 'min:0'],
             'ot_hours' => ['nullable', 'numeric', 'min:0'],
         ]);
+    }
+
+    private function normalizeComputedFields(array $record): array
+    {
+        $status = (string) ($record['status'] ?? '');
+        $clockIn = (string) ($record['clock_in'] ?? '');
+        $clockOut = (string) ($record['clock_out'] ?? '');
+
+        if (in_array($status, self::NO_TIME_STATUSES, true)) {
+            $record['clock_in'] = null;
+            $record['clock_out'] = null;
+            $record['minutes_late'] = 0;
+            $record['minutes_undertime'] = 0;
+            $record['ot_hours'] = 0;
+            return $record;
+        }
+
+        $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn) ?? 0);
+        $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut) ?? 0);
+        $record['ot_hours'] = (float) ($this->computeOtHoursFromClockOut($clockOut) ?? 0);
+
+        return $record;
     }
 
     private function cutoffRange(string $month, string $cutoff): array
@@ -911,9 +940,17 @@ class AttendanceController extends Controller
         if ($formatted === '') {
             return '';
         }
-        if (preg_match('/^(\d{1,2}):(\d{2})$/', $formatted, $m)) {
-            $hh = str_pad($m[1], 2, '0', STR_PAD_LEFT);
-            return "{$hh}:{$m[2]}";
+        if (preg_match('/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i', $formatted, $m)) {
+            $hh = (int) $m[1];
+            $mm = str_pad((string) ((int) $m[2]), 2, '0', STR_PAD_LEFT);
+            $meridiem = strtoupper((string) ($m[3] ?? ''));
+            if ($meridiem === 'AM' && $hh === 12) {
+                $hh = 0;
+            } elseif ($meridiem === 'PM' && $hh < 12) {
+                $hh += 12;
+            }
+            $hh = max(0, min(23, $hh));
+            return str_pad((string) $hh, 2, '0', STR_PAD_LEFT) . ":{$mm}";
         }
         return '';
     }
@@ -942,6 +979,22 @@ class AttendanceController extends Controller
             return 0.0;
         }
         return round(($minutesOut - $endOfWork) / 60, 2);
+    }
+
+    private function computeUndertimeMinutesFromClockOut(string $clockOut): ?int
+    {
+        if ($clockOut === '') {
+            return null;
+        }
+        $minutesOut = $this->parseTimeToMinutes($clockOut);
+        if ($minutesOut === null) {
+            return null;
+        }
+        $endOfWork = 17 * 60; // 17:00
+        if ($minutesOut >= $endOfWork) {
+            return 0;
+        }
+        return max(0, $endOfWork - $minutesOut);
     }
 
     private function parseTimeToMinutes(string $value): ?int
