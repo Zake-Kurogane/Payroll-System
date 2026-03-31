@@ -71,9 +71,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const adjustments = Array.isArray(p.adjustments) ? p.adjustments : [];
     const earnAdj = adjustments.filter(a => a.type === "earning");
     const dedAdj = adjustments.filter(a => a.type === "deduction");
-    const otHours = Number(p.ot_hours || 0);
-    const otPay = Number(p.ot_pay || 0);
-    const otRate = otHours > 0 ? (otPay / otHours) : 0;
     return {
       id: String(p.id),
       runId: String(p.payroll_run_id || ""),
@@ -107,9 +104,6 @@ document.addEventListener("DOMContentLoaded", () => {
       absentDays: Number(p.absent_days || 0),
       minutesLate: Number(p.minutes_late || 0),
       minutesUndertime: Number(p.minutes_undertime || 0),
-      otHours,
-      otRate,
-      otPay,
       earningsAdjustments: earnAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
       deductionAdjustments: dedAdj.map(a => ({ name: a.name, amount: Number(a.amount || 0) })),
       attendanceDeductionTotal: Number(p.attendance_deduction || 0),
@@ -942,10 +936,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setMoney("psBasicPay", p.basicPay);
     setMoney("psAllowancePay", p.allowancePay);
 
-    set("psOtHours", Number(p.otHours || 0).toFixed(2));
-    setMoney("psOtRate", p.otRate);
-    setMoney("psOtPay", p.otPay);
-
     // - adjustments (earnings + deductions)
     const earnAdj = Array.isArray(p.earningsAdjustments) ? p.earningsAdjustments : [];
     const dedAdj = Array.isArray(p.deductionAdjustments) ? p.deductionAdjustments : [];
@@ -990,7 +980,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const totalEarnAdj = sumAmounts(earnAdj);
     const totalDedAdj = sumAmounts(dedAdj);
 
-    const baseGross = Number(p.basicPay || 0) + Number(p.allowancePay || 0) + Number(p.otPay || 0) + totalEarnAdj;
+    const baseGross = Number(p.basicPay || 0) + Number(p.allowancePay || 0) + totalEarnAdj;
     const baseDed = attendanceDed + statutoryEeTotal + loanDed + cashAdv + chargesDed + otherDed + totalDedAdj;
     const computedNet = baseGross - baseDed;
 

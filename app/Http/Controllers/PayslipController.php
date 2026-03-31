@@ -193,8 +193,6 @@ class PayslipController extends Controller
             'Paid Days',
             'Basic Pay (cutoff)',
             'Allowance (cutoff)',
-            'OT Hours',
-            'OT Pay',
             'Attendance Deduction',
             'SSS (EE)',
             'PhilHealth (EE)',
@@ -224,8 +222,6 @@ class PayslipController extends Controller
                 $p['paid_days'],
                 $p['basic_pay_cutoff'],
                 $p['allowance_cutoff'],
-                $p['ot_hours'],
-                $p['ot_pay'],
                 $p['attendance_deduction'],
                 $p['sss_ee'],
                 $p['philhealth_ee'],
@@ -689,7 +685,6 @@ class PayslipController extends Controller
             'Late',
             'Paid Leave',
             'Holiday',
-            'Day Off',
         ];
         if (in_array($status, $paid, true)) return 1.0;
         if ($status === 'Half-day') return 0.5;

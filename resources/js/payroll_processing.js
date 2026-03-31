@@ -127,14 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const adjStatus = document.getElementById("adjStatus");
   const adjEmpKey = document.getElementById("adjEmpKey");
 
-  const adjComputedOt = document.getElementById("adjComputedOt");
-  const adjOverrideToggle = document.getElementById("adjOverrideToggle");
-  const adjOtHours = document.getElementById("adjOtHours");
-  const adjOtAmountPreview = document.getElementById("adjOtAmountPreview");
   const adjCashAdvance = document.getElementById("adjCashAdvance");
 
   const sumBase = document.getElementById("sumBase");
-  const sumOt = document.getElementById("sumOt");
   const sumOtherEarn = document.getElementById("sumOtherEarn");
   const sumOtherDed = document.getElementById("sumOtherDed");
   const sumNetPreview = document.getElementById("sumNetPreview");
@@ -317,12 +312,12 @@ document.addEventListener("DOMContentLoaded", () => {
       assign: r.assignment || "",
       areaPlace: r.area_place || "",
       dailyRate: Number(r.daily_rate || 0),
-      otHours: Number(r.ot_hours || 0),
-      otHoursComputed: Number(r.ot_hours_computed || r.ot_hours || 0),
-      otOverrideOn: !!(r.ot_override_on ?? ov.ot_override_on),
-      otOverrideHours: (r.ot_override_hours ?? ov.ot_override_hours) ?? null,
-      otPay: Number(r.ot_pay || 0),
       attendanceDeduction: Number(r.attendance_deduction || 0),
+      lateMinutes: Number(r.late_minutes || 0),
+      undertimeMinutes: Number(r.undertime_minutes || 0),
+      lateDeduction: Number(r.late_deduction || 0),
+      undertimeDeduction: Number(r.undertime_deduction || 0),
+      absentDeduction: Number(r.absent_deduction || 0),
       sss: Number(r.sss_ee || 0),
       ph: Number(r.philhealth_ee || 0),
       pagibig: Number(r.pagibig_ee || 0),
@@ -370,7 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let previewRows = [];
   // overrides per employee for this run (sticky even after recompute)
   // shape:
-  // { empId: { otHours, otOverrideOn, otOverrideHours, adjustments:[{type,name,amount}], cashAdvance } }
+  // { empId: { adjustments:[{type,name,amount}], cashAdvance } }
   let overrides = {};
 
   // drawer local state
@@ -556,7 +551,6 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows.forEach(r => {
       overrides[r.empId] = {
         otOverrideOn: !!r.otOverrideOn,
-        otOverrideHours: r.otOverrideHours ?? r.otHours ?? 0,
         cashAdvance: r.cashAdvance ?? 0,
         adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
       };
@@ -749,14 +743,14 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${attText}</td>
         <td class="num">${money(r.dailyRate)}</td>
 
-        <td class="num">${Number(r.otHours || 0).toFixed(2)}</td>
-        <td class="num">${money(r.otPay)}</td>
-
         <td class="num">
           <details class="dd">
             <summary>Total: ${money(r.attendanceDeduction)}</summary>
             <div class="dd__body">
-              <div>Total: ${money(r.attendanceDeduction)}</div>
+              <div>Late: ${money(r.lateDeduction || 0)} <span class="muted">(${Number(r.lateMinutes || 0)} min)</span></div>
+              <div>Undertime: ${money(r.undertimeDeduction || 0)} <span class="muted">(${Number(r.undertimeMinutes || 0)} min)</span></div>
+              ${(Number(r.absentDeduction || 0) > 0) ? `<div>Absent: ${money(r.absentDeduction || 0)}</div>` : ""}
+              <div><strong>Total: ${money(r.attendanceDeduction)}</strong></div>
             </div>
           </details>
         </td>
@@ -967,25 +961,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (adjStatus) adjStatus.textContent = isLocked() ? "Locked" : "Draft";
     if (adjEmpKey) adjEmpKey.value = row.empId;
 
-    // computed OT from backend (before overrides)
-    if (adjComputedOt) adjComputedOt.value = Number(row.otHoursComputed || 0);
-
     // load overrides into drawer
     const ov = overrides[empId] || {
-      otOverrideOn: !!row.otOverrideOn,
-      otOverrideHours: row.otOverrideHours ?? row.otHours ?? 0,
       cashAdvance: row.cashAdvance ?? 0,
       adjustments: Array.isArray(row.adjustments) ? row.adjustments : [],
     };
-    const overrideOn = !!ov.otOverrideOn;
-    const overrideHours = Number(ov.otOverrideHours ?? row.otHours ?? 0);
-
-    if (adjOverrideToggle) adjOverrideToggle.checked = overrideOn;
-
-    if (adjOtHours) {
-      adjOtHours.disabled = !overrideOn || isLocked();
-      adjOtHours.value = overrideHours;
-    }
 
     // adjustments list
     adjustmentRows = Array.isArray(ov.adjustments) ? ov.adjustments.map(a => ({ ...a })) : [];
@@ -999,8 +979,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // disable add/apply when locked
     if (applyAdjBtn) applyAdjBtn.disabled = isLocked();
-    if (adjOverrideToggle) adjOverrideToggle.disabled = isLocked();
-
     updateDrawerSummary();
     openDrawer();
   }
@@ -1009,15 +987,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const empId = adjEmpKey?.value || "";
     const row = previewRows.find(r => r.empId === empId);
     if (!row) return;
-
-    const otRate = Number(row.otHours || 0) > 0 ? (Number(row.otPay || 0) / Number(row.otHours || 0)) : 0;
-    const overrideOn = !!adjOverrideToggle?.checked;
-
-    const typedOverrideHours = Number(adjOtHours?.value || 0);
-    const finalOtHours = overrideOn ? typedOverrideHours : Number(row.otHoursComputed || row.otHours || 0);
-    const finalOtAmount = finalOtHours * otRate;
-
-    if (adjOtAmountPreview) adjOtAmountPreview.value = money(finalOtAmount);
 
     const earn = adjustmentRows
       .filter(a => a.type === "earning")
@@ -1029,7 +998,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const cash = Number(adjCashAdvance?.value || 0);
 
-    const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + finalOtAmount + earn;
+    const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + earn;
       const dedPreview = Number(row.attendanceDeduction || 0)
         + ded
         + cash
@@ -1042,7 +1011,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const netPreview = grossPreview - dedPreview;
 
     if (sumBase) sumBase.textContent = money(Number(row.halfBasic || 0) + Number(row.halfAllowance || 0));
-    if (sumOt) sumOt.textContent = money(finalOtAmount);
     if (sumOtherEarn) sumOtherEarn.textContent = money(earn);
       if (sumOtherDed) sumOtherDed.textContent = money(ded + cash + Number(row.chargesDeduction || 0) + Number(row.loanDeduction || 0));
     if (sumNetPreview) sumNetPreview.textContent = money(netPreview);
@@ -1056,8 +1024,6 @@ document.addEventListener("DOMContentLoaded", () => {
       method: "POST",
       body: JSON.stringify({
         employee_id: row.employeeId,
-        ot_override_on: !!payload.otOverrideOn,
-        ot_override_hours: payload.otOverrideOn ? Number(payload.otOverrideHours || 0) : null,
         cash_advance: payload.cashAdvance != null ? Number(payload.cashAdvance || 0) : null,
         adjustments: Array.isArray(payload.adjustments) ? payload.adjustments : [],
       }),
@@ -1067,8 +1033,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const idx = previewRows.findIndex(r => r.empId === empId);
     if (idx >= 0) previewRows[idx] = mapped;
     overrides[empId] = {
-      otOverrideOn: !!mapped.otOverrideOn,
-      otOverrideHours: mapped.otOverrideHours ?? mapped.otHours ?? 0,
       cashAdvance: mapped.cashAdvance ?? 0,
       adjustments: Array.isArray(mapped.adjustments) ? mapped.adjustments : [],
     };
@@ -1083,15 +1047,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const row = previewRows.find(r => r.empId === empId);
     if (!row) return;
 
-    const overrideOn = !!adjOverrideToggle?.checked;
-    const overrideHours = Number(adjOtHours?.value || 0);
-
     const cash = Number(adjCashAdvance?.value || 0);
 
     overrides[empId] = {
       ...(overrides[empId] || {}),
-      otOverrideOn: overrideOn,
-      otOverrideHours: overrideHours,
       adjustments: adjustmentRows.map(a => ({
         type: a.type,
         name: (a.name || "").trim(),
@@ -1102,8 +1061,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       await saveOverride(empId, {
-        otOverrideOn: overrideOn,
-        otOverrideHours: overrideHours,
         cashAdvance: cash,
         adjustments: overrides[empId]?.adjustments || [],
       });
@@ -1121,14 +1078,6 @@ document.addEventListener("DOMContentLoaded", () => {
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
   applyAdjBtn && applyAdjBtn.addEventListener("click", applyAdjust);
 
-  // override toggle handling (THIS is what enables typing)
-  adjOverrideToggle && adjOverrideToggle.addEventListener("change", e => {
-    const enabled = !!e.target.checked;
-    if (adjOtHours) adjOtHours.disabled = !enabled || isLocked();
-    updateDrawerSummary();
-  });
-
-  adjOtHours && adjOtHours.addEventListener("input", updateDrawerSummary);
   adjCashAdvance && adjCashAdvance.addEventListener("input", updateDrawerSummary);
 
   // =========================================================
@@ -1426,7 +1375,6 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows.forEach(r => {
       overrides[r.empId] = {
         otOverrideOn: !!r.otOverrideOn,
-        otOverrideHours: r.otOverrideHours ?? r.otHours ?? 0,
         cashAdvance: r.cashAdvance ?? 0,
         adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
       };
@@ -1739,7 +1687,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   resetPreviewBtn && resetPreviewBtn.addEventListener("click", () => {
     if (isLocked()) return;
-    const ok = confirm("Reset preview edits (OT hours and drawer overrides) for this run?");
+    const ok = confirm("Reset preview edits (drawer overrides) for this run?");
     if (!ok) return;
     overrides = {};
     computePreview()

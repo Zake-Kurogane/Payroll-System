@@ -18,9 +18,13 @@ class PayslipClaimController extends Controller
     public function page(Request $request)
     {
         $runId = $request->query('run_id');
+        $monthFilter = $this->normalizePeriodMonth($request->query('month'));
+        $cutoffFilter = $this->normalizeCutoff($request->query('cutoff'));
 
         $runs = PayrollRun::query()
             ->whereIn('status', ['Released'])
+            ->when($monthFilter, fn ($q) => $q->where('period_month', $monthFilter))
+            ->when($cutoffFilter, fn ($q) => $q->where('cutoff', $cutoffFilter))
             ->orderByDesc('id')
             ->get();
 
@@ -30,15 +34,18 @@ class PayslipClaimController extends Controller
         $proofs = collect();
 
         if ($runId) {
-            $selectedRun = $runs->firstWhere('id', (int) $runId) ?? PayrollRun::query()->find($runId);
-            if ($selectedRun) {
-                $employees = $this->runEmployeesWithClaimStatus($selectedRun);
-                $summary = $this->computeRunClaimSummary($selectedRun);
-                $proofs = PayslipClaimProof::query()
-                    ->where('payroll_run_id', $selectedRun->id)
-                    ->orderByDesc('id')
-                    ->get();
-            }
+            $selectedRun = $runs->firstWhere('id', (int) $runId);
+        } elseif ($monthFilter || $cutoffFilter) {
+            $selectedRun = $runs->first();
+        }
+
+        if ($selectedRun) {
+            $employees = $this->runEmployeesWithClaimStatus($selectedRun);
+            $summary = $this->computeRunClaimSummary($selectedRun);
+            $proofs = PayslipClaimProof::query()
+                ->where('payroll_run_id', $selectedRun->id)
+                ->orderByDesc('id')
+                ->get();
         }
 
         return view('layouts.payslip_claims', [
@@ -47,6 +54,8 @@ class PayslipClaimController extends Controller
             'employees' => $employees,
             'summary' => $summary,
             'proofs' => $proofs,
+            'monthFilter' => $monthFilter,
+            'cutoffFilter' => $cutoffFilter,
         ]);
     }
 
@@ -90,7 +99,7 @@ class PayslipClaimController extends Controller
 
         $validated = $request->validate([
             'proofs' => ['required', 'array', 'min:1'],
-            'proofs.*' => ['file', 'mimes:jpg,jpeg,png', 'max:10240'],
+            'proofs.*' => ['file', 'mimes:jpg,jpeg,png,pdf', 'max:20480'],
         ]);
 
         $files = $validated['proofs'];
@@ -115,7 +124,11 @@ class PayslipClaimController extends Controller
 
         $this->processUploadedProofs($run, $storedProofs);
 
-        return redirect()->route('payslip.claims', ['run_id' => $run->id])
+        return redirect()->route('payslip.claims', [
+            'run_id' => $run->id,
+            'month' => $this->normalizePeriodMonth($request->input('month')),
+            'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+        ])
             ->with('success', count($storedProofs) . ' proof file(s) uploaded and processed.');
     }
 
@@ -147,10 +160,14 @@ class PayslipClaimController extends Controller
         }
         $claim->save();
 
-        return redirect()->route('payslip.claims', ['run_id' => $run->id]);
+        return redirect()->route('payslip.claims', [
+            'run_id' => $run->id,
+            'month' => $this->normalizePeriodMonth($request->input('month')),
+            'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+        ]);
     }
 
-    public function destroyProof(PayslipClaimProof $proof)
+    public function destroyProof(Request $request, PayslipClaimProof $proof)
     {
         $runId = (int) ($proof->payroll_run_id ?? 0);
 
@@ -175,7 +192,11 @@ class PayslipClaimController extends Controller
             $proof->delete();
         });
 
-        return redirect()->route('payslip.claims', ['run_id' => $runId ?: null])
+        return redirect()->route('payslip.claims', [
+            'run_id' => $runId ?: null,
+            'month' => $this->normalizePeriodMonth($request->input('month')),
+            'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+        ])
             ->with('success', 'Proof deleted.');
     }
 
@@ -292,124 +313,140 @@ class PayslipClaimController extends Controller
         $pages = $this->buildClaimSheetPages($employees, $rowsPerPage);
         $scanner = new ClaimSheetScanner();
         $usedPageIndexes = [];
+        $nextPageIndex = 0;
 
         foreach (array_values($proofs) as $i => $proof) {
-            $pageIndex = $this->inferPageIndexFromFilename($proof->original_name);
-            if ($pageIndex === null || !isset($pages[$pageIndex]) || isset($usedPageIndexes[$pageIndex])) {
-                $pageIndex = $i;
-            }
-            // If the fallback index is still invalid (e.g., sparse uploads), map to the next available page.
-            if (!isset($pages[$pageIndex]) || isset($usedPageIndexes[$pageIndex])) {
-                $candidate = 0;
-                while (isset($pages[$candidate]) && isset($usedPageIndexes[$candidate])) {
-                    $candidate++;
-                }
-                $pageIndex = isset($pages[$candidate]) ? $candidate : $pageIndex;
-            }
-            $usedPageIndexes[$pageIndex] = true;
-
-            $page = $pages[$pageIndex] ?? null;
-            $slice = $page ? (array) ($page['rows'] ?? []) : [];
-            $expectedRows = count($slice);
-            $sliceFirst = $slice[0] ?? null;
-            $sliceLast = $slice[$expectedRows - 1] ?? null;
-
-            if ($expectedRows === 0) {
-                $proof->processed_at = now();
-                $proof->processed_summary = [
-                    'error' => 'No matching employees for this page index.',
-                ];
-                $proof->save();
-                continue;
-            }
-
-            $claimedNew = 0;
-            $claimedDetected = 0;
-            $rowsScanned = 0;
-            $error = null;
+            $claimedNewTotal = 0;
+            $claimedDetectedTotal = 0;
+            $rowsScannedTotal = 0;
             $inkSoft = [];
             $inkStrict = [];
             $claimedRowIndexes = [];
             $claimedEmpNos = [];
+            $scanDebug = null;
+            $error = null;
+            $pagesProcessed = 0;
+            $firstPageIndexUsed = null;
+            $sliceFirstEmpNo = null;
+            $sliceLastEmpNo = null;
 
+            $assets = [];
             try {
-                $imgPath = Storage::disk('local')->path($proof->storage_path);
-                $scan = $scanner->scanImageFile($imgPath, $expectedRows);
-                $scanDebug = $scanner->getLastDebug();
-                $rowsScanned = min($expectedRows, count($scan));
-                for ($k = 0; $k < $rowsScanned; $k++) {
-                    $inkSoft[] = (float) ($scan[$k]['ink_ratio'] ?? 0);
-                    $inkStrict[] = (float) ($scan[$k]['ink_ratio_strict'] ?? 0);
-                    if (($scan[$k]['claimed'] ?? false) && isset($slice[$k])) {
-                        $claimedRowIndexes[] = $k + 1; // 1-based row number on the page
-                        $claimedEmpNos[] = (string) ($slice[$k]['emp_no'] ?? '');
-                    }
-                }
-
-                $empIds = array_values(array_filter(array_map(function ($r) {
-                    return (int) ($r['employee_id'] ?? 0);
-                }, $slice)));
-                $existing = PayslipClaim::query()
-                    ->where('payroll_run_id', $run->id)
-                    ->whereIn('employee_id', $empIds)
-                    ->get()
-                    ->keyBy('employee_id');
-
-                DB::transaction(function () use (
-                    $run,
-                    $proof,
-                    $slice,
-                    $scan,
-                    $existing,
-                    $rowsScanned,
-                    &$claimedNew,
-                    &$claimedDetected
-                ) {
-                    for ($idx = 0; $idx < $rowsScanned; $idx++) {
-                        $row = $slice[$idx] ?? null;
-                        $res = $scan[$idx] ?? null;
-                        if (!$row || !$res) continue;
-
-                        $empId = (int) ($row['employee_id'] ?? 0);
-                        if (!$empId) continue;
-
-                        if (!($res['claimed'] ?? false)) {
-                            continue;
-                        }
-
-                        $claimedDetected++;
-                        $already = $existing->get($empId);
-                        if ($already && $already->claimed_at) {
-                            continue;
-                        }
-
-                        PayslipClaim::updateOrCreate(
-                            ['payroll_run_id' => $run->id, 'employee_id' => $empId],
-                            [
-                                'claimed_at' => now(),
-                                'claimed_by_user_id' => Auth::id(),
-                                'payslip_claim_proof_id' => $proof->id,
-                                'ink_ratio' => (float) ($res['ink_ratio'] ?? 0),
-                            ]
-                        );
-                        $claimedNew++;
-                    }
-                });
+                $assets = $this->scannableAssetsForProof($proof);
             } catch (\Throwable $e) {
                 $error = $e->getMessage();
             }
 
+            if (empty($assets) && !$error) {
+                $error = 'No scannable pages found in upload.';
+            }
+
+            foreach ($assets as $assetIndex => $asset) {
+                $suggested = $assetIndex === 0 ? $this->inferPageIndexFromFilename($proof->original_name) : null;
+                $pageIndex = $this->nextAvailablePageIndex($pages, $usedPageIndexes, $nextPageIndex, $suggested, $i);
+                if ($pageIndex === null) {
+                    break;
+                }
+                $usedPageIndexes[$pageIndex] = true;
+                $nextPageIndex = max($nextPageIndex, $pageIndex + 1);
+                $firstPageIndexUsed = $firstPageIndexUsed ?? $pageIndex;
+
+                $page = $pages[$pageIndex] ?? null;
+                $slice = $page ? (array) ($page['rows'] ?? []) : [];
+                $expectedRows = count($slice);
+                if ($expectedRows === 0) {
+                    continue;
+                }
+
+                $sliceFirst = $slice[0] ?? null;
+                $sliceLast = $slice[$expectedRows - 1] ?? null;
+                $sliceFirstEmpNo = $sliceFirstEmpNo ?? (string) ($sliceFirst['emp_no'] ?? '');
+                $sliceLastEmpNo = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
+
+                try {
+                    $scan = $scanner->scanImageFile($asset['path'], $expectedRows);
+                    $scanDebug = $scanner->getLastDebug();
+                    $rowsScanned = min($expectedRows, count($scan));
+                    $rowsScannedTotal += $rowsScanned;
+                    $pagesProcessed++;
+
+                    for ($k = 0; $k < $rowsScanned; $k++) {
+                        $inkSoft[] = (float) ($scan[$k]['ink_ratio'] ?? 0);
+                        $inkStrict[] = (float) ($scan[$k]['ink_ratio_strict'] ?? 0);
+                        if (($scan[$k]['claimed'] ?? false) && isset($slice[$k])) {
+                            $claimedRowIndexes[] = $k + 1;
+                            $claimedEmpNos[] = (string) ($slice[$k]['emp_no'] ?? '');
+                        }
+                    }
+
+                    $empIds = array_values(array_filter(array_map(function ($r) {
+                        return (int) ($r['employee_id'] ?? 0);
+                    }, $slice)));
+                    $existing = PayslipClaim::query()
+                        ->where('payroll_run_id', $run->id)
+                        ->whereIn('employee_id', $empIds)
+                        ->get()
+                        ->keyBy('employee_id');
+
+                    DB::transaction(function () use (
+                        $run,
+                        $proof,
+                        $slice,
+                        $scan,
+                        $existing,
+                        $rowsScanned,
+                        &$claimedNewTotal,
+                        &$claimedDetectedTotal
+                    ) {
+                        for ($idx = 0; $idx < $rowsScanned; $idx++) {
+                            $row = $slice[$idx] ?? null;
+                            $res = $scan[$idx] ?? null;
+                            if (!$row || !$res) continue;
+
+                            $empId = (int) ($row['employee_id'] ?? 0);
+                            if (!$empId) continue;
+                            if (!($res['claimed'] ?? false)) continue;
+
+                            $claimedDetectedTotal++;
+                            $already = $existing->get($empId);
+                            if ($already && $already->claimed_at) {
+                                continue;
+                            }
+
+                            PayslipClaim::updateOrCreate(
+                                ['payroll_run_id' => $run->id, 'employee_id' => $empId],
+                                [
+                                    'claimed_at' => now(),
+                                    'claimed_by_user_id' => Auth::id(),
+                                    'payslip_claim_proof_id' => $proof->id,
+                                    'ink_ratio' => (float) ($res['ink_ratio'] ?? 0),
+                                ]
+                            );
+                            $claimedNewTotal++;
+                        }
+                    });
+                } catch (\Throwable $e) {
+                    $error = $e->getMessage();
+                }
+            }
+
+            foreach ($assets as $asset) {
+                if (!empty($asset['cleanup'])) {
+                    @unlink((string) $asset['path']);
+                }
+            }
+
             $proof->processed_at = now();
             $proof->processed_summary = array_filter([
-                'pages' => 1,
-                'page_index' => $pageIndex + 1,
-                'rows_scanned' => $rowsScanned,
-                'claimed_detected' => $claimedDetected,
-                'claimed_new' => $claimedNew,
+                'pages' => max(1, $pagesProcessed),
+                'page_index' => $firstPageIndexUsed !== null ? $firstPageIndexUsed + 1 : null,
+                'rows_scanned' => $rowsScannedTotal,
+                'claimed_detected' => $claimedDetectedTotal,
+                'claimed_new' => $claimedNewTotal,
                 'claimed_rows_detected' => $claimedRowIndexes,
                 'claimed_emp_nos_detected' => array_values(array_filter($claimedEmpNos, fn ($v) => $v !== '')),
-                'slice_first_emp_no' => (string) ($sliceFirst['emp_no'] ?? ''),
-                'slice_last_emp_no' => (string) ($sliceLast['emp_no'] ?? ''),
+                'slice_first_emp_no' => (string) ($sliceFirstEmpNo ?? ''),
+                'slice_last_emp_no' => (string) ($sliceLastEmpNo ?? ''),
                 'ink_soft_avg' => !empty($inkSoft) ? round(array_sum($inkSoft) / max(1, count($inkSoft)), 5) : null,
                 'ink_soft_max' => !empty($inkSoft) ? round(max($inkSoft), 5) : null,
                 'ink_strict_avg' => !empty($inkStrict) ? round(array_sum($inkStrict) / max(1, count($inkStrict)), 5) : null,
@@ -419,6 +456,73 @@ class PayslipClaimController extends Controller
             ], fn ($v) => $v !== null && $v !== '');
             $proof->save();
         }
+    }
+
+    private function scannableAssetsForProof(PayslipClaimProof $proof): array
+    {
+        $fullPath = Storage::disk('local')->path($proof->storage_path);
+        $mime = strtolower((string) ($proof->mime ?? ''));
+        $name = strtolower((string) ($proof->original_name ?? ''));
+        $isPdf = str_contains($mime, 'pdf') || str_ends_with($name, '.pdf');
+
+        if (!$isPdf) {
+            return [[
+                'path' => $fullPath,
+                'cleanup' => false,
+            ]];
+        }
+
+        if (!class_exists(\Imagick::class)) {
+            throw new \RuntimeException('PDF uploaded, but Imagick is not installed on the server. Install php-imagick to enable PDF claim scanning.');
+        }
+
+        $imagick = new \Imagick();
+        $imagick->setResolution(300, 300);
+        $imagick->readImage($fullPath);
+
+        $assets = [];
+        foreach ($imagick as $page) {
+            $page->setImageFormat('png');
+            $tmp = tempnam(sys_get_temp_dir(), 'claim_pdf_');
+            if ($tmp === false) {
+                continue;
+            }
+            $png = $tmp . '.png';
+            @unlink($tmp);
+            $page->writeImage($png);
+            $assets[] = [
+                'path' => $png,
+                'cleanup' => true,
+            ];
+        }
+        $imagick->clear();
+        $imagick->destroy();
+
+        return $assets;
+    }
+
+    private function nextAvailablePageIndex(array $pages, array $usedPageIndexes, int $nextPageIndex, ?int $suggested, int $fallback): ?int
+    {
+        $isAvailable = function (?int $idx) use ($pages, $usedPageIndexes): bool {
+            return $idx !== null && isset($pages[$idx]) && !isset($usedPageIndexes[$idx]);
+        };
+
+        if ($isAvailable($suggested)) {
+            return $suggested;
+        }
+        if ($isAvailable($fallback)) {
+            return $fallback;
+        }
+        if ($isAvailable($nextPageIndex)) {
+            return $nextPageIndex;
+        }
+
+        $candidate = 0;
+        while (isset($pages[$candidate]) && isset($usedPageIndexes[$candidate])) {
+            $candidate++;
+        }
+
+        return $isAvailable($candidate) ? $candidate : null;
     }
 
     private function inferPageIndexFromFilename(?string $name): ?int
@@ -432,5 +536,19 @@ class PayslipClaimController extends Controller
         }
 
         return null;
+    }
+
+    private function normalizePeriodMonth(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        return preg_match('/^\d{4}-\d{2}$/', $value) ? $value : null;
+    }
+
+    private function normalizeCutoff(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        return in_array($value, ['11-25', '26-10'], true) ? $value : null;
     }
 }

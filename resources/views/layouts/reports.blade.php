@@ -192,11 +192,6 @@
                                         aria-hidden="true"></span></th>
                                 <th class="num sortable" data-sort="attendancePay">Attendance Pay <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="otHours">OT Hours <span class="sortIcon"
-                                        aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="otPay">OT Pay <span class="sortIcon"
-                                        aria-hidden="true"></span>
-                                </th>
                                 <th class="num sortable" data-sort="deductionsEe">Deductions (EE) <span class="sortIcon"
                                         aria-hidden="true"></span></th>
                                 <th class="num sortable" data-sort="employerShare">Employer Share (ER) <span

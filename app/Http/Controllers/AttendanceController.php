@@ -159,7 +159,6 @@ class AttendanceController extends Controller
                 "{$recordsTable}.clock_out",
                 "{$recordsTable}.minutes_late",
                 "{$recordsTable}.minutes_undertime",
-                "{$recordsTable}.ot_hours",
             ])
             ->leftJoin($employeesTable, "{$employeesTable}.id", '=', "{$recordsTable}.employee_id")
             ->with(['employee:id,emp_no,first_name,middle_name,last_name,department,position,assignment_type,area_place'])
@@ -295,7 +294,6 @@ class AttendanceController extends Controller
                  'clock_out' => $r->clock_out,
                  'minutes_late' => $r->minutes_late ?? 0,
                  'minutes_undertime' => $r->minutes_undertime ?? 0,
-                 'ot_hours' => (float) ($r->ot_hours ?? 0),
              ];
          })->values();
 
@@ -314,6 +312,13 @@ class AttendanceController extends Controller
     public function store(Request $request)
     {
         $validated = $this->normalizeComputedFields($this->validateRecord($request));
+        $employee = Employee::find((int) $validated['employee_id']);
+        if ($employee) {
+            $restDayError = $this->validateRestDayStatusForEmployee($employee, (string) ($validated['status'] ?? ''));
+            if ($restDayError) {
+                abort(422, $restDayError);
+            }
+        }
         if (($validated['status'] ?? '') === 'Paid Leave') {
             $this->checkPLBalance($validated['employee_id'], $validated['date']);
         }
@@ -331,6 +336,13 @@ class AttendanceController extends Controller
         $prevEmployeeId = (int) $record->employee_id;
         $prevDate = $record->date?->format('Y-m-d') ?? (string) $record->date;
         $validated = $this->normalizeComputedFields($this->validateRecord($request));
+        $employee = Employee::find((int) $validated['employee_id']);
+        if ($employee) {
+            $restDayError = $this->validateRestDayStatusForEmployee($employee, (string) ($validated['status'] ?? ''));
+            if ($restDayError) {
+                abort(422, $restDayError);
+            }
+        }
         if (($validated['status'] ?? '') === 'Paid Leave') {
             $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id);
         }
@@ -389,8 +401,8 @@ class AttendanceController extends Controller
         $spreadsheet->removeSheetByIndex(0);
 
         $statusListFormula = '"' . implode(',', self::TEMPLATE_CODES) . '"';
-        $noTimeFormula = 'OR($K{row}="A",$K{row}="UL",$K{row}="PL",$K{row}="OFF",$K{row}="HOL",$K{row}="LOA",$K{row}="RNR")';
-        $timeRequiredFormula = 'OR($K{row}="P",$K{row}="L",$K{row}="HD")';
+        $noTimeFormula = 'OR($J{row}="A",$J{row}="UL",$J{row}="PL",$J{row}="OFF",$J{row}="HOL",$J{row}="LOA",$J{row}="RNR")';
+        $timeRequiredFormula = 'OR($J{row}="P",$J{row}="L",$J{row}="HD")';
 
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle($date->format('Y-m-d'));
@@ -405,11 +417,10 @@ class AttendanceController extends Controller
             'clock_out',
             'minutes_late',
             'minutes_undertime',
-            'ot_hours',
             'status',
         ];
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:K1')->applyFromArray([
+        $sheet->getStyle('A1:J1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => '7A1530'],
@@ -431,7 +442,15 @@ class AttendanceController extends Controller
         $row = 2;
         foreach ($employees as $e) {
             $assignType = $e->assignment_type ?? '';
-            $defaultStatus = ($isSunday && !empty($assignType)) ? 'OFF' : '';
+            $assignLower = strtolower(trim((string) $assignType));
+            $defaultStatus = '';
+            if ($isSunday) {
+                if ($assignLower === 'field') {
+                    $defaultStatus = 'RNR';
+                } elseif (in_array($assignLower, ['davao', 'tagum'], true)) {
+                    $defaultStatus = 'OFF';
+                }
+            }
             $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
             $sheet->fromArray([
                 $e->emp_no,
@@ -439,7 +458,6 @@ class AttendanceController extends Controller
                 $e->department ?? '',
                 $e->assignment_type ?? '',
                 $e->area_place ?? '',
-                '',
                 '',
                 '',
                 '',
@@ -456,10 +474,10 @@ class AttendanceController extends Controller
             $dv->setErrorTitle('Invalid status');
             $dv->setError('Choose from the dropdown list.');
 
-            $sheet->getCell("K{$row}")->setDataValidation($dv);
+            $sheet->getCell("J{$row}")->setDataValidation($dv);
 
             // Auto status based on grace time (07:35): Present if within grace, Late if beyond
-            $sheet->setCellValue("K{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(7,35,0),"P","L"))', $row, $row));
+            $sheet->setCellValue("J{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(7,35,0),"P","L"))', $row, $row));
 
             // Minutes late: compute after 07:35, otherwise 0
             $lateFormula = sprintf(
@@ -477,15 +495,7 @@ class AttendanceController extends Controller
             );
             $sheet->setCellValue("I{$row}", $underFormula);
 
-            // OT hours: compute hours after 17:00 (rounded to 2 decimals)
-            $otFormula = sprintf(
-                '=IF($G%d="","",MAX(0,ROUND(($G%d-TIME(17,0,0))*24,2)))',
-                $row,
-                $row
-            );
-            $sheet->setCellValue("J{$row}", $otFormula);
-
-            // Validation: block time/undertime/ot inputs for no-time statuses
+            // Validation: block time/undertime inputs for no-time statuses
             $rowFormula = str_replace('{row}', (string) $row, $noTimeFormula);
 
             foreach (['F', 'G'] as $col) {
@@ -512,27 +522,25 @@ class AttendanceController extends Controller
                 $sheet->getCell("{$col}{$row}")->setDataValidation($dvReq);
             }
 
-            foreach (['I', 'J'] as $col) {
+            foreach (['H', 'I'] as $col) {
                 $dvNum = new DataValidation();
                 $dvNum->setType(DataValidation::TYPE_CUSTOM);
                 $dvNum->setErrorStyle(DataValidation::STYLE_STOP);
                 $dvNum->setAllowBlank(true);
                 $dvNum->setErrorTitle('Invalid input');
-                $dvNum->setError('Minutes/OT must be 0 or blank for this status.');
+                $dvNum->setError('Minutes must be 0 or blank for this status.');
                 $dvNum->setFormula1(sprintf('=IF(%s,OR(%s%d="",%s%d=0),TRUE)', $rowFormula, $col, $row, $col, $row));
                 $sheet->getCell("{$col}{$row}")->setDataValidation($dvNum);
             }
             $row++;
         }
 
-        foreach (range('A', 'K') as $col) {
+        foreach (range('A', 'J') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Show AM/PM for time columns
         $sheet->getStyle("F2:G{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
-        $sheet->getStyle("J2:J{$row}")->getNumberFormat()->setFormatCode('0.00');
-
         $label = $area ? "{$assignment} - {$area}" : $assignment;
         $filename = "{$label} ATTENDANCE {$date->format('Y-m-d')}.xlsx";
 
@@ -568,7 +576,6 @@ class AttendanceController extends Controller
             'clock_out',
             'minutes_late',
             'minutes_undertime',
-            'ot_hours',
             'status',
         ];
 
@@ -586,7 +593,7 @@ class AttendanceController extends Controller
             }
 
             $header = [];
-            foreach (range('A', 'K') as $col) {
+            foreach (range('A', 'J') as $col) {
                 $header[] = trim((string) $sheet->getCell("{$col}1")->getValue());
             }
             if ($header !== $expectedHeader) {
@@ -597,7 +604,7 @@ class AttendanceController extends Controller
             $highestRow = $sheet->getHighestDataRow();
             for ($r = 2; $r <= $highestRow; $r++) {
                 $empNo = trim((string) $sheet->getCell("A{$r}")->getValue());
-                $statusCell = $sheet->getCell("K{$r}");
+                $statusCell = $sheet->getCell("J{$r}");
                 $rawStatus = $statusCell->isFormula()
                     ? (string) $statusCell->getCalculatedValue()
                     : (string) $statusCell->getValue();
@@ -608,7 +615,6 @@ class AttendanceController extends Controller
 
                 $lateCell = $sheet->getCell("H{$r}");
                 $underCell = $sheet->getCell("I{$r}");
-                $otCell = $sheet->getCell("J{$r}");
 
                 // Skip unfilled rows: status blank and no clock data entered.
                 // This handles pre-populated template rows (emp_no set, but row not filled in).
@@ -636,22 +642,14 @@ class AttendanceController extends Controller
 
                 $late = $this->parseNumberCell($lateCell, $errors, "{$sheetName} row {$r}: minutes_late must be a number.");
                 $under = $this->parseNumberCell($underCell, $errors, "{$sheetName} row {$r}: minutes_undertime must be a number.");
-                $ot = $this->parseNumberCell($otCell, $errors, "{$sheetName} row {$r}: ot_hours must be a number.");
 
                 $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut);
-                $otFromClockOut = $this->computeOtHoursFromClockOut($clockOut);
 
-                // Normalize undertime and OT from clock_out when available so values are always consistent.
+                // Normalize undertime from clock_out when available so values are always consistent.
                 if ($underFromClockOut !== null) {
                     $under = $underFromClockOut;
                 } elseif ($under === null) {
                     $under = 0;
-                }
-
-                if ($otFromClockOut !== null) {
-                    $ot = $otFromClockOut;
-                } elseif ($ot === null) {
-                    $ot = 0;
                 }
 
                 if ($status) {
@@ -659,8 +657,8 @@ class AttendanceController extends Controller
                         if ($clockIn !== '' || $clockOut !== '') {
                             $errors[] = "{$sheetName} row {$r}: clock_in/out must be empty for {$status}.";
                         }
-                        if (($late ?? 0) > 0 || ($under ?? 0) > 0 || ($ot ?? 0) > 0) {
-                            $errors[] = "{$sheetName} row {$r}: minutes/ot must be 0 for {$status}.";
+                        if (($late ?? 0) > 0 || ($under ?? 0) > 0) {
+                            $errors[] = "{$sheetName} row {$r}: minutes must be 0 for {$status}.";
                         }
                     }
                     // Clock times are optional for Present, Late, Half-day, etc.
@@ -685,7 +683,6 @@ class AttendanceController extends Controller
                     'clock_out' => $clockOut ?: null,
                     'minutes_late' => (int) ($late ?? 0),
                     'minutes_undertime' => (int) ($under ?? 0),
-                    'ot_hours' => (float) ($ot ?? 0),
                 ];
             }
         }
@@ -697,7 +694,7 @@ class AttendanceController extends Controller
         ))));
         $employeesByNo = Employee::query()
             ->whereIn('emp_no', $empNos)
-            ->get(['id', 'emp_no'])
+            ->get(['id', 'emp_no', 'assignment_type'])
             ->keyBy('emp_no');
 
         foreach ($rowsToUpsert as $row) {
@@ -705,6 +702,18 @@ class AttendanceController extends Controller
             if ($empNo !== '' && !isset($employeesByNo[$empNo])) {
                 $src = (string) ($row['_src'] ?? 'Row');
                 $errors[] = "{$src}: emp_no \"{$empNo}\" not found.";
+                continue;
+            }
+            if ($empNo !== '') {
+                $emp = $employeesByNo[$empNo] ?? null;
+                if ($emp) {
+                    $status = (string) ($row['status'] ?? '');
+                    $ruleErr = $this->validateRestDayStatusForEmployee($emp, $status);
+                    if ($ruleErr) {
+                        $src = (string) ($row['_src'] ?? 'Row');
+                        $errors[] = "{$src}: {$ruleErr}";
+                    }
+                }
             }
         }
 
@@ -733,7 +742,7 @@ class AttendanceController extends Controller
                         'clock_out' => $row['clock_out'],
                         'minutes_late' => $row['minutes_late'],
                         'minutes_undertime' => $row['minutes_undertime'],
-                        'ot_hours' => $row['ot_hours'],
+                        'ot_hours' => 0,
                     ]
                 );
 
@@ -782,7 +791,6 @@ class AttendanceController extends Controller
             'clock_out' => ['nullable', 'date_format:H:i'],
             'minutes_late' => ['nullable', 'integer', 'min:0'],
             'minutes_undertime' => ['nullable', 'integer', 'min:0'],
-            'ot_hours' => ['nullable', 'numeric', 'min:0'],
         ]);
     }
 
@@ -803,9 +811,31 @@ class AttendanceController extends Controller
 
         $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn) ?? 0);
         $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut) ?? 0);
-        $record['ot_hours'] = (float) ($this->computeOtHoursFromClockOut($clockOut) ?? 0);
+        $record['ot_hours'] = 0;
 
         return $record;
+    }
+
+    private function validateRestDayStatusForEmployee(Employee $employee, string $status): ?string
+    {
+        $s = trim($status);
+        if ($s === '') {
+            return null;
+        }
+
+        $assignment = strtolower(trim((string) ($employee->assignment_type ?? '')));
+        $isField = $assignment === 'field';
+        $isDavaoOrTagum = in_array($assignment, ['davao', 'tagum'], true);
+
+        if ($s === 'RNR' && !$isField) {
+            return 'RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.';
+        }
+
+        if ($s === 'Day Off' && !$isDavaoOrTagum) {
+            return 'Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.';
+        }
+
+        return null;
     }
 
     private function cutoffRange(string $month, string $cutoff): array
@@ -963,22 +993,6 @@ class AttendanceController extends Controller
         }
         $grace = (7 * 60) + 35; // 07:35
         return max(0, $minutesIn - $grace);
-    }
-
-    private function computeOtHoursFromClockOut(string $clockOut): ?float
-    {
-        if ($clockOut === '') {
-            return null;
-        }
-        $minutesOut = $this->parseTimeToMinutes($clockOut);
-        if ($minutesOut === null) {
-            return null;
-        }
-        $endOfWork = 17 * 60; // 17:00
-        if ($minutesOut <= $endOfWork) {
-            return 0.0;
-        }
-        return round(($minutesOut - $endOfWork) / 60, 2);
     }
 
     private function computeUndertimeMinutesFromClockOut(string $clockOut): ?int

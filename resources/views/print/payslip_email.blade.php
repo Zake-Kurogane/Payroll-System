@@ -265,12 +265,6 @@
                             <td class="num">-</td>
                             <td class="num">{{ $money($p['allowance_cutoff'] ?? 0) }}</td>
                         </tr>
-                        <tr>
-                            <td>Overtime</td>
-                            <td class="num">-</td>
-                            <td class="num">{{ number_format((float) ($p['ot_hours'] ?? 0), 2) }}</td>
-                            <td class="num">{{ $money($p['ot_pay'] ?? 0) }}</td>
-                        </tr>
                         @foreach($earnAdj as $a)
                             <tr>
                                 <td>{{ $a['name'] ?? 'Adjustment' }}</td>

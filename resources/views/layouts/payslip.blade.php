@@ -259,13 +259,6 @@
                             <td class="num">-</td>
                             <td class="num" id="psAllowancePay">&#8369; 0.00</td>
                         </tr>
-                        <tr>
-                            <td>Overtime</td>
-                            <td class="num" id="psOtRate">&#8369; 0.00</td>
-                            <td class="num" id="psOtHours">0.00</td>
-                            <td class="num" id="psOtPay">&#8369; 0.00</td>
-                        </tr>
-
                         <!-- - Earnings adjustments injected here -->
                     <tbody id="psEarnAdjRows"></tbody>
 

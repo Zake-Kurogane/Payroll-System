@@ -182,7 +182,6 @@
                             <th class="sortable" data-sort="area">Area <span class="sortIcon" aria-hidden="true"></span>
                             </th>
                             <th>Clock In/Out</th>
-                            <th>OT</th>
                             <th>Status</th>
                             <th class="col-actions">Action</th>
                         </tr>
@@ -387,7 +386,6 @@
                             <th>Assignment</th>
                             <th>Area</th>
                             <th>Clock In/Out</th>
-                            <th>OT</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -475,10 +473,6 @@
                     <div class="sumVal" id="empSumHours">0</div>
                     <div class="sumLbl">Total Hours</div>
                 </div>
-                <div class="sumCard sumCard--warn">
-                    <div class="sumVal" id="empSumOT">0</div>
-                    <div class="sumLbl">Total OT Hours</div>
-                </div>
             </div>
 
             <div class="tablewrap tablewrap--preview">
@@ -489,7 +483,6 @@
                             <th>Area</th>
                             <th>Time In</th>
                             <th>Time Out</th>
-                            <th class="num">OT Hours</th>
                             <th class="num">Total Hours</th>
                         </tr>
                     </thead>

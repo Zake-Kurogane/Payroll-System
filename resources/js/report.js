@@ -316,8 +316,6 @@ document.addEventListener("DOMContentLoaded", () => {
       leaveDays: Number(row.leave_days || 0),
       dailyRate: Number(row.daily_rate || 0),
       attendancePay: basic + allowance,
-      otHours: Number(row.ot_hours || 0),
-      otPay: Number(row.ot_pay || 0),
       attendanceDeduction: Number(row.attendance_deduction || 0),
       chargesDeduction: charges,
       loanDeduction: loanDeduction,
@@ -411,8 +409,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (key === "empName") return String(r.empName || "");
     if (key === "dailyRate") return Number(r.dailyRate || 0);
     if (key === "attendancePay") return Number(r.attendancePay || 0);
-    if (key === "otHours") return Number(r.otHours || 0);
-    if (key === "otPay") return Number(r.otPay || 0);
     if (key === "deductionsEe") return Number(r.deductionsEe || 0);
     if (key === "employerShare") return Number(r.employerShare || 0);
     if (key === "gross") return Number(r.gross || 0);
@@ -532,8 +528,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(`${r.presentDays}/${r.absentDays}/${r.leaveDays}`)}</td>
         <td class="num">${escapeHtml(peso(r.dailyRate))}</td>
         <td class="num">${escapeHtml(peso(r.attendancePay))}</td>
-        <td class="num">${escapeHtml(Number(r.otHours || 0).toFixed(2))}</td>
-        <td class="num">${escapeHtml(peso(r.otPay))}</td>
         <td class="num">${escapeHtml(peso(r.deductionsEe))}</td>
         <td class="num">${escapeHtml(peso(r.employerShare))}</td>
         <td class="num">${escapeHtml(peso(r.gross))}</td>
@@ -1484,8 +1478,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "Leave",
       "Daily Rate",
       "Attendance Pay",
-      "OT Hours",
-      "OT Pay",
       "Deductions (EE)",
       "Employer Share (ER)",
       "Gross",
@@ -1506,8 +1498,6 @@ document.addEventListener("DOMContentLoaded", () => {
           r.leaveDays || 0,
           Number(r.dailyRate || 0).toFixed(2),
           Number(r.attendancePay || 0).toFixed(2),
-          Number(r.otHours || 0).toFixed(2),
-          Number(r.otPay || 0).toFixed(2),
           Number(r.deductionsEe || 0).toFixed(2),
           Number(r.employerShare || 0).toFixed(2),
           Number(r.gross || 0).toFixed(2),

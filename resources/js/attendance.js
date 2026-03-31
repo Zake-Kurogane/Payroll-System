@@ -404,7 +404,6 @@ document.addEventListener("DOMContentLoaded", () => {
       timeIn: r.clock_in || "",
       timeOut: r.clock_out || "",
       totalHours: 0,
-      otHours: Number(r.ot_hours || 0),
       status: r.status || "",
       assignType: assignType,
       areaPlace: areaPlace,
@@ -423,7 +422,6 @@ document.addEventListener("DOMContentLoaded", () => {
       clock_out: record.timeOut || null,
       minutes_late: Number(record.minutesLate || 0),
       minutes_undertime: Number(record.minutesUndertime || 0),
-      ot_hours: Number(record.otHours || 0),
     };
   }
 
@@ -610,7 +608,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const empSumTotal = document.getElementById("empSumTotal");
   const empSumHours = document.getElementById("empSumHours");
-  const empSumOT = document.getElementById("empSumOT");
 
   const empCutoffMonthInput = document.getElementById("empCutoffMonth");
   const empCutoffSelect = document.getElementById("empCutoffSelect");
@@ -1016,7 +1013,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
         <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
-        <td>${escapeHtml(formatHours(r.otHours))}</td>
         <td>${chip(r.status)}</td>
         <td class="col-actions">
           <div class="iconrow">
@@ -1339,17 +1335,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const newStatus = bulkStatusSelectInline.value;
     if (!ids.length || !newStatus) return;
 
+    const updates = records.filter(r => ids.includes(r.id));
     if (newStatus === "RNR") {
-      const updates = records.filter(r => ids.includes(r.id));
-      const invalid = updates.filter(r => r.assignType !== "Field");
+      const invalid = updates.filter(r => String(r.assignType || "").trim().toLowerCase() !== "field");
       if (invalid.length) {
-        alert("RNR is only allowed for Field employees.");
+        alert("RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.");
+        return;
+      }
+    }
+    if (newStatus === "Day Off") {
+      const invalid = updates.filter(r => {
+        const a = String(r.assignType || "").trim().toLowerCase();
+        return !(a === "davao" || a === "tagum");
+      });
+      if (invalid.length) {
+        alert("Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.");
         return;
       }
     }
 
     try {
-      const updates = records.filter(r => ids.includes(r.id));
       await Promise.all(updates.map(r =>
         apiFetch(`/attendance/records/${r.id}`, {
           method: "PUT",
@@ -1442,8 +1447,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (plBalanceWrap) plBalanceWrap.style.display = "none";
       if (errAreaPlace) errAreaPlace.textContent = "";
       if (f_status) {
-        const opt = Array.from(f_status.options).find(o => o.value === "RNR");
-        if (opt) opt.disabled = true;
+        const rnrOpt = Array.from(f_status.options).find(o => o.value === "RNR");
+        const dayOffOpt = Array.from(f_status.options).find(o => o.value === "Day Off");
+        if (rnrOpt) rnrOpt.disabled = true;
+        if (dayOffOpt) dayOffOpt.disabled = true;
       }
       return;
     }
@@ -1471,9 +1478,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Field";
     if (f_status) {
-      const opt = Array.from(f_status.options).find(o => o.value === "RNR");
-      if (opt) opt.disabled = emp.assignmentType !== "Field";
-      if (emp.assignmentType !== "Field" && f_status.value === "RNR") {
+      const assignLower = String(emp.assignmentType || "").trim().toLowerCase();
+      const rnrAllowed = assignLower === "field";
+      const dayOffAllowed = assignLower === "davao" || assignLower === "tagum";
+      const rnrOpt = Array.from(f_status.options).find(o => o.value === "RNR");
+      const dayOffOpt = Array.from(f_status.options).find(o => o.value === "Day Off");
+      if (rnrOpt) rnrOpt.disabled = !rnrAllowed;
+      if (dayOffOpt) dayOffOpt.disabled = !dayOffAllowed;
+      if (!rnrAllowed && f_status.value === "RNR") {
+        f_status.value = "";
+      }
+      if (!dayOffAllowed && f_status.value === "Day Off") {
         f_status.value = "";
       }
     }
@@ -1629,8 +1644,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (errStatus) errStatus.textContent = "Paid Leave is only allowed for Regular employees.";
       ok = false;
     }
-    if (status === "RNR" && emp?.assignmentType !== "Field") {
-      if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees.";
+    const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
+    if (status === "RNR" && assignLower !== "field") {
+      if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.";
+      ok = false;
+    }
+    if (status === "Day Off" && !(assignLower === "davao" || assignLower === "tagum")) {
+      if (errStatus) errStatus.textContent = "Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.";
       ok = false;
     }
 
@@ -1680,7 +1700,6 @@ document.addEventListener("DOMContentLoaded", () => {
       clock_out: f_clockOut?.value || null,
       minutes_late: 0,
       minutes_undertime: 0,
-      ot_hours: 0,
     };
 
     try {
@@ -1886,7 +1905,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!isValidTime(r.timeOut)) issues.push(`Row ${r.rowNo}: Invalid Clock Out (HH:MM)`);
     if (!isValidNumber(r.minutesLate)) issues.push(`Row ${r.rowNo}: Minutes Late must be a number`);
     if (!isValidNumber(r.minutesUndertime)) issues.push(`Row ${r.rowNo}: Minutes Undertime must be a number`);
-    if (!isValidNumber(r.otHours)) issues.push(`Row ${r.rowNo}: OT Hours must be a number`);
 
     const code = normalizeCode(r.code);
     if (code && !CODE_MAP[code]) {
@@ -1901,8 +1919,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapped = mapAttendanceCode(r.code, r.status);
     const finalStatus = mapped.status || (r.status || "");
     const emp = r.empId ? getEmpByNo(r.empId) : null;
-    if (finalStatus === "RNR" && emp?.assignmentType !== "Field") {
-      issues.push(`Row ${r.rowNo}: RNR is only allowed for Field employees`);
+    const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
+    if (finalStatus === "RNR" && assignLower !== "field") {
+      issues.push(`Row ${r.rowNo}: RNR is only allowed for Field employees (use Day Off for Davao/Tagum)`);
+    }
+    if (finalStatus === "Day Off" && !(assignLower === "davao" || assignLower === "tagum")) {
+      issues.push(`Row ${r.rowNo}: Day Off is only allowed for Davao/Tagum employees (use RNR for Field)`);
     }
 
     return issues;
@@ -1962,7 +1984,6 @@ document.addEventListener("DOMContentLoaded", () => {
       timeOut: get(r, "clock_out"),
       minutesLate: get(r, "minutes_late"),
       minutesUndertime: get(r, "minutes_undertime"),
-      otHours: get(r, "ot_hours"),
       status: get(r, "status"),
       code: get(r, "code"),
     }));
@@ -2041,7 +2062,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.assignType || "—")}</td>
         <td>${escapeHtml(r.areaPlace || "—")}</td>
         <td>${fmtTime(r.timeIn)} / ${fmtTime(r.timeOut)}</td>
-        <td>${escapeHtml(formatHours(r.otHours))}</td>
         <td>${chip(r.status)}</td>
       `;
       previewTbody.appendChild(tr);
@@ -2135,7 +2155,6 @@ document.addEventListener("DOMContentLoaded", () => {
             clock_out: r.timeOut || null,
             minutes_late: Number(r.minutesLate || 0),
             minutes_undertime: Number(r.minutesUndertime || 0),
-            ot_hours: Number(r.otHours || 0),
           }),
         });
       }
@@ -2433,7 +2452,6 @@ document.addEventListener("DOMContentLoaded", () => {
     empTbody.innerHTML = "";
 
     let totalHours = 0;
-    let totalOT = 0;
 
     const noTimeStatuses = new Set([
       "Absent",
@@ -2448,10 +2466,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     list.forEach(r => {
       const hrs = computeTotalHours(r);
-      const ot = Number(r.otHours || 0) || 0;
-
       totalHours += hrs;
-      totalOT += ot;
 
       const statusLabel = String(r.status || "").toUpperCase();
       const showStatus = noTimeStatuses.has(r.status);
@@ -2466,7 +2481,6 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(areaDisplay)}</td>
         <td>${escapeHtml(timeInDisplay)}</td>
         <td>${escapeHtml(timeOutDisplay)}</td>
-        <td class="num">${escapeHtml(formatHours(ot))}</td>
         <td class="num">${escapeHtml(formatHours(hrs))}</td>
       `;
       empTbody.appendChild(tr);
@@ -2474,13 +2488,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!list.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">No attendance records found.</td>`;
+      tr.innerHTML = `<td colspan="5" class="muted small">No attendance records found.</td>`;
       empTbody.appendChild(tr);
     }
 
     if (empSumTotal) empSumTotal.textContent = String(list.length);
     if (empSumHours) empSumHours.textContent = formatHours(totalHours);
-    if (empSumOT) empSumOT.textContent = formatHours(totalOT);
   }
 
   // =========================================================

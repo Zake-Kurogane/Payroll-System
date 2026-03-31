@@ -35,7 +35,7 @@ class AttendanceSummaryService
                 SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
                 SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days,
                 SUM(CASE
-                    WHEN status IN ('Present','Late','Paid Leave','Holiday','Day Off') THEN 1
+                    WHEN status IN ('Present','Late','Paid Leave','Holiday') THEN 1
                     WHEN status = 'Half-day' THEN 0.5
                     ELSE 0
                 END) as paid_days,

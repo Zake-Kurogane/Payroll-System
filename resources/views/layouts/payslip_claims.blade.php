@@ -48,6 +48,20 @@
                 <div class="card__title big">Select Released Payroll Run</div>
                 <form method="GET" action="{{ route('payslip.claims') }}">
                     <div class="runRow">
+                        <div class="f">
+                            <label>Month</label>
+                            <input type="month" name="month" value="{{ $monthFilter ?? '' }}" onchange="this.form.submit()" />
+                        </div>
+                        <div class="f">
+                            <label>Cutoff</label>
+                            <select name="cutoff" onchange="this.form.submit()">
+                                <option value="">All</option>
+                                <option value="11-25" @selected(($cutoffFilter ?? '') === '11-25')>11-25</option>
+                                <option value="26-10" @selected(($cutoffFilter ?? '') === '26-10')>26-10</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="runRow">
                         <div class="f f--grow">
                             <label>Payroll Run</label>
                             <select name="run_id" onchange="this.form.submit()">
@@ -98,7 +112,7 @@
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big">Upload Signed Claim Sheet</div>
-                        <div class="muted small">Upload scanned images (JPG/PNG). Filename order is used as page order.</div>
+                        <div class="muted small">Upload scanned files (JPG/PNG/PDF). Filename order is used as page order.</div>
                     </div>
                 </div>
 
@@ -109,13 +123,15 @@
                     <div class="runRow" style="align-items: end;">
                         <div class="f f--grow">
                             <label>Proof file(s)</label>
-                            <input type="file" name="proofs[]" accept=".jpg,.jpeg,.png" multiple required />
+                            <input type="file" name="proofs[]" accept=".jpg,.jpeg,.png,.pdf,application/pdf" multiple required />
                             <div class="muted small" style="margin-top:6px;">Tip: scan at 300 DPI, crop to page edges, avoid shadows.</div>
                         </div>
                         <div class="f" style="min-width: 180px;">
                             <button class="btn btn--maroon" type="submit">Upload + Process</button>
                         </div>
                     </div>
+                    <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
+                    <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                 </form>
             </section>
 
@@ -172,6 +188,8 @@
                                                 onsubmit="return confirm('Delete this proof file? This will also undo any auto-claims detected from it.');">
                                                 @csrf
                                                 @method('DELETE')
+                                                <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
+                                                <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                                                 <button class="btn btn--soft" type="submit">Delete</button>
                                             </form>
                                         </div>
@@ -218,6 +236,8 @@
                                             action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
                                             style="display:inline;">
                                             @csrf
+                                            <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
+                                            <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                                             <button type="submit"
                                                 title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"
                                                 style="background:none;border:none;cursor:pointer;padding:0;">

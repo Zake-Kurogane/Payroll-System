@@ -19,6 +19,8 @@ use App\Models\EmployeeLoanHistory;
 use App\Models\PayrollCalendarSetting;
 use App\Models\PayrollRunLoanItem;
 use App\Models\PayrollDeductionPolicy;
+use App\Models\SalaryProrationRule;
+use App\Models\TimekeepingRule;
 use App\Services\Payroll\PayrollCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -258,30 +260,26 @@ class PayrollRunController extends Controller
 
         $employeeIds = $rawRows->pluck('employee_id')->filter()->values()->all();
         $attendanceAgg = collect();
+        $timekeeping = TimekeepingRule::query()->first() ?? TimekeepingRule::create([]);
+        $proration = SalaryProrationRule::query()->first() ?? SalaryProrationRule::create([]);
         if (!empty($employeeIds) && !empty($run->period_month) && !empty($run->cutoff)) {
-            [$start, $end] = $calculator->cutoffRangePublic((string) $run->period_month, (string) $run->cutoff);
-
-            $aggQuery = AttendanceRecord::query()
-                ->selectRaw("
-                    employee_id,
-                    SUM(CASE WHEN status IN ('Present','Late','Half-day') THEN 1 ELSE 0 END) as present_days,
-                    SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
-                    SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days
-                ")
+            $attendanceAgg = AttendanceSummary::query()
                 ->whereIn('employee_id', $employeeIds)
-                ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
-                ->groupBy('employee_id');
-
-            $attendanceAgg = $aggQuery->get()->keyBy('employee_id');
+                ->where('period_month', (string) $run->period_month)
+                ->where('cutoff', (string) $run->cutoff)
+                ->get()
+                ->keyBy('employee_id');
         }
 
         $rows = $rawRows
-            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg) {
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $timekeeping, $proration) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                     : '';
                 $summary = $attendanceAgg->get($r->employee_id);
+                $dailyRate = round(((float) ($emp?->basic_pay ?? 0)) / 26, 2);
+                $attendanceBreakdown = $this->attendanceDeductionBreakdownFromSummary($summary, $dailyRate, $timekeeping, $proration);
                 $ov = null;
                 $rowOverride = $overrides->get($r->employee_id);
                 if ($rowOverride) {
@@ -305,7 +303,12 @@ class PayrollRunController extends Controller
                     'present_days' => (float) ($summary?->present_days ?? 0),
                     'absent_days' => (float) ($summary?->absent_days ?? 0),
                     'leave_days' => (float) ($summary?->leave_days ?? 0),
-                    'daily_rate' => round(((float) ($emp?->basic_pay ?? 0)) / 26, 2),
+                    'late_minutes' => (int) ($summary?->minutes_late ?? 0),
+                    'undertime_minutes' => (int) ($summary?->minutes_undertime ?? 0),
+                    'late_deduction' => (float) ($attendanceBreakdown['late_deduction'] ?? 0),
+                    'undertime_deduction' => (float) ($attendanceBreakdown['undertime_deduction'] ?? 0),
+                    'absent_deduction' => (float) ($attendanceBreakdown['absent_deduction'] ?? 0),
+                    'daily_rate' => $dailyRate,
                     'basic_pay_cutoff' => (float) $r->basic_pay_cutoff,
                     'allowance_cutoff' => (float) $r->allowance_cutoff,
                     'ot_hours' => (float) $r->ot_hours,
@@ -521,8 +524,6 @@ class PayrollRunController extends Controller
 
         $validated = $request->validate([
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
-            'ot_override_on' => ['required', 'boolean'],
-            'ot_override_hours' => ['nullable', 'numeric', 'min:0'],
             'cash_advance' => ['nullable', 'numeric', 'min:0'],
             'adjustments' => ['nullable', 'array'],
             'adjustments.*.type' => ['required_with:adjustments', Rule::in(['earning', 'deduction'])],
@@ -536,8 +537,8 @@ class PayrollRunController extends Controller
                 'employee_id' => $validated['employee_id'],
             ],
             [
-                'ot_override_on' => $validated['ot_override_on'],
-                'ot_override_hours' => $validated['ot_override_hours'] ?? null,
+                'ot_override_on' => false,
+                'ot_override_hours' => null,
                 'cash_advance' => $validated['cash_advance'] ?? null,
                 'adjustments' => $validated['adjustments'] ?? [],
             ]
@@ -967,11 +968,58 @@ class PayrollRunController extends Controller
         });
     }
 
+    private function attendanceDeductionBreakdownFromSummary($summary, float $dailyRate, TimekeepingRule $timekeeping, SalaryProrationRule $proration): array
+    {
+        if (!$summary) {
+            return [
+                'late_deduction' => 0.0,
+                'undertime_deduction' => 0.0,
+                'absent_deduction' => 0.0,
+            ];
+        }
+
+        $workMinutes = (int) ($timekeeping->work_minutes_per_day ?? 480);
+        $lateMinutes = $this->roundMinutesForPayroll((int) ($summary->minutes_late ?? 0), (string) ($timekeeping->late_rounding ?? 'none'));
+        if (($timekeeping->late_rule_type ?? 'rate_based') === 'flat_penalty') {
+            $lateDed = $lateMinutes * (float) ($timekeeping->late_penalty_per_minute ?? 0);
+        } else {
+            $lateDed = $workMinutes > 0 ? ($lateMinutes * ($dailyRate / $workMinutes)) : 0.0;
+        }
+
+        $underDed = 0.0;
+        if ((bool) ($timekeeping->undertime_enabled ?? true)) {
+            $underMinutes = $this->roundMinutesForPayroll((int) ($summary->minutes_undertime ?? 0), (string) ($timekeeping->late_rounding ?? 'none'));
+            if (($timekeeping->undertime_rule_type ?? 'rate_based') === 'flat_penalty') {
+                $underDed = $underMinutes * (float) ($timekeeping->undertime_penalty_per_minute ?? 0);
+            } else {
+                $underDed = $workMinutes > 0 ? ($underMinutes * ($dailyRate / $workMinutes)) : 0.0;
+            }
+        }
+
+        $absentDed = 0.0;
+        if (($proration->salary_mode ?? 'prorate_workdays') === 'fixed_50_50') {
+            $absentDed = max(0.0, (float) ($summary->absent_days ?? 0)) * $dailyRate;
+        }
+
+        return [
+            'late_deduction' => round($lateDed, 2),
+            'undertime_deduction' => round($underDed, 2),
+            'absent_deduction' => round($absentDed, 2),
+        ];
+    }
+
+    private function roundMinutesForPayroll(int $minutes, string $rule): int
+    {
+        if ($rule === 'nearest_5') return (int) (round($minutes / 5) * 5);
+        if ($rule === 'nearest_15') return (int) (round($minutes / 15) * 15);
+        return $minutes;
+    }
+
     private function paidUnitsForStatus(string $status): float
     {
         $s = trim($status);
         if ($s === '') return 0.0;
-        if (in_array($s, ['Present', 'Late', 'Paid Leave', 'Holiday', 'Day Off'], true)) return 1.0;
+        if (in_array($s, ['Present', 'Late', 'Paid Leave', 'Holiday'], true)) return 1.0;
         if ($s === 'Half-day') return 0.5;
         return 0.0;
     }

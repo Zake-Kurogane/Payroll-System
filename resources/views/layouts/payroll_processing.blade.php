@@ -155,8 +155,6 @@
                                             aria-hidden="true"></span></th>
                                     <th>Attendance (P/A/L)</th>
                                     <th class="num">Daily Rate</th>
-                                    <th class="num">OT Hours</th>
-                                    <th class="num">OT Pay</th>
                                     <th class="num">Attendance Deduction</th>
                                     <th class="num">Charges</th>
                                     <th class="num">Loans</th>
@@ -275,31 +273,6 @@
                 <div class="mini__v" id="adjStatus">Draft</div>
             </div>
 
-            <div class="sectionTitle">Overtime</div>
-
-            <div class="field">
-                <label>Computed OT Hours</label>
-                <input id="adjComputedOt" type="number" readonly />
-            </div>
-
-            <div class="field field--switch">
-                <label>Override OT?</label>
-                <label class="switch">
-                    <input type="checkbox" id="adjOverrideToggle" />
-                    <span class="switch__ui"></span>
-                </label>
-            </div>
-
-            <div class="field">
-                <label>OT Hours (Override)</label>
-                <input id="adjOtHours" type="number" min="0" step="0.25" disabled />
-            </div>
-
-            <div class="field">
-                <label>OT Amount Preview</label>
-                <input id="adjOtAmountPreview" type="text" readonly />
-            </div>
-
             <div class="sectionTitle">Adjustments (One-time)</div>
 
             <div id="adjustmentList"></div>
@@ -321,10 +294,6 @@
                 <div class="summaryLine">
                     <span>Base Pay</span>
                     <strong id="sumBase">₱ 0</strong>
-                </div>
-                <div class="summaryLine">
-                    <span>OT</span>
-                    <strong id="sumOt">₱ 0</strong>
                 </div>
                 <div class="summaryLine">
                     <span>Other Earnings</span>

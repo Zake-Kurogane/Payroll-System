@@ -834,14 +834,10 @@ tbody tr:hover {
 } /* Clock In/Out */
 .table:not(.table--preview) th:nth-child(8),
 .table:not(.table--preview) td:nth-child(8) {
-    width: 60px;
-} /* OT */
-.table:not(.table--preview) th:nth-child(9),
-.table:not(.table--preview) td:nth-child(9) {
     width: 110px;
 } /* Status */
-.table:not(.table--preview) th:nth-child(10),
-.table:not(.table--preview) td:nth-child(10) {
+.table:not(.table--preview) th:nth-child(9),
+.table:not(.table--preview) td:nth-child(9) {
     width: 140px;
 } /* Action */
 

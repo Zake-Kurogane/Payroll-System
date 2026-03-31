@@ -39,24 +39,17 @@ class PayrollCalculator
         $attDefaults = AttendanceCodeSetting::query()->first();
 
         $employeeIds = $employees->pluck('id')->all();
+        if (count($employeeIds) > 0) {
+            // Always refresh attendance summaries on compute so payroll reflects
+            // current paid-day rules and latest attendance edits.
+            $this->buildSummariesForPeriod($employeeIds, $periodMonth, $cutoff, $start, $end);
+        }
         $summaries = AttendanceSummary::query()
             ->whereIn('employee_id', $employeeIds)
             ->where('period_month', $periodMonth)
             ->where('cutoff', $cutoff)
             ->get()
             ->keyBy('employee_id');
-        if (count($employeeIds) > 0) {
-            $missingIds = array_values(array_diff($employeeIds, $summaries->keys()->all()));
-            if ($missingIds) {
-                $this->buildSummariesForPeriod($missingIds, $periodMonth, $cutoff, $start, $end);
-                $summaries = AttendanceSummary::query()
-                    ->whereIn('employee_id', $employeeIds)
-                    ->where('period_month', $periodMonth)
-                    ->where('cutoff', $cutoff)
-                    ->get()
-                    ->keyBy('employee_id');
-            }
-        }
 
         $cashAdvances = CashAdvance::query()
             ->whereIn('employee_id', $employeeIds)
@@ -106,20 +99,24 @@ class PayrollCalculator
         // Allowance is evenly distributed across both cutoffs
         $allowanceCutoff = (float) $emp->allowance / 2;
 
-        $computedOtHours = (float) $summary['ot_hours'];
-        $computedOtHours = $this->roundOtHours($computedOtHours, (string) ($overtime->rounding ?? $overtime->rounding_option ?? 'none'));
+        // Company policy: overtime is disabled globally.
+        // Keep OT metrics at zero regardless of attendance OT values or row overrides.
+        $computedOtHours = 0.0;
 
         $override = $overrides ? $overrides->get($emp->id) : null;
-        $otOverrideOn = (bool) ($override['ot_override_on'] ?? false);
-        $otOverrideHours = $otOverrideOn ? (float) ($override['ot_override_hours'] ?? 0) : $computedOtHours;
-        $otPay = $this->computeOtPay($otOverrideHours, $dailyRate, $timekeeping, $overtime);
+        $otOverrideOn = false;
+        $otOverrideHours = 0.0;
+        $otPay = 0.0;
 
-        $attendanceDeduction = $this->computeAttendanceDeductions(
+        $attendanceParts = $this->computeAttendanceDeductionParts(
             $summary,
             $dailyRate,
             $timekeeping,
             $proration
         );
+        $attendanceDeduction = ($attendanceParts['late'] ?? 0.0)
+            + ($attendanceParts['undertime'] ?? 0.0)
+            + ($attendanceParts['absent'] ?? 0.0);
 
         $computedCashAdvance = $this->computeCashAdvanceDeduction(
             $cashPolicy,
@@ -141,7 +138,7 @@ class PayrollCalculator
         $zeros = ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
         $applyPremiums = $isRegular || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false);
         $sss = ($applyPremiums && $this->hasGovId($emp->sss))
-            ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff)
+            ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff, $this->isEcExempt($emp))
             : $zeros;
         $philhealth = ($applyPremiums && $this->hasGovId($emp->philhealth))
             ? $this->computePhilHealth($statutory, (float) $emp->basic_pay, $cutoff)
@@ -228,6 +225,11 @@ class PayrollCalculator
             'ot_override_hours' => $otOverrideOn ? $otOverrideHours : null,
             'ot_pay' => $this->roundMoney($otPay, $proration),
             'attendance_deduction' => $this->roundMoney($attendanceDeduction, $proration),
+            'late_minutes' => (int) ($summary['minutes_late'] ?? 0),
+            'undertime_minutes' => (int) ($summary['minutes_undertime'] ?? 0),
+            'late_deduction' => $this->roundMoney((float) ($attendanceParts['late'] ?? 0.0), $proration),
+            'undertime_deduction' => $this->roundMoney((float) ($attendanceParts['undertime'] ?? 0.0), $proration),
+            'absent_deduction' => $this->roundMoney((float) ($attendanceParts['absent'] ?? 0.0), $proration),
             'adjustments' => $adjustments,
             'adjustments_earn' => $this->roundMoney($earnAdj, $proration),
             'adjustments_ded' => $this->roundMoney($dedAdj, $proration),
@@ -419,7 +421,7 @@ class PayrollCalculator
                 SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
                 SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days,
                 SUM(CASE
-                    WHEN status IN ('Present','Late','Paid Leave','Holiday','Day Off') THEN 1
+                    WHEN status IN ('Present','Late','Paid Leave','Holiday') THEN 1
                     WHEN status = 'Half-day' THEN 0.5
                     ELSE 0
                 END) as paid_days,
@@ -457,7 +459,7 @@ class PayrollCalculator
         );
     }
 
-    private function computeAttendanceDeductions(array $summary, float $dailyRate, TimekeepingRule $timekeeping, SalaryProrationRule $proration): float
+    private function computeAttendanceDeductionParts(array $summary, float $dailyRate, TimekeepingRule $timekeeping, SalaryProrationRule $proration): array
     {
         $workMinutes = (int) ($timekeeping->work_minutes_per_day ?? 480);
         $lateMinutes = $this->roundMinutes((int) $summary['minutes_late'], (string) ($timekeeping->late_rounding ?? 'none'));
@@ -483,7 +485,11 @@ class PayrollCalculator
             $absentDed = max(0.0, (float) $summary['absent']) * $dailyRate;
         }
 
-        return $lateDed + $underDed + $absentDed;
+        return [
+            'late' => $lateDed,
+            'undertime' => $underDed,
+            'absent' => $absentDed,
+        ];
     }
 
     private function roundMinutes(int $minutes, string $rule): int
@@ -557,7 +563,7 @@ class PayrollCalculator
         return $total;
     }
 
-    private function computeSss(StatutorySetup $statutory, float $basicPay, string $cutoff): array
+    private function computeSss(StatutorySetup $statutory, float $basicPay, string $cutoff, bool $excludeEc = false): array
     {
         $table = $statutory->sss_table;
         $ee = 0.0;
@@ -570,7 +576,7 @@ class PayrollCalculator
             foreach ($mapped as $row) {
                 if ($basicPay >= $row['from'] && ($row['to'] === null || $basicPay <= $row['to'])) {
                     $ee = (float) ($row['ee'] ?? 0);
-                    $er = (float) ($row['er'] ?? 0);
+                    $er = (float) (($excludeEc ? ($row['er_without_ec'] ?? null) : null) ?? ($row['er'] ?? 0));
                     $usedTable = true;
                     break;
                 }
@@ -655,7 +661,16 @@ class PayrollCalculator
             // Common exports with explicit totals.
             'ertotal',
         ]);
-        $ecIdx = $this->findHeaderIndex($header, ['ec', 'employercompensation', 'employercomp', 'employercontributionec']);
+        $ecIdx = $this->findHeaderIndex($header, [
+            'ec',
+            'erec',
+            'employerec',
+            'erecshare',
+            'ereccontribution',
+            'employercompensation',
+            'employercomp',
+            'employercontributionec',
+        ]);
         $totalIdx = $this->findHeaderIndex($header, ['total', 'totalcontribution', 'totalcontributions', 'totalss', 'totalsscontribution']);
 
         if ($rangeIdx < 0) {
@@ -709,6 +724,10 @@ class PayrollCalculator
                 'to' => $to,
                 'ee' => $ee ?? 0,
                 'er' => $er ?? 0,
+                'ec' => $ec ?? 0,
+                'er_without_ec' => $erIsTotal
+                    ? max(0.0, (float) (($er ?? 0) - ($ec ?? 0)))
+                    : (float) ($er ?? 0),
             ];
         }
         return $out;
@@ -1045,6 +1064,17 @@ class PayrollCalculator
         if ($raw === '') return false;
         $digits = preg_replace('/\D+/', '', $raw);
         return $digits !== '';
+    }
+
+    private function isEcExempt(Employee $emp): bool
+    {
+        $externalPosition = trim((string) ($emp->externalPosition?->name ?? ''));
+        if ($externalPosition === '') {
+            return false;
+        }
+
+        $normalized = preg_replace('/\s+/', ' ', strtolower((string) preg_replace('/[^a-z0-9]+/i', ' ', $externalPosition)));
+        return str_contains($normalized, 'owner') || str_contains($normalized, 'proprietor');
     }
 
     private function shouldApplyWithholdingTax(Employee $emp, bool $isRegular, PayrollDeductionPolicy $dedPolicy): bool
