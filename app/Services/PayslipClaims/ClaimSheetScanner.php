@@ -4,7 +4,6 @@ namespace App\Services\PayslipClaims;
 
 class ClaimSheetScanner
 {
-    /** Geometry/debug info from the last scan, for storing in processed_summary. */
     private array $lastDebug = [];
 
     public function getLastDebug(): array
@@ -12,152 +11,106 @@ class ClaimSheetScanner
         return $this->lastDebug;
     }
 
-    public function scanImageFile(string $path, int $expectedRows): array
+    /**
+     * Scan one page of a claim sheet.
+     *
+     * @param string $path          Absolute path to the image file.
+     * @param int    $expectedRows  Number of data rows on this page.
+     * @param array  $rowTokens     12-char tokens ordered the same as the printed rows.
+     *
+     * @return array  Per-row results, each containing:
+     *   status        — 'confirmed' | 'needs_review' | 'unclaimed'
+     *   confidence    — 0.0–1.0
+     *   qr_found      — bool
+     *   token_found   — string|null   (what the QR decoded to)
+     *   token_match   — bool          (decoded == expected for this row position)
+     *   checkbox_ink  — float
+     *   sig_ink       — float
+     *   claimed       — bool          (backward compat)
+     *   ink_ratio     — float         (backward compat)
+     *   ink_ratio_strict — float      (backward compat)
+     */
+    public function scanImageFile(string $path, int $expectedRows, array $rowTokens = []): array
     {
         $raw = @file_get_contents($path);
-        if ($raw === false) {
-            throw new \RuntimeException('Unable to read image.');
-        }
+        if ($raw === false) throw new \RuntimeException('Unable to read image.');
 
         $img = @imagecreatefromstring($raw);
-        if (!$img) {
-            throw new \RuntimeException('Unsupported image format.');
-        }
+        if (!$img) throw new \RuntimeException('Unsupported image format.');
 
-        // Respect EXIF orientation when available (common for phone photos).
         $img = $this->applyExifOrientation($path, $img);
 
-        // Some uploads are rotated (e.g., page photographed sideways). Try scan variants and
-        // pick the best one to avoid mapping ink from "Area" text into the signature column.
-        $best = $this->scanBestOrientation($img, $expectedRows);
-        if (!empty($best['results'])) {
-            $this->lastDebug = $best['debug'] ?? [];
-            return $best['results'];
-        }
-
-        $res = $this->scanImage($img, $expectedRows);
-        $this->lastDebug = $res['debug'] ?? [];
-        return (array) ($res['results'] ?? []);
+        $result = $this->scanImage($img, $expectedRows, $rowTokens);
+        $this->lastDebug = $result['debug'] ?? [];
+        return $result['rows'];
     }
 
-    private function scanBestOrientation($img, int $expectedRows): array
+    // ── Core scan ─────────────────────────────────────────────────────────────
+
+    private function scanImage($img, int $expectedRows, array $rowTokens): array
     {
-        // 0, 90 CW, 90 CCW, 180
-        $variants = [
-            ['angle' => 0, 'img' => $img],
-        ];
-
-        // Rotate copies; use white background for uncovered pixels.
-        if (function_exists('imagerotate')) {
-            $white = imagecolorallocate($img, 255, 255, 255);
-            $variants[] = ['angle' => 90, 'img' => @imagerotate($img, -90, $white)];  // CW
-            $variants[] = ['angle' => -90, 'img' => @imagerotate($img, 90, $white)];  // CCW
-            $variants[] = ['angle' => 180, 'img' => @imagerotate($img, 180, $white)];
-        }
-
-        $best = null;
-        foreach ($variants as $v) {
-            if (!$v['img']) continue;
-            $res = $this->scanImage($v['img'], $expectedRows);
-            if (empty($res['results'])) continue;
-
-            // Prefer non-fallback geometry. Tiebreak: first orientation tried (0°) wins
-            // because we only replace on strict improvement (score <, not <=).
-            // Do NOT use ink values — with only the received box checked (mostly blank),
-            // a wrong orientation that samples blank areas scores lower and would win incorrectly.
-            $score = ($res['used_fallback'] ? 1.0 : 0.0);
-
-            if ($best === null || $score < $best['score']) {
-                $best = ['score' => $score, 'results' => $res['results'], 'debug' => $res['debug'] ?? []];
-            }
-        }
-
-        return $best ?? [];
-    }
-
-    private function scanImage($img, int $expectedRows): array
-    {
+        // ── 1. Scale to a comfortable working width ───────────────────────────
         $w = imagesx($img);
         $h = imagesy($img);
-
-        $targetW = 1200;
-        if ($w > $targetW) {
-            $scale = $targetW / $w;
-            $newW  = (int) round($w * $scale);
-            $newH  = (int) round($h * $scale);
-            $img   = imagescale($img, $newW, $newH, IMG_BILINEAR_FIXED);
+        if ($w > 1500) {
+            $scale = 1500 / $w;
+            $img   = imagescale($img, (int) round($w * $scale), (int) round($h * $scale), IMG_BILINEAR_FIXED);
             $w     = imagesx($img);
             $h     = imagesy($img);
         }
 
-        imagefilter($img, IMG_FILTER_GRAYSCALE);
+        // ── 2. Grayscale copy for density scanning ────────────────────────────
+        $gray = imagecreatetruecolor($w, $h);
+        imagecopy($gray, $img, 0, 0, 0, 0, $w, $h);
+        imagefilter($gray, IMG_FILTER_GRAYSCALE);
 
         $step = 2;
 
-        // ── 1. Detect all dense horizontal lines ──────────────────────────────
-        // Threshold 0.50: solid table-border/row-separator lines (continuous ink
-        // spanning full width) clearly exceed this; title-text rows do not.
-        // Fall back to 0.30 for very faint borders (camera photos, low contrast).
+        // ── 3. Detect horizontal table borders (full-width density) ───────────
         $rowDens = [];
         for ($y = 0; $y < $h; $y++) {
-            $black = 0;
-            $total = 0;
+            $black = 0; $total = 0;
             for ($x = 0; $x < $w; $x += $step) {
                 $total++;
-                if ((imagecolorat($img, $x, $y) & 0xFF) < 180) $black++;
+                if ((imagecolorat($gray, $x, $y) & 0xFF) < 180) $black++;
             }
             $rowDens[$y] = $total > 0 ? $black / $total : 0.0;
         }
 
         $hLines = $this->pickDenseLines($rowDens, 0.50, 6);
         $hLines = array_values(array_filter($hLines, fn ($y) => $y > $h * 0.04 && $y < $h * 0.97));
-        if (count($hLines) < 2) {
-            // Camera photos / faint scans: lower threshold
+        if (\count($hLines) < 2) {
             $hLines = $this->pickDenseLines($rowDens, 0.30, 6);
             $hLines = array_values(array_filter($hLines, fn ($y) => $y > $h * 0.04 && $y < $h * 0.97));
         }
-        if (count($hLines) < 2) {
-            return $this->withInkStats($this->fallbackScanByProportions($img, $expectedRows), true);
+        if (\count($hLines) < 2) {
+            return $this->fallbackResult($expectedRows, $rowTokens, 'no_hlines', $gray, $w, $h);
         }
 
-        // First detected line = table top border; last = table bottom border.
-        // This works regardless of how many rows the page has, because the outer
-        // borders are always the first and last dense horizontal structures.
         $tableTop    = $hLines[0];
-        $tableBottom = $hLines[count($hLines) - 1];
-
-        if ($tableBottom - $tableTop < (int) ($h * 0.05)) {
-            return $this->withInkStats($this->fallbackScanByProportions($img, $expectedRows), true);
+        $tableBottom = $hLines[\count($hLines) - 1];
+        if ($tableBottom - $tableTop < $h * 0.05) {
+            return $this->fallbackResult($expectedRows, $rowTokens, 'table_too_small', $gray, $w, $h);
         }
 
-        // ── 2. Detect outer vertical borders ─────────────────────────────────
-        // Scan only within the table's vertical span to avoid picking up non-table
-        // vertical structures above/below the table.
+        // ── 4. Detect vertical table borders ─────────────────────────────────
         $colDens = [];
         for ($x = 0; $x < $w; $x++) {
-            $black = 0;
-            $total = 0;
+            $black = 0; $total = 0;
             for ($y = $tableTop; $y <= $tableBottom; $y += $step) {
                 $total++;
-                if ((imagecolorat($img, $x, $y) & 0xFF) < 180) $black++;
+                if ((imagecolorat($gray, $x, $y) & 0xFF) < 180) $black++;
             }
             $colDens[$x] = $total > 0 ? $black / $total : 0.0;
         }
 
         $vLines = $this->pickDenseLines($colDens, 0.50, 6);
-        if (count($vLines) < 2) {
-            $vLines = $this->pickDenseLines($colDens, 0.30, 6);
-        }
+        if (\count($vLines) < 2) $vLines = $this->pickDenseLines($colDens, 0.30, 6);
 
-        // Left border = leftmost v-line in left 20 % of image (excludes all
-        // internal column separators).
-        // Right border = rightmost v-line in right 20 % of image.
-        // This prevents the Signature/Received column separator (~92 % from left)
-        // from being mistaken for the outer right border.
         $leftCandidates  = array_filter($vLines, fn ($x) => $x < $w * 0.20);
         $rightCandidates = array_filter($vLines, fn ($x) => $x > $w * 0.80);
         if (empty($leftCandidates) || empty($rightCandidates)) {
-            return $this->withInkStats($this->fallbackScanByProportions($img, $expectedRows), true);
+            return $this->fallbackResult($expectedRows, $rowTokens, 'no_vlines', $gray, $w, $h);
         }
 
         $tableLeft  = (int) min($leftCandidates);
@@ -165,111 +118,101 @@ class ClaimSheetScanner
         $tableW     = max(1, $tableRight - $tableLeft);
         $tableH     = max(1, $tableBottom - $tableTop);
 
-        // ── 3. Find the header / data separator ──────────────────────────────
-        // Each row (header included) is ~10 mm on the printed sheet, so the
-        // header separator is within 0.35–1.8 × approxRowH below the table top.
-        // Scan rowDens directly in that zone and pick the densest pixel.
+        // ── 5. Find the header/data separator ────────────────────────────────
         $approxRowH   = $tableH / max(1, $expectedRows + 1);
-        $hZoneStart   = $tableTop + (int) ($approxRowH * 0.35);
-        $hZoneEnd     = $tableTop + (int) ($approxRowH * 1.80);
-        $headerBottom = null;
-        $headerBestD  = 0.0;
-        for ($y = $hZoneStart; $y < $hZoneEnd; $y++) {
-            if (isset($rowDens[$y]) && $rowDens[$y] > $headerBestD) {
-                $headerBestD  = $rowDens[$y];
-                $headerBottom = $y;
+        $headerBottom = $this->findHeaderSeparator($rowDens, $tableTop, $approxRowH, $tableBottom);
+
+        // ── 6. Column positions from the new CSS layout ───────────────────────
+        // Sheet columns (% of table width):
+        //   #(5%) | EmpID(10%) | Name(26%) | Area(15%) | QR(12%) | Sig(22%) | □(7%) | Date(3%)
+        // Cumulative left edges:
+        //   QR  : 56 % → 68 %
+        //   Sig : 68 % → 90 %
+        //   Rec : 90 % → 97 %
+        $qrX1  = $tableLeft + (int) round($tableW * 0.57);
+        $qrX2  = $tableLeft + (int) round($tableW * 0.68);
+        $sigX1 = $tableLeft + (int) round($tableW * 0.69);
+        $sigX2 = $tableLeft + (int) round($tableW * 0.89);
+        $recX1 = $tableLeft + (int) round($tableW * 0.91);
+        $recX2 = $tableLeft + (int) round($tableW * 0.96);
+
+        // ── 7. Row walker — find each separator independently ─────────────────
+        // Recompute density restricted to the table's horizontal span so that
+        // row separator lines (only ~70–80 % of the full image width) appear
+        // at full strength instead of being diluted by the margins.
+        $tableRowDens = [];
+        for ($y = $tableTop; $y <= $tableBottom; $y++) {
+            $black = 0; $total = 0;
+            for ($x = $tableLeft; $x <= $tableRight; $x += $step) {
+                $total++;
+                if ((imagecolorat($gray, $x, $y) & 0xFF) < 180) $black++;
             }
+            $tableRowDens[$y] = $total > 0 ? $black / $total : 0.0;
         }
-        $headerBottom = $headerBottom ?? ($tableTop + (int) $approxRowH);
-        $headerBottom = max(
-            $tableTop + (int) ($approxRowH * 0.30),
-            min($headerBottom, $tableBottom - (int) ($approxRowH * 0.50))
-        );
 
-        // ── 4. Column positions from the CSS proportions ──────────────────────
-        // .col-rec 8 % (starts at 92 %)
-        $padX  = 8;
-        $recX1 = $tableLeft + (int) round($tableW * 0.925) + ($padX - 3);
-        $recX2 = $tableRight - ($padX - 3);
+        $approxDataH = ($tableBottom - $headerBottom) / max(1, $expectedRows);
+        $boundaries  = [$headerBottom];
+        for ($r = 1; $r < $expectedRows; $r++) {
+            $expectedY   = (int) ($headerBottom + $r * $approxDataH);
+            $searchRange = (int) ($approxDataH * 0.30);
+            $searchStart = max($headerBottom + 1, $expectedY - $searchRange);
+            $searchEnd   = min($tableBottom   - 1, $expectedY + $searchRange);
+            $bestY = $expectedY;
+            $bestD = -1.0;
+            for ($sy = $searchStart; $sy <= $searchEnd; $sy++) {
+                if (isset($tableRowDens[$sy]) && $tableRowDens[$sy] > $bestD) {
+                    $bestD = $tableRowDens[$sy];
+                    $bestY = $sy;
+                }
+            }
+            $boundaries[] = $bestY;
+        }
+        $boundaries[] = $tableBottom;
 
-        // Background reference: signature column (.col-sign 14%, starts at 78%).
-        // Used for local-contrast check: genuine ink = received box much darker than
-        // the background next to it; shadow gradient = both similarly dark.
-        $bgX1ref = $tableLeft + (int) round($tableW * 0.78);
-        $bgX2ref = $recX1 - 2;
+        // ── 8. Per-row scan ───────────────────────────────────────────────────
+        $rows         = [];
+        $dbgRec       = [];
+        $dbgSig       = [];
+        $dbgQr        = [];
+        $canReadQr    = !empty($rowTokens) && class_exists(\Zxing\QrReader::class);
+        $sigPadX      = (int) max(2, round(($sigX2 - $sigX1) * 0.03));
 
-        // ── 5. Equal-height row scanning ─────────────────────────────────────
-        $dataH = max(1, $tableBottom - $headerBottom);
-        $rowH  = $dataH / max(1, $expectedRows);
-        $padY  = max(2, (int) ($rowH * 0.08));
-
-        // Thresholds for received-box ink:
-        // strict (<140): clearly dark pen/pencil marks — if ≥ 6% pixels, definitely claimed.
-        // soft (<180):   JPEG-compressed gray ink — require local contrast to reject shadow.
-        // vsoft (<200):  lightly shaded boxes — require stronger contrast signal.
-        $recClaimThresholdStrict = 0.060;
-        $recClaimThresholdSoft   = 0.080;
-        $recClaimThresholdVSoft  = 0.100;
-        // Minimum contrast (received − background) required for soft/vsoft claims.
-        // Shadow gradients are gradual so adjacent columns have similar ink; genuine
-        // ink is a localized dark spot on white, giving contrast > 0.15.
-        $contrastMinSoft  = 0.15;
-        $contrastMinVSoft = 0.12;
-
-        $results      = [];
-        $rowInkSoft   = [];
-        $rowInkStrict = [];
-        $rowBgInk     = [];
         for ($i = 0; $i < $expectedRows; $i++) {
-            $y1 = (int) ($headerBottom + $i * $rowH) + $padY;
-            $y2 = (int) ($headerBottom + ($i + 1) * $rowH) - $padY;
+            $cellH   = $boundaries[$i + 1] - $boundaries[$i];
+            $padY    = max(2, (int) ($cellH * 0.12));
+            $y1      = $boundaries[$i]     + $padY;
+            $y2      = $boundaries[$i + 1] - $padY;
+            $expTok  = $rowTokens[$i] ?? null;
 
-            if ($y2 <= $y1 || $recX2 <= $recX1 + 4) {
-                $results[]      = ['claimed' => false, 'ink_ratio' => 0.0, 'ink_ratio_strict' => 0.0];
-                $rowInkSoft[]   = 0.0;
-                $rowInkStrict[] = 0.0;
-                $rowBgInk[]     = 0.0;
+            if ($y2 <= $y1) {
+                $rows[]  = $this->makeRow(false, 0.0, 0.0, null, $expTok, 'invalid_row');
+                $dbgRec[] = 0; $dbgSig[] = 0; $dbgQr[] = 0;
                 continue;
             }
 
-            $recInkStrict = 0.0;
-            $recInkSoft   = 0.0;
-            $recInkVSoft  = 0.0;
-            [$rx1, $ry1, $rx2, $ry2] = $this->receivedBoxInnerRect($recX1, $y1, $recX2, $y2);
-            if ($rx2 > $rx1 && $ry2 > $ry1) {
-                $recInkStrict = $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 140);
-                $recInkSoft   = $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 180);
-                $recInkVSoft  = $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 200);
+            // Try to read QR from the QR column area of this row.
+            $tokenFound = null;
+            if ($canReadQr) {
+                $tokenFound = $this->readQr($img, $qrX1, $y1, $qrX2, $y2);
             }
 
-            // Background ink in the signature column (immediately left of received box).
-            $bgInkSoft  = 0.0;
-            $bgInkVSoft = 0.0;
-            if ($bgX2ref > $bgX1ref + 10 && $y2 > $y1) {
-                $bgInkSoft  = $this->inkRatio($img, $bgX1ref, $y1, $bgX2ref, $y2, 180);
-                $bgInkVSoft = $this->inkRatio($img, $bgX1ref, $y1, $bgX2ref, $y2, 200);
-            }
+            // Checkbox ink: strict threshold < 140 (phone shadows stay > 160).
+            ['strict' => $recInk] = $this->receivedInkRatios($gray, $recX1, $y1, $recX2, $y2);
 
-            // Local contrast: how much darker is the received box vs its neighbour?
-            $contrastSoft  = max(0.0, $recInkSoft  - $bgInkSoft);
-            $contrastVSoft = max(0.0, $recInkVSoft - $bgInkVSoft);
+            // Signature ink: inset to skip column border lines.
+            $sigInk = $sigX2 > $sigX1 + 10
+                ? $this->inkRatio($gray, $sigX1 + $sigPadX, $y1, $sigX2 - $sigPadX, $y2, 140)
+                : 0.0;
 
-            // Decision:
-            // 1. Clear dark ink (< 140): always genuine regardless of background.
-            // 2. Gray ink (< 180): accept only if box is clearly darker than background.
-            // 3. Light shading (< 200): accept if box is still notably darker than background.
-            $claimed = $recInkStrict > $recClaimThresholdStrict
-                    || $recInkSoft  > $recClaimThresholdSoft  && $contrastSoft  > $contrastMinSoft
-                    || $recInkVSoft > $recClaimThresholdVSoft && $contrastVSoft > $contrastMinVSoft;
+            // Require meaningful ink — phone-photo shadows/texture stay well below these.
+            // recInk: checkbox must be ≥15 % filled (genuine shade).
+            // sigInk: signature must cover ≥5 % of the column (a real pen stroke).
+            $hasInk = $recInk > 0.15 || $sigInk > 0.05;
 
-            $results[] = [
-                'claimed'          => $claimed,
-                'ink_ratio'        => $recInkSoft,
-                'ink_ratio_strict' => $recInkStrict,
-            ];
-            $rowInkSoft[]   = round($recInkSoft,  4);
-            $rowInkStrict[] = round($recInkStrict, 4);
-            $rowBgInk[]     = round($bgInkSoft,   4);
+            $rows[]   = $this->makeRow($hasInk, $recInk, $sigInk, $tokenFound, $expTok);
+            $dbgRec[] = round($recInk,  4);
+            $dbgSig[] = round($sigInk,  4);
+            $dbgQr[]  = $tokenFound !== null ? 1 : 0;
         }
 
         $debug = [
@@ -282,46 +225,192 @@ class ClaimSheetScanner
             'header_bottom'  => $headerBottom,
             'rec_x1'         => $recX1,
             'rec_x2'         => $recX2,
-            'row_h'          => round($rowH, 1),
-            'row_ink_soft'   => implode(',', $rowInkSoft),
-            'row_ink_strict' => implode(',', $rowInkStrict),
-            'row_bg_ink'     => implode(',', $rowBgInk),
+            'qr_x1'          => $qrX1,
+            'qr_x2'          => $qrX2,
+            'row_h'          => round($approxDataH, 1),
+            'row_ink_strict' => implode(',', $dbgRec),
+            'row_sig_ink'    => implode(',', $dbgSig),
+            'row_qr_found'   => implode(',', $dbgQr),
         ];
 
-        return $this->withInkStats($results, false, $debug);
+        return ['rows' => $rows, 'debug' => $debug];
     }
 
-    private function withInkStats(array $results, bool $usedFallback, array $debug = []): array
-    {
-        $strict = array_map(fn ($r) => (float) ($r['ink_ratio_strict'] ?? 0), $results);
-        $soft   = array_map(fn ($r) => (float) ($r['ink_ratio']        ?? 0), $results);
-        $softMax   = !empty($soft)   ? max($soft)   : 0.0;
-        $strictMax = !empty($strict) ? max($strict) : 0.0;
+    // ── Row classification ────────────────────────────────────────────────────
+
+    /**
+     * Build a per-row result array with status + confidence.
+     *
+     * Decision table:
+     *   QR match  + ink  → confirmed    (0.95) — definitive via QR + ink
+     *   QR match  + none → unclaimed    (0.92) — definitively empty row
+     *   QR mismatch      → needs_review (0.50) — row alignment problem; human must check
+     *   No QR     + ink  → confirmed    (0.65) — ink-based; QR just unreadable in photo
+     *   No QR     + none → unclaimed    (0.60) — nothing detected
+     *
+     * needs_review is reserved for genuine QR mismatches (wrong-row attribution).
+     * Unreadable QR is normal for phone photos and falls back to ink detection.
+     */
+    private function makeRow(
+        bool    $hasInk,
+        float   $recInk,
+        float   $sigInk,
+        ?string $tokenFound,
+        ?string $expectedToken,
+        string  $forceReason = ''
+    ): array {
+        if ($forceReason !== '') {
+            return [
+                'status' => 'needs_review', 'confidence' => 0.10,
+                'qr_found' => false, 'token_found' => null,
+                'token_match' => false, 'token_expected' => $expectedToken,
+                'checkbox_ink' => 0.0, 'sig_ink' => 0.0,
+                'claimed' => false, 'ink_ratio' => 0.0, 'ink_ratio_strict' => 0.0,
+            ];
+        }
+
+        $qrOk       = $tokenFound !== null;
+        $tokenMatch = $qrOk && $expectedToken !== null && $tokenFound === $expectedToken;
+
+        if ($tokenMatch && $hasInk) {
+            [$status, $conf] = ['confirmed',    0.95];
+        } elseif ($tokenMatch) {
+            [$status, $conf] = ['unclaimed',    0.92];
+        } elseif ($qrOk) {
+            // QR was read but doesn't match the expected row — genuine misalignment.
+            [$status, $conf] = ['needs_review', 0.50];
+        } elseif ($hasInk) {
+            // QR unreadable (normal for phone photos) — trust the ink detection.
+            [$status, $conf] = ['confirmed',    0.65];
+        } else {
+            // No QR, no ink — unclaimed.
+            [$status, $conf] = ['unclaimed',    0.60];
+        }
+
         return [
-            'results'       => $results,
-            'used_fallback' => $usedFallback,
-            'ink_soft_max'  => $softMax,
-            'ink_strict_max'=> $strictMax,
-            'debug'         => $debug,
+            'status'           => $status,
+            'confidence'       => $conf,
+            'qr_found'         => $qrOk,
+            'token_found'      => $tokenFound,
+            'token_match'      => $tokenMatch,
+            'token_expected'   => $expectedToken,
+            'checkbox_ink'     => $recInk,
+            'sig_ink'          => $sigInk,
+            // Backward-compat fields used by the controller loop:
+            'claimed'          => $status === 'confirmed',
+            'ink_ratio'        => $recInk,
+            'ink_ratio_strict' => $recInk,
         ];
+    }
+
+    // ── QR reading ────────────────────────────────────────────────────────────
+
+    /**
+     * Crop the QR column area of a row, upscale for better detection, decode.
+     * Returns the decoded string or null on failure.
+     */
+    private function readQr($img, int $x1, int $y1, int $x2, int $y2): ?string
+    {
+        if ($x2 <= $x1 + 8 || $y2 <= $y1 + 8) return null;
+
+        try {
+            $cropW = $x2 - $x1;
+            $cropH = $y2 - $y1;
+
+            // Upscale so the smallest dimension is at least 120 px — gives the
+            // QR decoder enough pixels to locate finder patterns reliably.
+            $scale = max(1.0, 120.0 / min($cropW, $cropH));
+            $destW = (int) round($cropW * $scale);
+            $destH = (int) round($cropH * $scale);
+
+            $crop  = imagecreatetruecolor($destW, $destH);
+            imagefill($crop, 0, 0, imagecolorallocate($crop, 255, 255, 255));
+            imagecopyresampled($crop, $img, 0, 0, $x1, $y1, $destW, $destH, $cropW, $cropH);
+
+            ob_start();
+            imagepng($crop);
+            $png = ob_get_clean();
+            imagedestroy($crop);
+
+            $reader  = new \Zxing\QrReader((string) $png, \Zxing\QrReader::SOURCE_TYPE_BLOB);
+            $decoded = $reader->text();
+
+            return ($decoded && \is_string($decoded) && $decoded !== '') ? strtoupper(trim($decoded)) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    // ── Fallback ─────────────────────────────────────────────────────────────
+
+    /**
+     * Called when table geometry cannot be detected.
+     * Falls back to strict-ink-only scan using proportional positions.
+     */
+    private function fallbackResult(int $expectedRows, array $rowTokens, string $reason, $gray, int $w, int $h): array
+    {
+        // Approximate positions from CSS layout (% of image width).
+        $recX1 = (int) round($w * 0.91);
+        $recX2 = (int) round($w * 0.96);
+        $sigX1 = (int) round($w * 0.69);
+        $sigX2 = (int) round($w * 0.89);
+
+        $tableTop    = (int) round($h * 0.18);
+        $tableBottom = (int) round($h * 0.94);
+        $rowH        = ($tableBottom - $tableTop) / max(1, $expectedRows);
+        $sigPadX     = (int) max(2, round(($sigX2 - $sigX1) * 0.03));
+
+        $rows = [];
+        for ($i = 0; $i < $expectedRows; $i++) {
+            $y1 = $tableTop + (int) ($i * $rowH) + 6;
+            $y2 = $tableTop + (int) (($i + 1) * $rowH) - 6;
+
+            ['strict' => $recInk] = $this->receivedInkRatios($gray, $recX1, $y1, $recX2, $y2);
+            $sigInk  = $y2 > $y1 ? $this->inkRatio($gray, $sigX1 + $sigPadX, $y1, $sigX2 - $sigPadX, $y2, 140) : 0.0;
+            $hasInk  = $recInk > 0.15 || $sigInk > 0.05;
+
+            // No QR available in fallback — everything with ink becomes needs_review.
+            $rows[] = $this->makeRow($hasInk, $recInk, $sigInk, null, $rowTokens[$i] ?? null);
+        }
+
+        return [
+            'rows'  => $rows,
+            'debug' => ['fallback_reason' => $reason],
+        ];
+    }
+
+    // ── Geometry helpers ──────────────────────────────────────────────────────
+
+    private function findHeaderSeparator(array $rowDens, int $tableTop, float $approxRowH, int $tableBottom): int
+    {
+        $hZoneStart   = $tableTop + (int) ($approxRowH * 0.35);
+        $hZoneEnd     = $tableTop + (int) ($approxRowH * 1.80);
+        $headerBottom = null;
+        $bestD        = 0.0;
+        for ($y = $hZoneStart; $y < $hZoneEnd; $y++) {
+            if (isset($rowDens[$y]) && $rowDens[$y] > $bestD) {
+                $bestD        = $rowDens[$y];
+                $headerBottom = $y;
+            }
+        }
+        $headerBottom = $headerBottom ?? ($tableTop + (int) $approxRowH);
+        return max(
+            $tableTop + (int) ($approxRowH * 0.30),
+            min($headerBottom, $tableBottom - (int) ($approxRowH * 0.50))
+        );
     }
 
     private function applyExifOrientation(string $path, $img)
     {
         if (!function_exists('exif_read_data') || !function_exists('imagerotate')) return $img;
-        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-        if (!in_array($ext, ['jpg', 'jpeg'], true)) return $img;
-
+        if (!in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['jpg', 'jpeg'], true)) return $img;
         try {
             $exif = @exif_read_data($path);
-            $ori = (int) ($exif['Orientation'] ?? 1);
-            if ($ori === 3) return @imagerotate($img, 180, 0xFFFFFF) ?: $img;
-            if ($ori === 6) return @imagerotate($img, -90, 0xFFFFFF) ?: $img; // 90 CW
-            if ($ori === 8) return @imagerotate($img, 90, 0xFFFFFF) ?: $img;  // 90 CCW
-        } catch (\Throwable $e) {
-            return $img;
-        }
-
+            $ori  = (int) ($exif['Orientation'] ?? 1);
+            if ($ori === 3) return @imagerotate($img, 180,  0xFFFFFF) ?: $img;
+            if ($ori === 6) return @imagerotate($img, -90,  0xFFFFFF) ?: $img;
+            if ($ori === 8) return @imagerotate($img,  90,  0xFFFFFF) ?: $img;
+        } catch (\Throwable) {}
         return $img;
     }
 
@@ -336,102 +425,52 @@ class ClaimSheetScanner
         sort($candidates);
         $lines = [];
         $group = [$candidates[0]];
-        for ($i = 1; $i < count($candidates); $i++) {
-            $cur = $candidates[$i];
-            $prev = $candidates[$i - 1];
-            if (($cur - $prev) <= $mergeGap) {
-                $group[] = $cur;
+        for ($i = 1, $n = \count($candidates); $i < $n; $i++) {
+            if ($candidates[$i] - $candidates[$i - 1] <= $mergeGap) {
+                $group[] = $candidates[$i];
             } else {
-                $lines[] = (int) round(array_sum($group) / count($group));
-                $group = [$cur];
+                $lines[] = (int) round(array_sum($group) / \count($group));
+                $group   = [$candidates[$i]];
             }
         }
-        $lines[] = (int) round(array_sum($group) / count($group));
+        $lines[] = (int) round(array_sum($group) / \count($group));
         return $lines;
     }
 
-    private function inkRatio($img, int $x1, int $y1, int $x2, int $y2, int $blackThreshold): float
+    private function inkRatio($img, int $x1, int $y1, int $x2, int $y2, int $threshold): float
     {
-        $w = imagesx($img);
-        $h = imagesy($img);
-        $x1 = max(0, min($w - 1, $x1));
-        $x2 = max(0, min($w - 1, $x2));
-        $y1 = max(0, min($h - 1, $y1));
-        $y2 = max(0, min($h - 1, $y2));
-
-        $step = 2;
-        $black = 0;
-        $total = 0;
-        for ($y = $y1; $y <= $y2; $y += $step) {
-            for ($x = $x1; $x <= $x2; $x += $step) {
-                $c = imagecolorat($img, $x, $y);
-                $v = $c & 0xFF;
+        $iw = imagesx($img); $ih = imagesy($img);
+        $x1 = max(0, min($iw - 1, $x1)); $x2 = max(0, min($iw - 1, $x2));
+        $y1 = max(0, min($ih - 1, $y1)); $y2 = max(0, min($ih - 1, $y2));
+        $black = 0; $total = 0;
+        for ($y = $y1; $y <= $y2; $y += 2) {
+            for ($x = $x1; $x <= $x2; $x += 2) {
                 $total++;
-                if ($v < $blackThreshold) $black++;
+                if ((imagecolorat($img, $x, $y) & 0xFF) < $threshold) $black++;
             }
         }
-        return $total > 0 ? ($black / $total) : 0.0;
+        return $total > 0 ? $black / $total : 0.0;
     }
 
-    private function receivedBoxInnerRect(int $cellX1, int $cellY1, int $cellX2, int $cellY2): array
+    private function receivedBoxInnerRect(int $x1, int $y1, int $x2, int $y2, float $ratio = 0.70): array
     {
-        $cellW = max(1, $cellX2 - $cellX1);
-        $cellH = max(1, $cellY2 - $cellY1);
-
-        // The printed box is centered and roughly square. Sample the inner area to avoid counting the border.
-        $boxSize = (int) round(min($cellW, $cellH) * 0.78);
-        $boxX1 = (int) round($cellX1 + (($cellW - $boxSize) / 2));
-        $boxY1 = (int) round($cellY1 + (($cellH - $boxSize) / 2));
-        $boxX2 = $boxX1 + $boxSize;
-        $boxY2 = $boxY1 + $boxSize;
-
-        $inset = (int) max(2, round($boxSize * 0.12));
-
-        return [
-            $boxX1 + $inset,
-            $boxY1 + $inset,
-            $boxX2 - $inset,
-            $boxY2 - $inset,
-        ];
+        $cw   = max(1, $x2 - $x1);
+        $ch   = max(1, $y2 - $y1);
+        $size = (int) round(min($cw, $ch) * $ratio);
+        $bx1  = (int) round($x1 + ($cw - $size) / 2);
+        $by1  = (int) round($y1 + ($ch - $size) / 2);
+        $in   = (int) max(1, round($size * 0.12));
+        return [$bx1 + $in, $by1 + $in, $bx1 + $size - $in, $by1 + $size - $in];
     }
 
-    private function fallbackScanByProportions($img, int $expectedRows): array
+    private function receivedInkRatios($img, int $x1, int $y1, int $x2, int $y2): array
     {
-        $w = imagesx($img);
-        $h = imagesy($img);
-
-        // Approximate the received column position (.col-rec starts at 92 %).
-        $recCellX1 = (int) round($w * 0.92);
-        $recCellX2 = (int) round($w * 0.97);
-        $tableTop = (int) round($h * 0.22);
-        $tableBottom = (int) round($h * 0.92);
-        $rowH = (int) max(10, floor(($tableBottom - $tableTop) / max(1, $expectedRows)));
-
-        $results = [];
-        for ($i = 0; $i < $expectedRows; $i++) {
-            // Extra padding to avoid counting printed borders.
-            $y1 = $tableTop + ($i * $rowH) + 8;
-            $y2 = $tableTop + (($i + 1) * $rowH) - 8;
-
-            $recInkSoft = 0.0;
-            $recInkStrict = 0.0;
-            if (($recCellX2 - 8) > ($recCellX1 + 8) && $y2 > $y1) {
-                [$rx1, $ry1, $rx2, $ry2] = $this->receivedBoxInnerRect($recCellX1 + 8, $y1, $recCellX2 - 8, $y2);
-                if ($rx2 > $rx1 && $ry2 > $ry1) {
-                    $recInkSoft = $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 180);
-                    $recInkStrict = $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 140);
-                }
-            }
-
-            $inkSoft = $recInkSoft;
-            $inkStrict = $recInkStrict;
-            $claimed = $recInkStrict > 0.02 || $recInkSoft > 0.06;
-            $results[] = [
-                'claimed' => $claimed,
-                'ink_ratio' => $inkSoft,
-                'ink_ratio_strict' => $inkStrict,
-            ];
+        $best = 0.0;
+        foreach ([0.30, 0.45, 0.60, 0.75] as $ratio) {
+            [$rx1, $ry1, $rx2, $ry2] = $this->receivedBoxInnerRect($x1, $y1, $x2, $y2, $ratio);
+            if ($rx2 - $rx1 < 4 || $ry2 - $ry1 < 4) continue;
+            $best = max($best, $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 140));
         }
-        return $results;
+        return ['strict' => $best, 'soft' => $best];
     }
 }

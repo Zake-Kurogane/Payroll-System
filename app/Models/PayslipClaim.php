@@ -14,11 +14,14 @@ class PayslipClaim extends Model
         'claimed_by_user_id',
         'payslip_claim_proof_id',
         'ink_ratio',
+        'review_status',
+        'confidence',
     ];
 
     protected $casts = [
         'claimed_at' => 'datetime',
         'ink_ratio' => 'decimal:5',
+        'confidence' => 'decimal:3',
     ];
 
     public function payrollRun(): BelongsTo

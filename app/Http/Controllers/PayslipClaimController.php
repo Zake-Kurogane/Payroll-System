@@ -8,6 +8,7 @@ use App\Models\PayrollRunRow;
 use App\Models\PayslipClaim;
 use App\Models\PayslipClaimProof;
 use App\Services\PayslipClaims\ClaimSheetScanner;
+use App\Services\PayslipClaims\ClaimToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +68,7 @@ class PayslipClaimController extends Controller
 
         $company = CompanySetup::query()->first();
         $rows = $this->runEmployeesWithClaimStatus($run);
-        $pages = $this->buildClaimSheetPages($rows, 25);
+        $pages = $this->buildClaimSheetPages($rows, 25, $run->id);
 
         $html = view('print.payslip_claim_sheet', [
             'company' => $company,
@@ -154,9 +155,12 @@ class PayslipClaimController extends Controller
             $claim->claimed_by_user_id     = null;
             $claim->payslip_claim_proof_id = null;
             $claim->ink_ratio              = null;
+            $claim->review_status          = null;
+            $claim->confidence             = null;
         } else {
             $claim->claimed_at         = now();
             $claim->claimed_by_user_id = Auth::id();
+            $claim->review_status      = 'confirmed';
         }
         $claim->save();
 
@@ -177,10 +181,12 @@ class PayslipClaimController extends Controller
             PayslipClaim::query()
                 ->where('payslip_claim_proof_id', $proof->id)
                 ->update([
-                    'claimed_at' => null,
-                    'claimed_by_user_id' => null,
+                    'claimed_at'             => null,
+                    'claimed_by_user_id'     => null,
                     'payslip_claim_proof_id' => null,
-                    'ink_ratio' => null,
+                    'ink_ratio'              => null,
+                    'review_status'          => null,
+                    'confidence'             => null,
                 ]);
 
             try {
@@ -232,7 +238,7 @@ class PayslipClaimController extends Controller
             });
     }
 
-    private function buildClaimSheetPages($rows, int $rowsPerPage = 25): array
+    private function buildClaimSheetPages($rows, int $rowsPerPage = 25, int $runId = 0): array
     {
         $items = collect($rows)->map(function ($r) {
             $area = is_array($r) ? ($r['area_place'] ?? '') : ($r->area_place ?? '');
@@ -257,8 +263,12 @@ class PayslipClaimController extends Controller
                 $pageRows = [];
                 foreach ($chunk as $row) {
                     $areaSeq++;
+                    $empId = (int) ($row['employee_id'] ?? 0);
+                    $token = ($runId && $empId) ? ClaimToken::generate($runId, $empId) : '';
                     $pageRows[] = array_merge($row, [
-                        'no' => $areaSeq,
+                        'no'          => $areaSeq,
+                        'token'       => $token,
+                        'qr_data_uri' => $token ? ClaimToken::qrDataUri($token) : '',
                     ]);
                 }
 
@@ -286,8 +296,10 @@ class PayslipClaimController extends Controller
         return $rows->map(function ($r) use ($claims) {
             $claim = $claims->get($r['employee_id']);
             return array_merge($r, [
-                'claimed_at' => $claim?->claimed_at,
-                'proof_id' => $claim?->payslip_claim_proof_id,
+                'claimed_at'    => $claim?->claimed_at,
+                'proof_id'      => $claim?->payslip_claim_proof_id,
+                'review_status' => $claim?->review_status,
+                'confidence'    => $claim?->confidence,
             ]);
         });
     }
@@ -299,10 +311,15 @@ class PayslipClaimController extends Controller
             ->where('payroll_run_id', $run->id)
             ->whereNotNull('claimed_at')
             ->count();
+        $needsReview = PayslipClaim::query()
+            ->where('payroll_run_id', $run->id)
+            ->where('review_status', 'needs_review')
+            ->count();
         return [
-            'total' => (int) $total,
-            'claimed' => (int) $claimed,
-            'unclaimed' => max(0, (int) $total - (int) $claimed),
+            'total'        => (int) $total,
+            'claimed'      => (int) $claimed,
+            'needs_review' => (int) $needsReview,
+            'unclaimed'    => max(0, (int) $total - (int) $claimed),
         ];
     }
 
@@ -364,18 +381,24 @@ class PayslipClaimController extends Controller
                 $sliceLastEmpNo = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
 
                 try {
-                    $scan = $scanner->scanImageFile($asset['path'], $expectedRows);
+                    // Build per-row tokens so the scanner can verify QR codes.
+                    $rowTokens = array_map(
+                        fn ($r) => ClaimToken::generate($run->id, (int) ($r['employee_id'] ?? 0)),
+                        $slice
+                    );
+
+                    $scan = $scanner->scanImageFile($asset['path'], $expectedRows, $rowTokens);
                     $scanDebug = $scanner->getLastDebug();
                     $rowsScanned = min($expectedRows, count($scan));
                     $rowsScannedTotal += $rowsScanned;
                     $pagesProcessed++;
 
                     for ($k = 0; $k < $rowsScanned; $k++) {
-                        $inkSoft[] = (float) ($scan[$k]['ink_ratio'] ?? 0);
+                        $inkSoft[]   = (float) ($scan[$k]['ink_ratio'] ?? 0);
                         $inkStrict[] = (float) ($scan[$k]['ink_ratio_strict'] ?? 0);
-                        if (($scan[$k]['claimed'] ?? false) && isset($slice[$k])) {
+                        if (($scan[$k]['status'] ?? '') === 'confirmed' && isset($slice[$k])) {
                             $claimedRowIndexes[] = $k + 1;
-                            $claimedEmpNos[] = (string) ($slice[$k]['emp_no'] ?? '');
+                            $claimedEmpNos[]     = (string) ($slice[$k]['emp_no'] ?? '');
                         }
                     }
 
@@ -405,24 +428,43 @@ class PayslipClaimController extends Controller
 
                             $empId = (int) ($row['employee_id'] ?? 0);
                             if (!$empId) continue;
-                            if (!($res['claimed'] ?? false)) continue;
 
-                            $claimedDetectedTotal++;
-                            $already = $existing->get($empId);
-                            if ($already && $already->claimed_at) {
-                                continue;
+                            $status     = (string) ($res['status'] ?? 'unclaimed');
+                            $confidence = (float)  ($res['confidence'] ?? 0.0);
+                            $already    = $existing->get($empId);
+
+                            if ($status === 'confirmed') {
+                                $claimedDetectedTotal++;
+                                // Don't overwrite a pre-existing confirmed claim.
+                                if ($already && $already->claimed_at) continue;
+
+                                PayslipClaim::updateOrCreate(
+                                    ['payroll_run_id' => $run->id, 'employee_id' => $empId],
+                                    [
+                                        'claimed_at'             => now(),
+                                        'claimed_by_user_id'     => Auth::id(),
+                                        'payslip_claim_proof_id' => $proof->id,
+                                        'ink_ratio'              => (float) ($res['ink_ratio'] ?? 0),
+                                        'review_status'          => 'confirmed',
+                                        'confidence'             => $confidence,
+                                    ]
+                                );
+                                $claimedNewTotal++;
+                            } elseif ($status === 'needs_review') {
+                                // Don't overwrite an already-confirmed claim.
+                                if ($already && $already->claimed_at) continue;
+
+                                PayslipClaim::updateOrCreate(
+                                    ['payroll_run_id' => $run->id, 'employee_id' => $empId],
+                                    [
+                                        'review_status'          => 'needs_review',
+                                        'confidence'             => $confidence,
+                                        'payslip_claim_proof_id' => $proof->id,
+                                        'ink_ratio'              => (float) ($res['ink_ratio'] ?? 0),
+                                    ]
+                                );
                             }
-
-                            PayslipClaim::updateOrCreate(
-                                ['payroll_run_id' => $run->id, 'employee_id' => $empId],
-                                [
-                                    'claimed_at' => now(),
-                                    'claimed_by_user_id' => Auth::id(),
-                                    'payslip_claim_proof_id' => $proof->id,
-                                    'ink_ratio' => (float) ($res['ink_ratio'] ?? 0),
-                                ]
-                            );
-                            $claimedNewTotal++;
+                            // unclaimed: no record created
                         }
                     });
                 } catch (\Throwable $e) {
