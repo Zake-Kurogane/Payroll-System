@@ -40,6 +40,22 @@ class PayslipClaimController extends Controller
             $selectedRun = $runs->first();
         }
 
+        // Same behavior as Reports: if current filters yield no run,
+        // fall back to the latest released run and sync filters to it.
+        if (!$selectedRun) {
+            $fallbackRuns = PayrollRun::query()
+                ->whereIn('status', ['Released'])
+                ->orderByDesc('id')
+                ->get();
+
+            if ($fallbackRuns->isNotEmpty()) {
+                $selectedRun = $fallbackRuns->first();
+                $runs = $fallbackRuns;
+                $monthFilter = $selectedRun->period_month ?: $monthFilter;
+                $cutoffFilter = $selectedRun->cutoff ?: $cutoffFilter;
+            }
+        }
+
         if ($selectedRun) {
             $employees = $this->runEmployeesWithClaimStatus($selectedRun);
             $summary = $this->computeRunClaimSummary($selectedRun);

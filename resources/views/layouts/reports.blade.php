@@ -192,10 +192,8 @@
                                         aria-hidden="true"></span></th>
                                 <th class="num sortable" data-sort="attendancePay">Attendance Pay <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="deductionsEe">Deductions (EE) <span class="sortIcon"
+                                <th class="num sortable" data-sort="deductionsEe">Total Deductions <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="employerShare">Employer Share (ER) <span
-                                        class="sortIcon" aria-hidden="true"></span></th>
                                 <th class="num sortable" data-sort="gross">Gross <span class="sortIcon"
                                         aria-hidden="true"></span>
                                 </th>

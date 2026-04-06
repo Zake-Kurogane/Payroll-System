@@ -11,11 +11,13 @@
         $assignments = $assignments ?? collect();
         $groupedAreaPlaces = $groupedAreaPlaces ?? [];
         $loanTypes = $loanTypes ?? collect();
+        $currentUserName = $currentUserName ?? '';
     @endphp
     <script>
         window.__assignments = @json($assignments);
         window.__areaPlaces = @json($groupedAreaPlaces);
         window.__loanTypes = @json($loanTypes);
+        window.__currentUserName = @json($currentUserName);
     </script>
     <section class="content loans-page">
         <div class="headline headline--withActions">
@@ -110,15 +112,16 @@
                             <tr>
                                 <th>Loan No.</th>
                                 <th>Employee</th>
+                                <th>Lender</th>
                                 <th>Loan Type</th>
-                                <th class="num">Principal</th>
+                                <th class="num">Principal Amount</th>
                                 <th class="num">Total Payable</th>
                                 <th class="num">Per Cutoff</th>
                                 <th class="num">Balance Remaining</th>
-                                <th>Start</th>
-                                <th>End (Est.)</th>
+                                <th>Start Date</th>
+                                <th>Estimated End Date</th>
                                 <th>Status</th>
-                                <th>Payroll Deduction</th>
+                                <th>Auto-deduct</th>
                                 <th class="col-actions">Actions</th>
                             </tr>
                         </thead>
@@ -302,7 +305,7 @@
                 </div>
                 <div class="field">
                     <label>Total Payable</label>
-                    <input id="loanTotalPayable" type="number" min="0" step="0.01" />
+                    <input id="loanTotalPayable" type="number" min="0" step="0.01" readonly />
                 </div>
                 <div class="field field--full">
                     <label>Notes / Remarks</label>
@@ -371,14 +374,14 @@
                     </label>
                 </div>
                 <div class="field field--switch">
-                    <label>Carry forward unpaid?</label>
+                    <label>Carry unpaid balance forward?</label>
                     <label class="switch">
                         <input type="checkbox" id="loanCarryForward" checked />
                         <span class="switch__ui"></span>
                     </label>
                 </div>
                 <div class="field field--switch">
-                    <label>Stop when balance reaches zero?</label>
+                    <label>Stop deductions when fully paid?</label>
                     <label class="switch">
                         <input type="checkbox" id="loanStopOnZero" checked />
                         <span class="switch__ui"></span>
@@ -399,7 +402,7 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Source</label>
+                    <label>Loan Source</label>
                     <select id="loanSource">
                         <option value="Agency">Agency</option>
                         <option value="Company">Company</option>
@@ -408,7 +411,7 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Recovery Type</label>
+                    <label>Repayment Method</label>
                     <select id="loanRecovery">
                         <option value="Payroll deduction">Payroll deduction</option>
                         <option value="Manual payment">Manual payment</option>

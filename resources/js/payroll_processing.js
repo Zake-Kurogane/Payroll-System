@@ -127,7 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const adjStatus = document.getElementById("adjStatus");
   const adjEmpKey = document.getElementById("adjEmpKey");
 
-  const adjCashAdvance = document.getElementById("adjCashAdvance");
+  const adjCashAdvanceAuto = document.getElementById("adjCashAdvanceAuto");
+  const adjCashAdvanceOverrideOn = document.getElementById("adjCashAdvanceOverrideOn");
+  const adjCashAdvanceOverride = document.getElementById("adjCashAdvanceOverride");
 
   const sumBase = document.getElementById("sumBase");
   const sumOtherEarn = document.getElementById("sumOtherEarn");
@@ -321,6 +323,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function mapRowFromApi(r) {
     const ov = r.override || {};
+    const cashAdvanceOverrideRaw = (ov.cash_advance ?? r.cash_advance_override ?? null);
+    const hasCashAdvanceOverride = cashAdvanceOverrideRaw !== null && cashAdvanceOverrideRaw !== undefined;
     return {
       empId: r.emp_no || String(r.employee_id),
       employeeId: r.employee_id,
@@ -355,6 +359,8 @@ document.addEventListener("DOMContentLoaded", () => {
       payoutMethod: r.payout_method || r.pay_method || "CASH",
       accountMasked: r.account_masked || r.bank_account_masked || "",
       adjustments: Array.isArray(r.adjustments) ? r.adjustments : (ov.adjustments || []),
+      cashAdvanceAuto: Number(r.cash_advance_auto ?? r.cash_advance ?? 0),
+      cashAdvanceOverride: hasCashAdvanceOverride ? Number(cashAdvanceOverrideRaw || 0) : null,
       cashAdvance: Number(r.cash_advance || 0),
       chargesDeduction: Number(r.charges_deduction || 0),
       loanDeduction: Number(r.loan_deduction || 0),
@@ -388,6 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // drawer local state
   let adjustmentRows = []; // edits for drawer only (synced into overrides on Apply)
+  let drawerAutoCashAdvance = 0;
 
   // =========================================================
   // RUN GUARDS
@@ -569,7 +576,7 @@ document.addEventListener("DOMContentLoaded", () => {
     previewRows.forEach(r => {
       overrides[r.empId] = {
         otOverrideOn: !!r.otOverrideOn,
-        cashAdvance: r.cashAdvance ?? 0,
+        cashAdvanceOverride: r.cashAdvanceOverride,
         adjustments: Array.isArray(r.adjustments) ? r.adjustments : [],
       };
     });
@@ -992,7 +999,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // load overrides into drawer
     const ov = overrides[empId] || {
-      cashAdvance: row.cashAdvance ?? 0,
+      cashAdvanceOverride: row.cashAdvanceOverride,
       adjustments: Array.isArray(row.adjustments) ? row.adjustments : [],
     };
 
@@ -1000,10 +1007,20 @@ document.addEventListener("DOMContentLoaded", () => {
     adjustmentRows = Array.isArray(ov.adjustments) ? ov.adjustments.map(a => ({ ...a })) : [];
     renderAdjustments();
 
-    // cash advance
-    if (adjCashAdvance) {
-      adjCashAdvance.value = Number(ov.cashAdvance ?? 0);
-      adjCashAdvance.disabled = isLocked();
+    drawerAutoCashAdvance = Number(row.cashAdvanceAuto ?? row.cashAdvance ?? 0);
+    const hasOverride = ov.cashAdvanceOverride != null;
+    const overrideValue = hasOverride ? Number(ov.cashAdvanceOverride || 0) : "";
+
+    if (adjCashAdvanceAuto) {
+      adjCashAdvanceAuto.value = money(drawerAutoCashAdvance);
+    }
+    if (adjCashAdvanceOverrideOn) {
+      adjCashAdvanceOverrideOn.checked = hasOverride;
+      adjCashAdvanceOverrideOn.disabled = isLocked();
+    }
+    if (adjCashAdvanceOverride) {
+      adjCashAdvanceOverride.value = String(overrideValue);
+      adjCashAdvanceOverride.disabled = isLocked() || !hasOverride;
     }
 
     // disable add/apply when locked
@@ -1025,7 +1042,10 @@ document.addEventListener("DOMContentLoaded", () => {
       .filter(a => a.type === "deduction")
       .reduce((a, r) => a + Number(r.amount || 0), 0);
 
-    const cash = Number(adjCashAdvance?.value || 0);
+    const overrideOn = !!adjCashAdvanceOverrideOn?.checked;
+    const cash = overrideOn
+      ? Number(adjCashAdvanceOverride?.value || 0)
+      : Number(drawerAutoCashAdvance || 0);
 
     const grossPreview = Number(row.halfBasic || 0) + Number(row.halfAllowance || 0) + earn;
       const dedPreview = Number(row.attendanceDeduction || 0)
@@ -1062,7 +1082,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const idx = previewRows.findIndex(r => r.empId === empId);
     if (idx >= 0) previewRows[idx] = mapped;
     overrides[empId] = {
-      cashAdvance: mapped.cashAdvance ?? 0,
+      cashAdvanceOverride: mapped.cashAdvanceOverride,
       adjustments: Array.isArray(mapped.adjustments) ? mapped.adjustments : [],
     };
   }
@@ -1076,7 +1096,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const row = previewRows.find(r => r.empId === empId);
     if (!row) return;
 
-    const cash = Number(adjCashAdvance?.value || 0);
+    const overrideOn = !!adjCashAdvanceOverrideOn?.checked;
+    const cashOverride = overrideOn ? Number(adjCashAdvanceOverride?.value || 0) : null;
 
     overrides[empId] = {
       ...(overrides[empId] || {}),
@@ -1085,12 +1106,12 @@ document.addEventListener("DOMContentLoaded", () => {
         name: (a.name || "").trim(),
         amount: Number(a.amount || 0),
       })),
-      cashAdvance: cash,
+      cashAdvanceOverride: cashOverride,
     };
 
     try {
       await saveOverride(empId, {
-        cashAdvance: cash,
+        cashAdvance: cashOverride,
         adjustments: overrides[empId]?.adjustments || [],
       });
       renderTable();
@@ -1107,7 +1128,16 @@ document.addEventListener("DOMContentLoaded", () => {
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
   applyAdjBtn && applyAdjBtn.addEventListener("click", applyAdjust);
 
-  adjCashAdvance && adjCashAdvance.addEventListener("input", updateDrawerSummary);
+  adjCashAdvanceOverrideOn && adjCashAdvanceOverrideOn.addEventListener("change", () => {
+    if (adjCashAdvanceOverride) {
+      adjCashAdvanceOverride.disabled = isLocked() || !adjCashAdvanceOverrideOn.checked;
+      if (!adjCashAdvanceOverrideOn.checked) {
+        adjCashAdvanceOverride.value = "";
+      }
+    }
+    updateDrawerSummary();
+  });
+  adjCashAdvanceOverride && adjCashAdvanceOverride.addEventListener("input", updateDrawerSummary);
 
   // =========================================================
   // RUN LIFECYCLE

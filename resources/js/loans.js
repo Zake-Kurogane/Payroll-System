@@ -11,6 +11,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
   const money = (n) => formatMoney(n);
+  const esc = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+  function prettyLabel(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "—";
+    const map = {
+      every_cutoff: "Every cutoff",
+      cutoff1_only: "1st cutoff only",
+      cutoff2_only: "2nd cutoff only",
+      monthly: "Monthly",
+    };
+    if (map[raw]) return map[raw];
+    return raw
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
 
   async function apiFetch(url, options = {}) {
     const res = await fetch(url, {
@@ -142,6 +164,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const loanRecovery = document.getElementById("loanRecovery");
   const loanApprovedBy = document.getElementById("loanApprovedBy");
   const loanEncodedBy = document.getElementById("loanEncodedBy");
+  const currentUserName = (window.__currentUserName || "").trim();
 
   let loans = [];
   let assignmentFilter = "All";
@@ -455,7 +478,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadLoans() {
     if (!loanTbody) return;
-    loanTbody.innerHTML = `<tr><td colspan="12" class="muted small">Loading...</td></tr>`;
+      loanTbody.innerHTML = `<tr><td colspan="13" class="muted small">Loading...</td></tr>`;
 
     const assignmentValue = areaSubFilter ? `${assignmentFilter}|${areaSubFilter}` : assignmentFilter;
     const params = new URLSearchParams({
@@ -471,21 +494,21 @@ document.addEventListener("DOMContentLoaded", () => {
       loans = await apiFetch(`/loans/list?${params.toString()}`);
       renderLoans();
     } catch (err) {
-      loanTbody.innerHTML = `<tr><td colspan="12" class="muted small">Failed to load loans.</td></tr>`;
+      loanTbody.innerHTML = `<tr><td colspan="13" class="muted small">Failed to load loans.</td></tr>`;
     }
   }
 
   function renderLoans() {
-    if (!loanTbody) return;
-    if (!loans.length) {
-      loanTbody.innerHTML = `<tr><td colspan="12" class="muted small">No loans found.</td></tr>`;
+      if (!loanTbody) return;
+      if (!loans.length) {
+      loanTbody.innerHTML = `<tr><td colspan="13" class="muted small">No loans found.</td></tr>`;
       if (loanMeta) loanMeta.textContent = "No loans found.";
       return;
     }
     if (loanMeta) loanMeta.textContent = `Showing ${loans.length} loan(s).`;
 
     loanTbody.innerHTML = loans.map(l => {
-      const payrollStatus = l.auto_deduct ? (l.status === "active" ? "For Payroll Deduction" : "Not Deducting") : "Manual";
+      const payrollStatus = l.auto_deduct ? "Enabled" : "Disabled";
       const statusBadge = l.status === "active" ? "badge--ok" : l.status === "paused" ? "badge--warn" : "badge--muted";
       const perCutoff = l.per_cutoff_amount && l.per_cutoff_amount > 0 ? l.per_cutoff_amount : (l.deduction_frequency === "every_cutoff" ? (l.monthly_amortization / 2) : l.monthly_amortization);
       const actions = [
@@ -499,6 +522,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <tr>
           <td>${l.loan_no || "—"}</td>
           <td>${l.employee_name || "—"}</td>
+          <td>${l.lender || "—"}</td>
           <td>${l.loan_type}</td>
           <td class="num">${money(l.principal_amount)}</td>
           <td class="num">${money(l.total_payable)}</td>
@@ -640,6 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (loanAllowPartial) loanAllowPartial.checked = true;
     if (loanCarryForward) loanCarryForward.checked = true;
     if (loanStopOnZero) loanStopOnZero.checked = true;
+    if (loanEncodedBy) loanEncodedBy.value = currentUserName;
 
     if (loanStartMonth) {
       const now = new Date();
@@ -748,15 +773,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (loanDetailTitle) loanDetailTitle.textContent = `${loan.loan_no || "Loan"} — ${loan.employee?.name || ""}`;
     if (loanDetailSummary) {
+      const deductionLabel = prettyLabel(loan.deduction_frequency);
+      const statusLabel = prettyLabel(loan.status);
       loanDetailSummary.innerHTML = `
-        <div class="summaryLine"><span>Loan Type</span><strong>${loan.loan_type}</strong></div>
-        <div class="summaryLine"><span>Principal</span><strong>${money(loan.principal_amount)}</strong></div>
-        <div class="summaryLine"><span>Interest</span><strong>${money(loan.interest_amount)}</strong></div>
-        <div class="summaryLine"><span>Total Payable</span><strong>${money(loan.total_payable)}</strong></div>
-        <div class="summaryLine"><span>Paid</span><strong>${money(loan.amount_deducted)}</strong></div>
-        <div class="summaryLine"><span>Balance</span><strong>${money(loan.balance_remaining)}</strong></div>
-        <div class="summaryLine"><span>Status</span><strong>${loan.status}</strong></div>
-        <div class="summaryLine"><span>Deduction Setup</span><strong>${loan.deduction_frequency}</strong></div>
+        <table class="summaryTable" aria-label="Loan summary">
+          <tbody>
+            <tr>
+              <th scope="row">Loan Type</th>
+              <td>${esc(loan.loan_type || "—")}</td>
+              <th scope="row">Principal</th>
+              <td class="num">${esc(money(loan.principal_amount))}</td>
+            </tr>
+            <tr>
+              <th scope="row">Interest</th>
+              <td class="num">${esc(money(loan.interest_amount))}</td>
+              <th scope="row">Total Payable</th>
+              <td class="num">${esc(money(loan.total_payable))}</td>
+            </tr>
+            <tr>
+              <th scope="row">Paid</th>
+              <td class="num">${esc(money(loan.amount_deducted))}</td>
+              <th scope="row">Balance</th>
+              <td class="num">${esc(money(loan.balance_remaining))}</td>
+            </tr>
+            <tr>
+              <th scope="row">Status</th>
+              <td>${esc(statusLabel)}</td>
+              <th scope="row">Frequency</th>
+              <td>${esc(deductionLabel)}</td>
+            </tr>
+          </tbody>
+        </table>
       `;
     }
 
@@ -1018,6 +1065,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const principal = Number(loanPrincipal?.value || 0);
     const interest = Number(loanInterest?.value || 0);
     if (loanTotalPayable) loanTotalPayable.value = (principal + interest).toFixed(2);
+    updateMonthlyFromTotal();
   }
 
   loanPrincipal && loanPrincipal.addEventListener("input", updateTotalPayable);

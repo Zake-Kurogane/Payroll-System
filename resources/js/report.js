@@ -219,10 +219,25 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   function pickDefaultRunId(runs) {
     if (!runs.length) return "";
-    // Prefer newest (highest numeric id) if ids are numeric-like.
-    const sorted = runs
+
+    const hasReportRows = (r) => Number(r.employees || 0) > 0;
+    const candidates = runs.filter(hasReportRows);
+    const source = candidates.length ? candidates : runs;
+
+    // Prefer most recent run by released/locked/created timestamp, then by id.
+    const toTs = (r) => {
+      const raw = r.releasedAtRaw || r.lockedAtRaw || r.createdAtRaw || "";
+      const t = raw ? Date.parse(normalizeDateTimeInput(raw)) : NaN;
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const sorted = source
       .slice()
-      .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+      .sort((a, b) => {
+        const dt = toTs(b) - toTs(a);
+        if (dt !== 0) return dt;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
     return sorted[0]?.id || "";
   }
 
@@ -235,7 +250,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!runSelect) return;
     syncRunSelectInteractivity();
 
-    const list = RUNS.filter(runMatchesFilters);
+    let list = RUNS.filter(runMatchesFilters);
+
+    // If auto-pick is requested but current filters yield no runs,
+    // fall back to the latest run with report data and sync filters to it.
+    if (autoPick && !list.length && RUNS.length) {
+      const fallbackId = pickDefaultRunId(RUNS);
+      const fallbackRun = RUNS.find((r) => r.id === fallbackId) || null;
+      if (fallbackRun) {
+        if (monthInput && fallbackRun.month) monthInput.value = fallbackRun.month;
+        if (cutoffSelect && fallbackRun.cutoff) cutoffSelect.value = fallbackRun.cutoff;
+        list = RUNS.filter(runMatchesFilters);
+      }
+    }
+
     runSelect.innerHTML =
       `<option value="">— Select a payroll run —</option>` +
       list
@@ -251,8 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const cutoffVal = cutoffSelect?.value || "All";
-    const shouldAutoPick = autoPick && cutoffVal !== "All";
+    const shouldAutoPick = autoPick;
     const nextId = shouldAutoPick ? pickDefaultRunId(list) : "";
 
     if (nextId) {
@@ -290,6 +317,9 @@ document.addEventListener("DOMContentLoaded", () => {
       processedBy: run.created_by_name || "—",
       payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "—"),
       releasedAt: formatDateTime12h(run.released_at || "—"),
+      createdAtRaw: run.created_at || "",
+      lockedAtRaw: run.locked_at || "",
+      releasedAtRaw: run.released_at || "",
       runType: run.run_type || "External",
       displayLabel: run.display_label || `${run.run_type || "External"} · ${assignmentText}`,
     };
@@ -319,6 +349,7 @@ document.addEventListener("DOMContentLoaded", () => {
       attendanceDeduction: Number(row.attendance_deduction || 0),
       chargesDeduction: charges,
       loanDeduction: loanDeduction,
+      cashAdvanceDeduction: cashAdvance,
       otherDeductions: charges + loanDeduction + cashAdvance,
       sssEe: Number(row.sss_ee || 0),
       philhealthEe: Number(row.philhealth_ee || 0),
@@ -342,12 +373,10 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {
       RUNS = [];
     }
-    initRunSelect();
+    initRunSelect({ autoPick: true });
     if (initialRunIdParam && runSelect && RUNS.some((r) => r.id === initialRunIdParam)) {
       runSelect.value = initialRunIdParam;
       runSelect.dispatchEvent(new Event("change"));
-    } else if ((cutoffSelect?.value || "All") !== "All") {
-      initRunSelect({ autoPick: true });
     }
     renderAudit();
   }
@@ -520,6 +549,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     rows.forEach((r) => {
       const tr = document.createElement("tr");
+      const dedBreakdown = [
+        ["Attendance", Number(r.attendanceDeduction || 0)],
+        ["SSS (EE)", Number(r.sssEe || 0)],
+        ["PhilHealth (EE)", Number(r.philhealthEe || 0)],
+        ["Pag-IBIG (EE)", Number(r.pagibigEe || 0)],
+        ["Tax", Number(r.tax || 0)],
+        ["Charges", Number(r.chargesDeduction || 0)],
+        ["Loans", Number(r.loanDeduction || 0)],
+        ["Cash Advance", Number(r.cashAdvanceDeduction || 0)],
+      ];
       tr.innerHTML = `
         <td>${escapeHtml(r.empId)}</td>
         <td>${escapeHtml(r.empName)}</td>
@@ -528,8 +567,20 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(`${r.presentDays}/${r.absentDays}/${r.leaveDays}`)}</td>
         <td class="num">${escapeHtml(peso(r.dailyRate))}</td>
         <td class="num">${escapeHtml(peso(r.attendancePay))}</td>
-        <td class="num">${escapeHtml(peso(r.deductionsEe))}</td>
-        <td class="num">${escapeHtml(peso(r.employerShare))}</td>
+        <td class="num">
+          <details class="dedDetails">
+            <summary>
+              <span class="dedDetails__sum">${escapeHtml(peso(r.deductionsEe))}</span>
+              <span class="dedDetails__chev" aria-hidden="true"></span>
+            </summary>
+            <div class="dedDetails__body">
+              ${dedBreakdown
+                .filter(([, amt]) => Number(amt || 0) > 0)
+                .map(([label, amt]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(peso(amt))}</strong></div>`)
+                .join("") || `<div><span>Breakdown</span><strong>${escapeHtml(peso(0))}</strong></div>`}
+            </div>
+          </details>
+        </td>
         <td class="num">${escapeHtml(peso(r.gross))}</td>
         <td class="num"><strong>${escapeHtml(peso(r.netPay))}</strong></td>
         <td>${escapeHtml(r.payslipStatus || "—")}</td>
@@ -539,7 +590,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!rows.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="14" class="muted small">No rows found.</td>`;
+      tr.innerHTML = `<td colspan="11" class="muted small">No rows found.</td>`;
       regTbody.appendChild(tr);
     }
 
@@ -1478,8 +1529,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "Leave",
       "Daily Rate",
       "Attendance Pay",
-      "Deductions (EE)",
-      "Employer Share (ER)",
+      "Total Deductions",
       "Gross",
       "Net",
       "Payslip Status",
@@ -1499,7 +1549,6 @@ document.addEventListener("DOMContentLoaded", () => {
           Number(r.dailyRate || 0).toFixed(2),
           Number(r.attendancePay || 0).toFixed(2),
           Number(r.deductionsEe || 0).toFixed(2),
-          Number(r.employerShare || 0).toFixed(2),
           Number(r.gross || 0).toFixed(2),
           Number(r.netPay || 0).toFixed(2),
           r.payslipStatus || "",

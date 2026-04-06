@@ -157,7 +157,10 @@ class PayrollCalculator
             $start->format('Y-m'),
             $cutoff
         );
-        $cashAdvance = array_key_exists('cash_advance', $override ?? []) ? (float) ($override['cash_advance'] ?? 0) : $computedCashAdvance;
+        $hasCashAdvanceOverride = array_key_exists('cash_advance', $override ?? [])
+            && (($override['cash_advance'] ?? null) !== null);
+        $cashAdvanceOverride = $hasCashAdvanceOverride ? (float) ($override['cash_advance'] ?? 0) : null;
+        $cashAdvance = $hasCashAdvanceOverride ? (float) ($cashAdvanceOverride ?? 0) : $computedCashAdvance;
 
         $adjustments = $override['adjustments'] ?? [];
         $earnAdj = 0.0;
@@ -277,6 +280,8 @@ class PayrollCalculator
             'basic_pay_cutoff' => $this->roundMoney($basicCutoff, $proration),
             'allowance_cutoff' => $this->roundMoney($allowanceCutoff, $proration),
             'gross' => $this->roundMoney($gross, $proration),
+            'cash_advance_auto' => $this->roundMoney($computedCashAdvance, $proration),
+            'cash_advance_override' => $hasCashAdvanceOverride ? $this->roundMoney((float) ($cashAdvanceOverride ?? 0), $proration) : null,
             'cash_advance' => $this->roundMoney($cashAdvance, $proration),
             'charges_deduction' => $this->roundMoney($chargesDeduction, $proration),
             'loan_deduction' => $this->roundMoney($loanDeduction, $proration),
@@ -584,16 +589,24 @@ class PayrollCalculator
                 continue;
             }
 
-            $termMonths = max(1, (int) ($a->term_months ?? 1));
-            $monthsDiff = $startMonth->diffInMonths($period, false);
-            $cutoffIndex = ($monthsDiff * 2) + $cutoffOffset;
-            $totalCutoffs = $termMonths * 2;
-            $remainingCutoffs = $totalCutoffs - $cutoffIndex;
-            if ($remainingCutoffs < 1) {
-                $remainingCutoffs = 1;
+            // Prefer the configured per-cutoff amount from Cash Advance settings table
+            // so payroll auto deduction matches the value shown in the CA page.
+            $configuredPerCutoff = (float) ($a->per_cutoff_deduction ?? 0);
+            if ($configuredPerCutoff > 0) {
+                $due = $configuredPerCutoff;
+            } else {
+                // Fallback for legacy rows without per_cutoff_deduction.
+                $termMonths = max(1, (int) ($a->term_months ?? 1));
+                $monthsDiff = $startMonth->diffInMonths($period, false);
+                $cutoffIndex = ($monthsDiff * 2) + $cutoffOffset;
+                $totalCutoffs = $termMonths * 2;
+                $remainingCutoffs = $totalCutoffs - $cutoffIndex;
+                if ($remainingCutoffs < 1) {
+                    $remainingCutoffs = 1;
+                }
+                $due = round($balance / $remainingCutoffs, 2);
             }
 
-            $due = round($balance / $remainingCutoffs, 2);
             $total += min($balance, max(0.0, $due));
         }
 

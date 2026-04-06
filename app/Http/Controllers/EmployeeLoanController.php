@@ -43,10 +43,13 @@ class EmployeeLoanController extends Controller
             }
         }
 
+        $currentUserName = trim((string) (auth()->user()->name ?? ''));
+
         return view('layouts.loans', [
             'assignments' => $assignments,
             'groupedAreaPlaces' => $groupedAreaPlaces,
             'loanTypes' => $loanTypes,
+            'currentUserName' => $currentUserName,
         ]);
     }
 

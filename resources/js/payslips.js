@@ -435,6 +435,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }).join("");
   }
 
+  function pickDefaultRun(allRuns) {
+    const list = Array.isArray(allRuns) ? allRuns : [];
+    if (!list.length) return null;
+    const withData = list.filter((r) => Number(r.headcount || 0) > 0);
+    const source = withData.length ? withData : list;
+    return source[0] || null; // already ordered desc by backend
+  }
+
   function setRunUI(run) {
     if (!run) {
       safeText("runEmployees", "-");
@@ -477,6 +485,17 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       runs = allRuns.filter((r) => !effectiveMonth || r.period_month === effectiveMonth);
+
+      // Same behavior as Reports: if current filters yield no runs,
+      // fall back to the latest run with data and sync month to it.
+      if (!runs.length && allRuns.length && !forceRunId) {
+        const fallback = pickDefaultRun(allRuns);
+        if (fallback && monthInput) {
+          monthInput.value = fallback.period_month || monthInput.value;
+          effectiveMonth = monthInput.value || effectiveMonth;
+          runs = allRuns.filter((r) => !effectiveMonth || r.period_month === effectiveMonth);
+        }
+      }
       initRunSelect();
     } catch {
       runs = [];
@@ -1487,6 +1506,13 @@ document.addEventListener("DOMContentLoaded", () => {
         setRunUI(run);
         if (run && monthInput) monthInput.value = run.period_month || "";
         return loadPayslips(initialRunId);
+      }
+      const auto = pickDefaultRun(runs);
+      if (auto && runSelect) {
+        selectedRunId = String(auto.id);
+        runSelect.value = selectedRunId;
+        runSelect.dispatchEvent(new Event("change"));
+        return;
       }
       render();
     })

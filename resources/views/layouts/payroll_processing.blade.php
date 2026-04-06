@@ -284,8 +284,18 @@
             <div class="sectionTitle">Cash Advance</div>
 
             <div class="field">
-                <label>Manual Cash Advance Deduction</label>
-                <input id="adjCashAdvance" type="number" min="0" step="0.01" />
+                <label>Auto Cash Advance (This Cutoff)</label>
+                <input id="adjCashAdvanceAuto" type="text" readonly />
+                <div class="muted small" style="margin-top:6px;">Computed from active cash advance and cutoff schedule.</div>
+            </div>
+
+            <div class="field" style="margin-top:10px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input id="adjCashAdvanceOverrideOn" type="checkbox" />
+                    Use Manual Cash Advance Override
+                </label>
+                <input id="adjCashAdvanceOverride" type="number" min="0" step="0.01" />
+                <div class="muted small" style="margin-top:6px;">When enabled, this replaces the auto amount for this run only.</div>
             </div>
 
             <div class="sectionTitle">Summary Preview</div>

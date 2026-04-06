@@ -346,6 +346,8 @@ class PayrollRunController extends Controller
                     'ot_pay' => (float) $r->ot_pay,
                     'gross' => (float) $r->gross,
                     'attendance_deduction' => (float) $r->attendance_deduction,
+                    'cash_advance_auto' => null,
+                    'cash_advance_override' => $rowOverride ? ($rowOverride->cash_advance !== null ? (float) $rowOverride->cash_advance : null) : null,
                     'cash_advance' => (float) $r->cash_advance,
                     'loan_deduction' => (float) $r->loan_deduction,
                     'sss_ee' => (float) $r->sss_ee,
@@ -694,194 +696,6 @@ class PayrollRunController extends Controller
         $run->locked_at = now();
         $run->save();
 
-        // Mark all scheduled charge/shortage deductions for this period as applied
-        $employeeIds = PayrollRunRow::query()
-            ->where('payroll_run_id', $run->id)
-            ->pluck('employee_id')
-            ->all();
-
-        if ($employeeIds) {
-            $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
-
-            if (!(bool) ($dedPolicy->carry_forward_unpaid_charges ?? true)) {
-                // Legacy behavior: apply all scheduled charge/shortage lines as-is.
-                DeductionSchedule::query()
-                    ->whereIn('employee_id', $employeeIds)
-                    ->where('due_month', $run->period_month)
-                    ->where('due_cutoff', $run->cutoff)
-                    ->where('status', 'scheduled')
-                    ->update([
-                        'status' => 'applied',
-                        'payroll_run_id' => $run->id,
-                        'applied_at' => now(),
-                    ]);
-            } else {
-                // Apply charge/shortage schedules up to the computed deduction amount.
-                // Any unpaid remainder is carried forward to the next cutoff.
-                $chargeByEmp = PayrollRunRow::query()
-                    ->where('payroll_run_id', $run->id)
-                    ->whereIn('employee_id', $employeeIds)
-                    ->get(['employee_id', 'charges_deduction'])
-                    ->keyBy('employee_id');
-
-                $schedByEmp = DeductionSchedule::query()
-                    ->whereIn('employee_id', $employeeIds)
-                    ->where('due_month', $run->period_month)
-                    ->where('due_cutoff', $run->cutoff)
-                    ->where('status', 'scheduled')
-                    ->orderBy('employee_id')
-                    ->orderBy('id')
-                    ->get()
-                    ->groupBy('employee_id');
-
-                [$nextMonth, $nextCutoff] = $this->nextCutoff($run->period_month, $run->cutoff);
-
-                foreach ($employeeIds as $empId) {
-                    $available = (float) ($chargeByEmp->get($empId)?->charges_deduction ?? 0);
-                    $lines = $schedByEmp->get($empId, collect());
-                    foreach ($lines as $line) {
-                        $scheduled = (float) $line->amount;
-                        $deducted = min($scheduled, max(0.0, $available));
-                        $available = max(0.0, $available - $deducted);
-
-                        $remaining = round($scheduled - $deducted, 2);
-
-                        // Mark this cutoff's line as applied for the amount actually deducted.
-                        $line->update([
-                            'amount' => $deducted,
-                            'status' => 'applied',
-                            'payroll_run_id' => $run->id,
-                            'applied_at' => now(),
-                        ]);
-
-                        // Carry forward any unpaid remainder to next cutoff.
-                        if ($remaining > 0) {
-                            DeductionSchedule::query()->create([
-                                'deduction_case_id' => $line->deduction_case_id,
-                                'employee_id' => $line->employee_id,
-                                'due_month' => $nextMonth,
-                                'due_cutoff' => $nextCutoff,
-                                'amount' => $remaining,
-                                'status' => 'scheduled',
-                            ]);
-                        }
-                    }
-                }
-            }
-
-            EmployeeLoanHistory::query()
-                ->where('payroll_run_id', $run->id)
-                ->delete();
-
-            $loanItems = PayrollRunLoanItem::query()
-                ->where('payroll_run_id', $run->id)
-                ->whereIn('employee_id', $employeeIds)
-                ->get()
-                ->groupBy('employee_loan_id');
-
-            foreach ($loanItems as $loanId => $items) {
-                $loan = EmployeeLoan::query()->find($loanId);
-                if (!$loan) continue;
-
-                $amountDeducted = (float) ($loan->amount_deducted ?? 0);
-                $balanceRemaining = (float) ($loan->balance_remaining ?? 0);
-
-                foreach ($items as $item) {
-                    $scheduled = (float) $item->scheduled_amount;
-                    $deducted = (float) $item->deducted_amount;
-                    $balanceBefore = (float) $item->balance_before;
-                    $balanceAfter = (float) $item->balance_after;
-
-                    $status = $item->status;
-                    if ($deducted <= 0) $status = 'skipped';
-                    elseif ($deducted < $scheduled) $status = 'partial';
-                    else $status = 'applied';
-
-                    if ($item->employee_loan_schedule_id) {
-                        EmployeeLoanSchedule::query()
-                            ->where('id', $item->employee_loan_schedule_id)
-                            ->update([
-                                'status' => $status,
-                                'payroll_run_id' => $run->id,
-                                'applied_at' => now(),
-                            ]);
-
-                        if ($loan->carry_forward && $deducted < $scheduled) {
-                            $remaining = round($scheduled - $deducted, 2);
-                            if ($remaining > 0) {
-                                [$nextMonth, $nextCutoff] = $this->nextCutoff($run->period_month, $run->cutoff);
-                                EmployeeLoanSchedule::query()->create([
-                                    'employee_loan_id' => $loan->id,
-                                    'employee_id' => $loan->employee_id,
-                                    'due_month' => $nextMonth,
-                                    'due_cutoff' => $nextCutoff,
-                                    'amount' => $remaining,
-                                    'status' => 'scheduled',
-                                ]);
-                            }
-                        }
-                    }
-
-                    EmployeeLoanHistory::query()->create([
-                        'employee_loan_id' => $loan->id,
-                        'employee_id' => $loan->employee_id,
-                        'payroll_run_id' => $run->id,
-                        'period_month' => $run->period_month,
-                        'cutoff' => $run->cutoff,
-                        'scheduled_amount' => $scheduled,
-                        'deducted_amount' => $deducted,
-                        'balance_before' => $balanceBefore,
-                        'balance_after' => $balanceAfter,
-                        'status' => $status,
-                        'posted_by' => $run->created_by,
-                        'posted_at' => now(),
-                    ]);
-
-                    $amountDeducted += $deducted;
-                    $balanceRemaining = max(0.0, $balanceRemaining - $deducted);
-                }
-
-                $loan->amount_deducted = $amountDeducted;
-                $loan->balance_remaining = $balanceRemaining;
-                if ($loan->stop_on_zero && $balanceRemaining <= 0) {
-                    $loan->status = 'completed';
-                }
-                $loan->save();
-            }
-        }
-
-        // Apply Cash Advance deductions to balances (one active CA per employee).
-        $caByEmployee = CashAdvance::query()
-            ->whereIn('employee_id', $employeeIds ?: [0])
-            ->whereRaw("LOWER(TRIM(COALESCE(status,''))) = 'active'")
-            ->get()
-            ->keyBy('employee_id');
-
-        if ($employeeIds) {
-            $rows = PayrollRunRow::query()
-                ->where('payroll_run_id', $run->id)
-                ->whereIn('employee_id', $employeeIds)
-                ->get(['employee_id', 'cash_advance']);
-
-            foreach ($rows as $r) {
-                $deducted = (float) ($r->cash_advance ?? 0);
-                if ($deducted <= 0) continue;
-                $ca = $caByEmployee->get($r->employee_id);
-                if (!$ca) continue;
-
-                $before = (float) ($ca->balance_remaining ?? $ca->amount ?? 0);
-                $applied = min($deducted, max(0.0, $before));
-                $after = max(0.0, $before - $applied);
-
-                $ca->amount_deducted = (float) ($ca->amount_deducted ?? 0) + $applied;
-                $ca->balance_remaining = $after;
-                if ($after <= 0.0) {
-                    $ca->status = 'Completed';
-                }
-                $ca->save();
-            }
-        }
-
         $this->generatePayslipsForRun($run);
         return response()->json($run);
     }
@@ -913,10 +727,204 @@ class PayrollRunController extends Controller
         if ($run->status !== 'Locked') {
             return response()->json(['message' => 'Run must be locked before release.'], 409);
         }
-        $run->status = 'Released';
-        $run->released_at = now();
-        $run->save();
-        return response()->json($run);
+        DB::transaction(function () use ($run) {
+            $this->postRunDeductionsAndBalances($run);
+            $run->status = 'Released';
+            $run->released_at = now();
+            $run->save();
+        });
+        return response()->json($run->fresh());
+    }
+
+    private function postRunDeductionsAndBalances(PayrollRun $run): void
+    {
+        // Mark all scheduled charge/shortage deductions for this period as applied.
+        $employeeIds = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->pluck('employee_id')
+            ->all();
+
+        if (!$employeeIds) {
+            return;
+        }
+
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+
+        if (!(bool) ($dedPolicy->carry_forward_unpaid_charges ?? true)) {
+            // Legacy behavior: apply all scheduled charge/shortage lines as-is.
+            DeductionSchedule::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->where('due_month', $run->period_month)
+                ->where('due_cutoff', $run->cutoff)
+                ->where('status', 'scheduled')
+                ->update([
+                    'status' => 'applied',
+                    'payroll_run_id' => $run->id,
+                    'applied_at' => now(),
+                ]);
+        } else {
+            // Apply charge/shortage schedules up to the computed deduction amount.
+            // Any unpaid remainder is carried forward to the next cutoff.
+            $chargeByEmp = PayrollRunRow::query()
+                ->where('payroll_run_id', $run->id)
+                ->whereIn('employee_id', $employeeIds)
+                ->get(['employee_id', 'charges_deduction'])
+                ->keyBy('employee_id');
+
+            $schedByEmp = DeductionSchedule::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->where('due_month', $run->period_month)
+                ->where('due_cutoff', $run->cutoff)
+                ->where('status', 'scheduled')
+                ->orderBy('employee_id')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('employee_id');
+
+            [$nextMonth, $nextCutoff] = $this->nextCutoff($run->period_month, $run->cutoff);
+
+            foreach ($employeeIds as $empId) {
+                $available = (float) ($chargeByEmp->get($empId)?->charges_deduction ?? 0);
+                $lines = $schedByEmp->get($empId, collect());
+                foreach ($lines as $line) {
+                    $scheduled = (float) $line->amount;
+                    $deducted = min($scheduled, max(0.0, $available));
+                    $available = max(0.0, $available - $deducted);
+
+                    $remaining = round($scheduled - $deducted, 2);
+
+                    // Mark this cutoff's line as applied for the amount actually deducted.
+                    $line->update([
+                        'amount' => $deducted,
+                        'status' => 'applied',
+                        'payroll_run_id' => $run->id,
+                        'applied_at' => now(),
+                    ]);
+
+                    // Carry forward any unpaid remainder to next cutoff.
+                    if ($remaining > 0) {
+                        DeductionSchedule::query()->create([
+                            'deduction_case_id' => $line->deduction_case_id,
+                            'employee_id' => $line->employee_id,
+                            'due_month' => $nextMonth,
+                            'due_cutoff' => $nextCutoff,
+                            'amount' => $remaining,
+                            'status' => 'scheduled',
+                        ]);
+                    }
+                }
+            }
+        }
+
+        EmployeeLoanHistory::query()
+            ->where('payroll_run_id', $run->id)
+            ->delete();
+
+        $loanItems = PayrollRunLoanItem::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('employee_id', $employeeIds)
+            ->get()
+            ->groupBy('employee_loan_id');
+
+        foreach ($loanItems as $loanId => $items) {
+            $loan = EmployeeLoan::query()->find($loanId);
+            if (!$loan) continue;
+
+            $amountDeducted = (float) ($loan->amount_deducted ?? 0);
+            $balanceRemaining = (float) ($loan->balance_remaining ?? 0);
+
+            foreach ($items as $item) {
+                $scheduled = (float) $item->scheduled_amount;
+                $deducted = (float) $item->deducted_amount;
+                $balanceBefore = (float) $item->balance_before;
+                $balanceAfter = (float) $item->balance_after;
+
+                $status = $item->status;
+                if ($deducted <= 0) $status = 'skipped';
+                elseif ($deducted < $scheduled) $status = 'partial';
+                else $status = 'applied';
+
+                if ($item->employee_loan_schedule_id) {
+                    EmployeeLoanSchedule::query()
+                        ->where('id', $item->employee_loan_schedule_id)
+                        ->update([
+                            'status' => $status,
+                            'payroll_run_id' => $run->id,
+                            'applied_at' => now(),
+                        ]);
+
+                    if ($loan->carry_forward && $deducted < $scheduled) {
+                        $remaining = round($scheduled - $deducted, 2);
+                        if ($remaining > 0) {
+                            [$nextMonth, $nextCutoff] = $this->nextCutoff($run->period_month, $run->cutoff);
+                            EmployeeLoanSchedule::query()->create([
+                                'employee_loan_id' => $loan->id,
+                                'employee_id' => $loan->employee_id,
+                                'due_month' => $nextMonth,
+                                'due_cutoff' => $nextCutoff,
+                                'amount' => $remaining,
+                                'status' => 'scheduled',
+                            ]);
+                        }
+                    }
+                }
+
+                EmployeeLoanHistory::query()->create([
+                    'employee_loan_id' => $loan->id,
+                    'employee_id' => $loan->employee_id,
+                    'payroll_run_id' => $run->id,
+                    'period_month' => $run->period_month,
+                    'cutoff' => $run->cutoff,
+                    'scheduled_amount' => $scheduled,
+                    'deducted_amount' => $deducted,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'status' => $status,
+                    'posted_by' => $run->created_by,
+                    'posted_at' => now(),
+                ]);
+
+                $amountDeducted += $deducted;
+                $balanceRemaining = max(0.0, $balanceRemaining - $deducted);
+            }
+
+            $loan->amount_deducted = $amountDeducted;
+            $loan->balance_remaining = $balanceRemaining;
+            if ($loan->stop_on_zero && $balanceRemaining <= 0) {
+                $loan->status = 'completed';
+            }
+            $loan->save();
+        }
+
+        // Apply Cash Advance deductions to balances (one active CA per employee).
+        $caByEmployee = CashAdvance::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereRaw("LOWER(TRIM(COALESCE(status,''))) = 'active'")
+            ->get()
+            ->keyBy('employee_id');
+
+        $rows = PayrollRunRow::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('employee_id', $employeeIds)
+            ->get(['employee_id', 'cash_advance']);
+
+        foreach ($rows as $r) {
+            $deducted = (float) ($r->cash_advance ?? 0);
+            if ($deducted <= 0) continue;
+            $ca = $caByEmployee->get($r->employee_id);
+            if (!$ca) continue;
+
+            $before = (float) ($ca->balance_remaining ?? $ca->amount ?? 0);
+            $applied = min($deducted, max(0.0, $before));
+            $after = max(0.0, $before - $applied);
+
+            $ca->amount_deducted = (float) ($ca->amount_deducted ?? 0) + $applied;
+            $ca->balance_remaining = $after;
+            if ($after <= 0.0) {
+                $ca->status = 'Completed';
+            }
+            $ca->save();
+        }
     }
 
     private function generatePayslipsForRun(PayrollRun $run): void
