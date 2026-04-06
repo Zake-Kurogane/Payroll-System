@@ -142,6 +142,36 @@ class PayrollRunController extends Controller
         return response()->json($payload, 201);
     }
 
+    public function attendanceCheck(Request $request, PayrollCalculator $calculator)
+    {
+        $validated = $request->validate([
+            'period_month' => ['required', 'date_format:Y-m'],
+            'cutoff' => ['required', 'in:11-25,26-10'],
+            'assignment_filter' => ['nullable', 'string'],
+            'area_place_filter' => ['nullable', 'string'],
+            'run_type' => ['nullable', 'in:Internal,External'],
+        ]);
+
+        $assignment = (string) ($validated['assignment_filter'] ?? 'All');
+        $area = $validated['area_place_filter'] ?? null;
+        $runType = (string) ($validated['run_type'] ?? 'External');
+
+        $hasAttendance = $calculator->hasAttendanceForFilters(
+            (string) $validated['period_month'],
+            (string) $validated['cutoff'],
+            $assignment,
+            $area,
+            $runType
+        );
+
+        return response()->json([
+            'has_attendance' => $hasAttendance,
+            'message' => $hasAttendance
+                ? 'Attendance records found for this cutoff.'
+                : 'No attendance records found for this cutoff.',
+        ]);
+    }
+
     public function destroy(PayrollRun $run)
     {
         if ($run->status !== 'Draft') {
@@ -309,6 +339,7 @@ class PayrollRunController extends Controller
                     'undertime_deduction' => (float) ($attendanceBreakdown['undertime_deduction'] ?? 0),
                     'absent_deduction' => (float) ($attendanceBreakdown['absent_deduction'] ?? 0),
                     'daily_rate' => $dailyRate,
+                    'basic_pay_monthly' => (float) ($emp?->basic_pay ?? 0),
                     'basic_pay_cutoff' => (float) $r->basic_pay_cutoff,
                     'allowance_cutoff' => (float) $r->allowance_cutoff,
                     'ot_hours' => (float) $r->ot_hours,
@@ -576,7 +607,7 @@ class PayrollRunController extends Controller
             ->keyBy('employee_id');
         $cashAdvances = \App\Models\CashAdvance::query()
             ->where('employee_id', $emp->id)
-            ->where('status', 'Active')
+            ->whereRaw("LOWER(TRIM(COALESCE(status,''))) = 'active'")
             ->get()
             ->groupBy('employee_id');
         $loanSchedules = EmployeeLoanSchedule::query()

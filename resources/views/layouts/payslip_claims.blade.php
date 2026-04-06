@@ -147,13 +147,12 @@
                     </div>
                 </div>
                 <div class="tablewrap">
-                    <table class="table" aria-label="Proof uploads table">
+                    <table class="table table--proofUploads" aria-label="Proof uploads table">
                         <thead>
                             <tr>
                                 <th>Uploaded At</th>
                                 <th>File</th>
                                 <th>Processed</th>
-                                <th>Summary</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -164,57 +163,36 @@
                                     <td>{{ $p->original_name }}</td>
                                     <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : '—' }}</td>
                                     <td>
-                                        @php
-                                            $s = $p->processed_summary ?? [];
-                                            $txt = '';
-                                            if (!empty($s['claimed_new'])) $txt .= "Claimed(new): {$s['claimed_new']} ";
-                                            if (!empty($s['claimed_rows_detected'])) $txt .= "Rows(claimed): " . implode(',', (array) $s['claimed_rows_detected']) . " ";
-                                            if (!empty($s['claimed_emp_nos_detected'])) $txt .= "Emp(claimed): " . implode(',', (array) $s['claimed_emp_nos_detected']) . " ";
-                                            if (!empty($s['pages'])) $txt .= "Pages: {$s['pages']} ";
-                                            if (!empty($s['rows_scanned'])) $txt .= "Rows: {$s['rows_scanned']} ";
-                                            if (!empty($s['ink_strict_max'])) $txt .= "Ink strict(max): {$s['ink_strict_max']} ";
-                                            if (!empty($s['ink_soft_max'])) $txt .= "Ink soft(max): {$s['ink_soft_max']} ";
-                                            if (!empty($s['geo'])) {
-                                                $g = $s['geo'];
-                                                if (!empty($g['fallback_reason'])) {
-                                                    $txt .= "geo[fallback:{$g['fallback_reason']}] ";
-                                                } else {
-                                                    $iw = $g['img_w'] ?? '?'; $ih = $g['img_h'] ?? '?';
-                                                    $tl = $g['table_left'] ?? '?'; $tr = $g['table_right'] ?? '?';
-                                                    $tt = $g['table_top'] ?? '?'; $tb = $g['table_bottom'] ?? '?';
-                                                    $rx1 = $g['rec_x1'] ?? '?'; $rx2 = $g['rec_x2'] ?? '?';
-                                                    $rh = $g['row_h'] ?? '?';
-                                                    $txt .= "geo[img:{$iw}x{$ih} tbl:{$tl}-{$tr}x{$tt}-{$tb} rec:{$rx1}-{$rx2} rowH:{$rh}] ";
-                                                }
-                                                if (!empty($g['row_ink_strict']))  $txt .= "ink_strict(rows):[{$g['row_ink_strict']}] ";
-                                                if (!empty($g['row_sig_ink']))     $txt .= "sig_ink(rows):[{$g['row_sig_ink']}] ";
-                                                if (!empty($g['row_qr_found']))    $txt .= "qr_found(rows):[{$g['row_qr_found']}] ";
-                                                // legacy keys from old scanner builds
-                                                if (!empty($g['row_ink_soft']))       $txt .= "ink_soft(rows):[{$g['row_ink_soft']}] ";
-                                                if (!empty($g['row_sig_ink_soft']))   $txt .= "sig_soft(rows):[{$g['row_sig_ink_soft']}] ";
-                                                if (!empty($g['row_sig_ink_strict'])) $txt .= "sig_strict(rows):[{$g['row_sig_ink_strict']}] ";
-                                            }
-                                            if (!empty($s['slice_first_emp_no']) && !empty($s['slice_last_emp_no'])) $txt .= "Slice: {$s['slice_first_emp_no']}â€“{$s['slice_last_emp_no']} ";
-                                        @endphp
-                                        <span class="muted small">{{ trim($txt) ?: '—' }}</span>
-                                    </td>
-                                    <td>
-                                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                            <a class="btn btn--soft" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}">Download</a>
+                                        <div class="iconrow">
+                                            <a class="iconbtn" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}" title="Download" aria-label="Download">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                    <path d="M12 3v12"></path>
+                                                    <path d="M7 10l5 5 5-5"></path>
+                                                    <path d="M4 21h16"></path>
+                                                </svg>
+                                            </a>
                                             <form method="POST" action="{{ route('payslip.claims.proofs.destroy', ['proof' => $p->id]) }}"
                                                 onsubmit="return confirm('Delete this proof file? This will also undo any auto-claims detected from it.');">
                                                 @csrf
                                                 @method('DELETE')
                                                 <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                                                 <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
-                                                <button class="btn btn--soft" type="submit">Delete</button>
+                                                <button class="iconbtn" type="submit" title="Delete" aria-label="Delete">
+                                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                        <path d="M3 6h18"></path>
+                                                        <path d="M8 6V4h8v2"></path>
+                                                        <path d="M19 6l-1 14H6L5 6"></path>
+                                                        <path d="M10 11v6"></path>
+                                                        <path d="M14 11v6"></path>
+                                                    </svg>
+                                                </button>
                                             </form>
                                         </div>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="muted">No proof uploads yet.</td>
+                                    <td colspan="4" class="muted">No proof uploads yet.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -331,3 +309,4 @@
         @endif
     </section>
 @endsection
+

@@ -637,6 +637,49 @@ tbody tr:hover {
     table-layout: fixed;
 }
 
+/* Proof uploads list: tighter columns and icon actions */
+.table--proofUploads {
+    min-width: 0;
+    table-layout: fixed;
+}
+.table--proofUploads thead th:nth-child(1),
+.table--proofUploads tbody td:nth-child(1) {
+    width: 16%;
+}
+.table--proofUploads thead th:nth-child(2),
+.table--proofUploads tbody td:nth-child(2) {
+    width: 42%;
+    overflow-wrap: anywhere;
+}
+.table--proofUploads thead th:nth-child(3),
+.table--proofUploads tbody td:nth-child(3) {
+    width: 16%;
+}
+.table--proofUploads thead th:nth-child(4),
+.table--proofUploads tbody td:nth-child(4) {
+    width: 12%;
+}
+.table--proofUploads .iconrow {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+.table--proofUploads .iconbtn {
+    display: grid;
+    place-items: center;
+    text-decoration: none;
+}
+.table--proofUploads .iconbtn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 /* Payslips list column sizing:
    Make Pay Period / Net Pay / Release Status sit closer to Assignment. */
 .table--payslipsList thead th:nth-child(2),

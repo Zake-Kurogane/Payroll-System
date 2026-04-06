@@ -186,6 +186,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const pad2 = (n) => String(n).padStart(2, "0");
 
   const settingsVersion = "backend-v1";
+  const strictAttendanceBeforeRun = true;
 
   let payrollCalendar = null;
 
@@ -273,6 +274,22 @@ document.addEventListener("DOMContentLoaded", () => {
     if (optB) optB.textContent = "26–10";
   }
 
+  async function checkAttendanceBeforeRunCreate() {
+    const monthVal = monthInput?.value || "";
+    const cutoffVal = cutoffSelect?.value || "11-25";
+    if (!monthVal) {
+      return { has_attendance: false, message: "Select month first." };
+    }
+
+    return apiFetch(`/payroll-runs/attendance-check?${new URLSearchParams({
+      period_month: monthVal,
+      cutoff: cutoffVal,
+      assignment_filter: assignmentFilterEnabled ? (assignmentFilter || "All") : "All",
+      area_place_filter: assignmentFilterEnabled ? (areaPlaceFilter || "") : "",
+      run_type: runTypeEnabled ? (runType || "Internal") : "Internal",
+    }).toString()}`);
+  }
+
   async function loadFilterOptions() {
     try {
       const data = await apiFetch("/employees/filters");
@@ -312,6 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
       assign: r.assignment || "",
       areaPlace: r.area_place || "",
       dailyRate: Number(r.daily_rate || 0),
+      basicPayMonthly: Number(r.basic_pay_monthly || 0),
       attendanceDeduction: Number(r.attendance_deduction || 0),
       lateMinutes: Number(r.late_minutes || 0),
       undertimeMinutes: Number(r.undertime_minutes || 0),
@@ -556,9 +574,14 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     });
     setLastComputeAt(currentRun.id);
-    if (stickyHint) stickyHint.textContent = isLocked()
-      ? "Run is locked. Viewing snapshot."
-      : "Preview computed. Review rows, then lock the run.";
+    if (stickyHint) {
+      const noAttendance = payload?.meta?.empty_reason === "no_attendance";
+      stickyHint.textContent = noAttendance
+        ? "No attendance records found for this cutoff yet. Preview is empty."
+        : (isLocked()
+          ? "Run is locked. Viewing snapshot."
+          : "Preview computed. Review rows, then lock the run.");
+    }
   }
 
   // =========================================================
@@ -717,7 +740,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     list.forEach(r => {
         const tr = document.createElement("tr");
-        const monthlyBase = Number(r.dailyRate || 0) * 26;
+        const monthlyBase = Number(r.basicPayMonthly || 0) > 0
+          ? Number(r.basicPayMonthly || 0)
+          : (Number(r.dailyRate || 0) * 26);
       const disabled = locked ? "disabled" : "";
 
       const attText = `${r.present}/${r.absent}/${r.leave}`;
@@ -727,6 +752,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0) + Number(r.tax || 0);
       const statER = Number(r.sssEr || 0) + Number(r.phEr || 0) + Number(r.piEr || 0);
       const statERTotal = Number(r.erShare || 0);
+      const cashAdvanceDeduction = Number(r.cashAdvance || 0);
+      const loansTotal = Number(r.loanDeduction || 0) + cashAdvanceDeduction;
 
       tr.innerHTML = `
         <td class="col-check">
@@ -759,14 +786,16 @@ document.addEventListener("DOMContentLoaded", () => {
           ? `<details class="dd"><summary>${money(r.chargesDeduction)}</summary><div class="dd__body"><div>This cutoff: ${money(r.chargesDeduction)}</div></div></details>`
           : `<span class="muted">—</span>`
         }</td>
-        <td class="num">${r.loanDeduction > 0
-          ? `<details class="dd"><summary>${money(r.loanDeduction)}</summary><div class="dd__body">${(r.loanItems || []).map(li => {
+        <td class="num">${loansTotal > 0
+          ? `<details class="dd"><summary>${money(loansTotal)}</summary><div class="dd__body">
+            ${cashAdvanceDeduction > 0 ? `<div>Cash Advance: ${money(cashAdvanceDeduction)}</div>` : ``}
+            ${(r.loanItems || []).map(li => {
               const name = li.loan_type || 'Loan';
               const amt = money(li.deducted_amount || 0);
               const sched = money(li.scheduled_amount || 0);
               const status = li.status || 'scheduled';
               return `<div>${name}: ${amt} <span class=\"muted\">(sched ${sched}, ${status})</span></div>`;
-            }).join('') || `<div>This cutoff: ${money(r.loanDeduction)}</div>`}</div></details>`
+            }).join('') || `<div>Loan schedules: ${money(r.loanDeduction || 0)}</div>`}</div></details>`
           : `<span class="muted">—</span>`
         }</td>
 
@@ -1084,9 +1113,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // RUN LIFECYCLE
   // =========================================================
   async function createNewRun() {
+    if (strictAttendanceBeforeRun) {
+      const check = await checkAttendanceBeforeRunCreate();
+      if (!check?.has_attendance) {
+        if (stickyHint) stickyHint.textContent = "No attendance records found for this cutoff. Run creation is blocked.";
+        alert(check?.message || "No attendance records found for this cutoff. Cannot create payroll run.");
+        return false;
+      }
+    }
+
     if (currentRun && currentRun.status === "Draft") {
       const ok = confirm("Start a new run? This will reset draft overrides for the current period.");
-      if (!ok) return;
+      if (!ok) return false;
     }
 
     overrides = {};
@@ -1114,6 +1152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderTable();
     await renderRuns();
     renderRunSummary();
+    return true;
   }
 
   async function loadLatestDraftForSelection() {
@@ -1674,13 +1713,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
   computeBtn && computeBtn.addEventListener("click", () => {
     if (isLocked()) return;
-    const runPromise = currentRun ? Promise.resolve() : createNewRun();
+    const runPromise = currentRun ? Promise.resolve(true) : createNewRun();
     runPromise
-      .then(() => computePreview())
-      .then(() => {
+      .then((ok) => {
+        if (!ok) return false;
+        return computePreview().then(() => true);
+      })
+      .then((ok) => {
+        if (!ok) return;
         renderTable();
         renderRunSummary();
-        if (stickyHint) stickyHint.textContent = "Preview refreshed. Check totals then lock.";
+        if (stickyHint) {
+          stickyHint.textContent = previewRows.length === 0
+            ? "No attendance records found for this cutoff yet. Preview is empty."
+            : "Preview refreshed. Check totals then lock.";
+        }
       })
       .catch(err => alert(err.message || "Failed to compute preview."));
   });

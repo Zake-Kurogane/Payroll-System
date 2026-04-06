@@ -39,10 +39,11 @@ class PayrollCalculator
         $attDefaults = AttendanceCodeSetting::query()->first();
 
         $employeeIds = $employees->pluck('id')->all();
+        $hasAttendanceData = false;
         if (count($employeeIds) > 0) {
             // Always refresh attendance summaries on compute so payroll reflects
             // current paid-day rules and latest attendance edits.
-            $this->buildSummariesForPeriod($employeeIds, $periodMonth, $cutoff, $start, $end);
+            $hasAttendanceData = $this->buildSummariesForPeriod($employeeIds, $periodMonth, $cutoff, $start, $end);
         }
         $summaries = AttendanceSummary::query()
             ->whereIn('employee_id', $employeeIds)
@@ -53,7 +54,7 @@ class PayrollCalculator
 
         $cashAdvances = CashAdvance::query()
             ->whereIn('employee_id', $employeeIds)
-            ->where('status', 'Active')
+            ->whereRaw("LOWER(TRIM(COALESCE(status,''))) = 'active'")
             ->get()
             ->groupBy('employee_id');
 
@@ -70,7 +71,11 @@ class PayrollCalculator
             ->get()
             ->groupBy('employee_id');
 
-        $rows = $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
+        // If there are no attendance entries in this cutoff window, return an empty preview.
+        // This prevents accidental payroll generation for future/unencoded periods.
+        $rows = $hasAttendanceData
+            ? $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType)
+            : [];
 
         return [
             'period' => [
@@ -78,7 +83,35 @@ class PayrollCalculator
                 'end' => $end->toDateString(),
             ],
             'rows' => $rows,
+            'meta' => [
+                'has_attendance_data' => $hasAttendanceData,
+                'empty_reason' => $hasAttendanceData ? null : 'no_attendance',
+            ],
         ];
+    }
+
+    public function hasAttendanceForFilters(string $periodMonth, string $cutoff, string $assignment = 'All', ?string $area = null, string $runType = 'External'): bool
+    {
+        [$start, $end] = $this->cutoffRange($periodMonth, $cutoff);
+        $employees = $this->employeesForFilters($assignment, $area, $runType);
+        $employeeIds = $employees->pluck('id')->all();
+        if (!$employeeIds) {
+            return false;
+        }
+
+        $query = AttendanceRecord::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+
+        $rule = $this->workdaysRule();
+        $workMonSat = (bool) ($rule['work_mon_sat'] ?? true);
+        if ($workMonSat) {
+            $query->whereRaw("DAYOFWEEK(`date`) != 1");
+        } else {
+            $query->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
+        }
+
+        return $query->exists();
     }
 
     public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
@@ -219,6 +252,7 @@ class PayrollCalculator
             'area_place' => $emp->area_place,
             'external_area' => $emp->external_area,
             'daily_rate' => $this->roundMoney($dailyRate, $proration),
+            'basic_pay_monthly' => $this->roundMoney((float) $emp->basic_pay, $proration),
             'ot_hours' => $otOverrideHours,
             'ot_hours_computed' => $computedOtHours,
             'ot_override_on' => $otOverrideOn,
@@ -399,9 +433,9 @@ class PayrollCalculator
         ];
     }
 
-    private function buildSummariesForPeriod(array $employeeIds, string $periodMonth, string $cutoff, Carbon $start, Carbon $end): void
+    private function buildSummariesForPeriod(array $employeeIds, string $periodMonth, string $cutoff, Carbon $start, Carbon $end): bool
     {
-        if (!$employeeIds) return;
+        if (!$employeeIds) return false;
 
         $query = AttendanceRecord::query()
             ->whereIn('employee_id', $employeeIds)
@@ -432,6 +466,7 @@ class PayrollCalculator
             ->groupBy('employee_id')
             ->get()
             ->keyBy('employee_id');
+        $hasAttendanceData = $rows->isNotEmpty();
 
         $upsertRows = [];
         foreach ($employeeIds as $empId) {
@@ -457,6 +492,8 @@ class PayrollCalculator
             ['employee_id', 'period_month', 'cutoff'],
             ['present_days', 'absent_days', 'leave_days', 'paid_days', 'minutes_late', 'minutes_undertime', 'ot_hours', 'updated_at']
         );
+
+        return $hasAttendanceData;
     }
 
     private function computeAttendanceDeductionParts(array $summary, float $dailyRate, TimekeepingRule $timekeeping, SalaryProrationRule $proration): array

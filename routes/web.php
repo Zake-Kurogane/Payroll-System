@@ -108,6 +108,7 @@ Route::middleware('auth')->group(function () {
         // Payroll processing
         Route::view('/payroll-processing', 'layouts.payroll_processing')->name('payroll.processing');
         Route::get('/payroll-runs', [PayrollRunController::class, 'index'])->name('payroll_runs.index');
+        Route::get('/payroll-runs/attendance-check', [PayrollRunController::class, 'attendanceCheck'])->name('payroll_runs.attendance_check');
         Route::post('/payroll-runs', [PayrollRunController::class, 'store'])->name('payroll_runs.store');
         Route::delete('/payroll-runs/{run}', [PayrollRunController::class, 'destroy'])->name('payroll_runs.destroy');
         Route::post('/payroll-runs/{run}/compute', [PayrollRunController::class, 'compute'])->name('payroll_runs.compute');
