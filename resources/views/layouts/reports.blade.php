@@ -1,9 +1,10 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Reports')
 
 @section('vite')
     @vite(['resources/css/report.css', 'resources/js/report.js'])
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 @endsection
 
 @section('content')
@@ -15,9 +16,7 @@
             </div>
 
             <div class="headline__actions">
-                <button class="btn btn--soft" type="button" id="viewRunBtn" disabled>View Payroll Run</button>
-                <button class="btn btn--soft" type="button" id="exportCsvBtn" disabled>Export CSV</button>
-                <button class="btn btn--soft" type="button" id="downloadPdfBtn" disabled>Download PDF</button>
+                <button class="btn btn--soft" type="button" id="exportCsvBtn" disabled>Export Excel</button>
                 <button class="btn btn--maroon" type="button" id="printBtn" disabled>Print</button>
             </div>
         </div>
@@ -59,8 +58,8 @@
             <!-- ROW 2: Payroll Run | Status | Assignment Seg + Area Place -->
             <div class="filterbar__row filterbar__row--bottom">
                 <div class="f f--grow">
-                    <label>Payroll Run</label>
-                    <select id="runSelect"></select>
+                    <label>Matched Payroll Run</label>
+                    <div id="runDisplay">No payroll run selected.</div>
                 </div>
 
                 <div class="f">
@@ -79,44 +78,6 @@
             </div>
         </section>
 
-        <!-- RUN SUMMARY CARD -->
-        <section class="card runCard" id="runCard">
-            <div class="runCard__left">
-                <div class="runCard__title">Selected Payroll Run</div>
-            </div>
-
-            <div class="runCard__right">
-                <div class="runStats">
-                    <!-- Badge cell (same row as others) -->
-                    <div class="runStat runStat--badge">
-                        <div class="runBadge" id="runBadge">—</div>
-                        <div class="runMetaUnder muted small" id="runMeta">2026-01 (16–End) • Assignment:
-                            All</div>
-                    </div>
-
-                    <div class="runStat">
-                        <div class="runStat__k">Employees</div>
-                        <div class="runStat__v" id="runEmployees">—</div>
-                    </div>
-
-                    <div class="runStat">
-                        <div class="runStat__k">Total Net</div>
-                        <div class="runStat__v" id="runTotalNet">—</div>
-                    </div>
-
-                    <div class="runStat">
-                        <div class="runStat__k">Processed</div>
-                        <div class="runStat__v" id="runProcessedAt">—</div>
-                    </div>
-
-                    <div class="runStat">
-                        <div class="runStat__k">By</div>
-                        <div class="runStat__v" id="runProcessedBy">—</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <!-- KPI SUMMARY -->
         <section class="stats">
             <article class="stat">
@@ -124,19 +85,19 @@
                 <div class="stat__label">EMPLOYEES PAID</div>
             </article>
             <article class="stat">
-                <div class="stat__value" id="kpiGross">₱ 0.00</div>
+                <div class="stat__value" id="kpiGross">â‚± 0.00</div>
                 <div class="stat__label">TOTAL GROSS</div>
             </article>
             <article class="stat">
-                <div class="stat__value" id="kpiDed">₱ 0.00</div>
+                <div class="stat__value" id="kpiDed">â‚± 0.00</div>
                 <div class="stat__label">TOTAL DEDUCTIONS (EE)</div>
             </article>
             <article class="stat">
-                <div class="stat__value" id="kpiNet">₱ 0.00</div>
+                <div class="stat__value" id="kpiNet">â‚± 0.00</div>
                 <div class="stat__label">TOTAL NET</div>
             </article>
             <article class="stat">
-                <div class="stat__value" id="kpiER">₱ 0.00</div>
+                <div class="stat__value" id="kpiER">â‚± 0.00</div>
                 <div class="stat__label">TOTAL EMPLOYER SHARE (ER)</div>
             </article>
         </section>
@@ -187,12 +148,12 @@
                                         aria-hidden="true"></span></th>
                                 <th>Assignment</th>
                                 <th>Department</th>
-                                <th>Attendance (P/A/L)</th>
+                                <th><span class="thPrintWrap">Attendance<span class="printOnlyBr"><br></span>(P/A/L)</span></th>
                                 <th class="num sortable" data-sort="dailyRate">Daily Rate <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="attendancePay">Attendance Pay <span class="sortIcon"
+                                <th class="num sortable" data-sort="attendancePay"><span class="thPrintWrap">Attendance<span class="printOnlyBr"><br></span>Pay</span> <span class="sortIcon"
                                         aria-hidden="true"></span></th>
-                                <th class="num sortable" data-sort="deductionsEe">Total Deductions <span class="sortIcon"
+                                <th class="num sortable" data-sort="deductionsEe"><span class="thPrintWrap">Total<span class="printOnlyBr"><br></span>Deductions</span> <span class="sortIcon"
                                         aria-hidden="true"></span></th>
                                 <th class="num sortable" data-sort="gross">Gross <span class="sortIcon"
                                         aria-hidden="true"></span>
@@ -286,7 +247,7 @@
             <!-- TAB: Field Area Allocations -->
             <div class="tabPane" id="tab-fieldAreas" hidden>
                 <div class="card__title big">Field Area Allocations</div>
-                <div class="muted small">Splits base pay (basic + allowance) by area place based on paid attendance dates within the selected run period.</div>
+                <div class="muted small">Splits basic pay only by area place based on paid attendance dates within the selected run period (allowance excluded).</div>
 
                 <div class="tablewrap mt12">
                     <table class="table" aria-label="Field area allocations table">
@@ -397,4 +358,6 @@
     </section>
 
 @endsection
+
+
 

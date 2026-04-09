@@ -24,7 +24,6 @@ class AttendanceController extends Controller
         'Late',
         'Absent',
         'Leave',
-        'Unpaid Leave',
         'RNR',
         'Paid Leave',
         'Half-day',
@@ -44,8 +43,8 @@ class AttendanceController extends Controller
         'VL' => 'Paid Leave',
         'SL' => 'Paid Leave',
         'SPL' => 'Paid Leave',
-        'UL' => 'Unpaid Leave',
-        'LWOP' => 'Unpaid Leave',
+        'UL' => 'Absent',
+        'LWOP' => 'Absent',
         'RNR' => 'RNR',
         'HD' => 'Half-day',
         'OFF' => 'Day Off',
@@ -53,8 +52,8 @@ class AttendanceController extends Controller
         'LOA' => 'LOA',
     ];
 
-    private const TEMPLATE_CODES = ['P', 'L', 'A', 'UL', 'RNR', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
-    private const NO_TIME_STATUSES = ['Absent', 'Leave', 'Unpaid Leave', 'Paid Leave', 'Day Off', 'Holiday', 'LOA', 'RNR'];
+    private const TEMPLATE_CODES = ['P', 'L', 'A', 'RNR', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
+    private const NO_TIME_STATUSES = ['Absent', 'Leave', 'Paid Leave', 'Day Off', 'Holiday', 'LOA', 'RNR'];
     private const TIME_TRACKED_STATUSES = ['Present', 'Late', 'Half-day'];
 
     public function resolveArea(Request $request)
@@ -256,7 +255,7 @@ class AttendanceController extends Controller
         }
 
         $baseQuery = clone $records;
-        $leaveSet = ['Leave', 'Unpaid Leave', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
+        $leaveSet = ['Leave', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
         $stats = [
             'total' => (int) (clone $baseQuery)->count(),
             'present' => (int) (clone $baseQuery)->whereIn("{$recordsTable}.status", ['Present', 'Half-day'])->count(),
@@ -357,12 +356,16 @@ class AttendanceController extends Controller
     private function checkPLBalance(int $employeeId, string $date, ?int $excludeId = null): void
     {
         $employee = Employee::find($employeeId);
-        if (!$employee || strtolower((string) ($employee->employment_type ?? '')) !== 'regular') {
-            return;
+        if (!$employee) {
+            abort(422, 'Employee not found.');
         }
-        if (empty($employee->assignment_type)) {
-            return;
+
+        $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
+        $hasAssignment = !empty($employee->assignment_type);
+        if (!$isRegular || !$hasAssignment) {
+            abort(422, 'Paid Leave is only allowed for eligible regular employees with PL allowance.');
         }
+
         $year = Carbon::parse($date)->year;
         $used = AttendanceRecord::where('employee_id', $employeeId)
             ->where('status', 'Paid Leave')
@@ -401,7 +404,7 @@ class AttendanceController extends Controller
         $spreadsheet->removeSheetByIndex(0);
 
         $statusListFormula = '"' . implode(',', self::TEMPLATE_CODES) . '"';
-        $noTimeFormula = 'OR($J{row}="A",$J{row}="UL",$J{row}="PL",$J{row}="OFF",$J{row}="HOL",$J{row}="LOA",$J{row}="RNR")';
+        $noTimeFormula = 'OR($J{row}="A",$J{row}="PL",$J{row}="OFF",$J{row}="HOL",$J{row}="LOA",$J{row}="RNR")';
         $timeRequiredFormula = 'OR($J{row}="P",$J{row}="L",$J{row}="HD")';
 
         $sheet = $spreadsheet->createSheet();
@@ -713,6 +716,15 @@ class AttendanceController extends Controller
                         $src = (string) ($row['_src'] ?? 'Row');
                         $errors[] = "{$src}: {$ruleErr}";
                     }
+                    if ($status === 'Paid Leave') {
+                        $fullEmp = Employee::find((int) $emp->id);
+                        $isRegular = strtolower(trim((string) ($fullEmp?->employment_type ?? ''))) === 'regular';
+                        $hasAssignment = !empty($fullEmp?->assignment_type);
+                        if (!$isRegular || !$hasAssignment) {
+                            $src = (string) ($row['_src'] ?? 'Row');
+                            $errors[] = "{$src}: Paid Leave is only allowed for eligible regular employees with PL allowance.";
+                        }
+                    }
                 }
             }
         }
@@ -851,10 +863,10 @@ class AttendanceController extends Controller
     private function normalizeCutoffKey(string $cutoff): string
     {
         $c = strtoupper(trim($cutoff));
-        if ($c === '11-25') {
+        if ($c === '26-10') {
             return 'A';
         }
-        if ($c === '26-10') {
+        if ($c === '11-25') {
             return 'B';
         }
         return in_array($c, ['A', 'B'], true) ? $c : 'A';
@@ -865,13 +877,13 @@ class AttendanceController extends Controller
         $calendar = $calendar ?? (PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]));
         $key = $this->normalizeCutoffKey($cutoff);
         if ($key === 'A') {
-            $from = (int) ($calendar->cutoff_a_from ?? 11);
-            $to = (int) ($calendar->cutoff_a_to ?? 25);
-            return [$from > 0 ? $from : 1, $to > 0 ? $to : 25];
+            $from = (int) ($calendar->cutoff_b_from ?? 26);
+            $to = (int) ($calendar->cutoff_b_to ?? 10);
+            return [$from > 0 ? $from : 1, $to > 0 ? $to : 10];
         }
-        $from = (int) ($calendar->cutoff_b_from ?? 26);
-        $to = (int) ($calendar->cutoff_b_to ?? 10);
-        return [$from > 0 ? $from : 1, $to > 0 ? $to : 10];
+        $from = (int) ($calendar->cutoff_a_from ?? 11);
+        $to = (int) ($calendar->cutoff_a_to ?? 25);
+        return [$from > 0 ? $from : 1, $to > 0 ? $to : 25];
     }
 
     private function cutoffWindow(Carbon $base, int $fromDay, int $toDay): array

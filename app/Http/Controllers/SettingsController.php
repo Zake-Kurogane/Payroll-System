@@ -370,9 +370,12 @@ class SettingsController extends Controller
                 }
                 $row->save();
             }
-            if ($row->balance_remaining === null || (float) $row->balance_remaining <= 0) {
-                $row->balance_remaining = $row->amount;
-                $row->amount_deducted = 0;
+            // Backward-compat initialization for legacy rows only.
+            // Do not reset posted payroll deductions when balance is already zero.
+            if ($row->balance_remaining === null) {
+                $amount = (float) ($row->amount ?? 0);
+                $deducted = (float) ($row->amount_deducted ?? 0);
+                $row->balance_remaining = max(0.0, $amount - max(0.0, $deducted));
                 $row->save();
             }
             return [

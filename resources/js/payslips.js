@@ -66,6 +66,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const last4 = raw.slice(-4);
     return raw.length > 4 ? `****${last4}` : raw;
   };
+  const normalizeCutoffValue = (value) => {
+    const v = String(value || "").trim().toLowerCase();
+    if (v === "a" || v === "16-end" || v === "26-10") return "26-10";
+    if (v === "b" || v === "1-15" || v === "11-25") return "11-25";
+    return "";
+  };
 
   function mapPayslipFromApi(p) {
     const adjustments = Array.isArray(p.adjustments) ? p.adjustments : [];
@@ -83,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
       assignmentType: p.assignment_type || "",
       areaPlace: p.area_place || "",
       periodMonth: p.period_month || "",
-      cutoff: p.cutoff || "",
+      cutoff: normalizeCutoffValue(p.cutoff) || String(p.cutoff || ""),
       periodStart: p.period_start || "",
       periodEnd: p.period_end || "",
       netPay: Number(p.net_pay || 0),
@@ -225,13 +231,25 @@ document.addEventListener("DOMContentLoaded", () => {
   function resolvePayDate(periodMonth, cutoffType) {
     if (!periodMonth) return "-";
     const [yStr, mStr] = periodMonth.split("-");
-    const y = Number(yStr);
-    const m = Number(mStr);
+    let y = Number(yStr);
+    let m = Number(mStr);
     if (!y || !m) return "-";
     const cal = payrollCalendar || {};
     const payOnPrev = !!cal.pay_on_prev_workday_if_sunday;
-    const isFirst = cutoffType === "11-25";
+    // Business rule:
+    // 1st cutoff = 26-10 (payday 15, next month)
+    // 2nd cutoff = 11-25 (payday 30/31 or EOM, same month)
+    const isFirst = cutoffType === "26-10";
     const payDay = isFirst ? (cal.pay_date_a ?? 15) : (cal.pay_date_b ?? "EOM");
+
+    if (isFirst) {
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+
     let date;
     if (String(payDay).toUpperCase() === "EOM") {
       date = new Date(y, m, 0);
@@ -288,7 +306,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let openDropdownBtn = null;
   let assignDropdownEventsBound = false;
 
-  const runSelect = $("runSelect");
+  const runDisplay = $("runDisplay");
   const runEmployees = $("runEmployees");
   const runTotalNet = $("runTotalNet");
   const runProcessedAt = $("runProcessedAt");
@@ -343,6 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // DATA (backend-driven)
   // =========================================================
   let runs = [];
+  let allRuns = [];
   let payslips = [];
 
   // =========================================================
@@ -357,6 +376,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let page = 1;
   let perPage = rowsPerPage ? Number(rowsPerPage.value || 20) : 20;
+  let filterLoadingCount = 0;
 
   const selectedIdsSet = new Set();
 
@@ -399,6 +419,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const d = new Date();
     monthInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
   }
+  if (cutoffInput && !cutoffInput.value) {
+    cutoffInput.value = "All";
+  }
   function closeAllDropdowns() {
     if (!assignmentSeg) return;
     assignmentSeg.querySelectorAll(".seg__dropdown").forEach(dd => {
@@ -420,19 +443,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   setTopActionsEnabled(false);
 
-  // =========================================================
-  // RUN SELECTOR
-  // =========================================================
-  function initRunSelect() {
-    if (!runSelect) return;
-    runSelect.innerHTML =
-      `<option value="" selected>- Select a run -</option>` +
-      runs.map((r) => {
-        const cutoffLabel = r.cutoff || formatCutoffLabel(r.period_month, r.cutoff);
-        const runCode = r.run_code || r.run_code || r.id;
-        const label = `${runCode} ${r.period_month} (${cutoffLabel}) - ${r.assignment_filter || "All"} - ${r.status} - ${r.headcount || 0} employees`;
-        return `<option value="${escapeHtml(String(r.id))}">${escapeHtml(label)}</option>`;
-      }).join("");
+  function setFilterLoading(isLoading) {
+    if (isLoading) filterLoadingCount += 1;
+    else filterLoadingCount = Math.max(0, filterLoadingCount - 1);
+    const active = filterLoadingCount > 0;
+    if (runDisplay) runDisplay.classList.toggle("is-loading", active);
+    if (active && resultsMeta) resultsMeta.textContent = "Applying filters...";
+  }
+
+  function runDisplayLabel(run) {
+    if (!run) return "No payroll run found for the selected month/cutoff.";
+    const cutoffLabel = run.cutoff || formatCutoffLabel(run.period_month, run.cutoff);
+    const runCode = run.run_code || run.id;
+    return `${runCode} ${run.period_month} (${cutoffLabel}) - ${run.assignment_filter || "All"} - ${run.status} - ${run.headcount || 0} employees`;
+  }
+
+  function setRunDisplay(run) {
+    if (!runDisplay) return;
+    runDisplay.textContent = runDisplayLabel(run);
   }
 
   function pickDefaultRun(allRuns) {
@@ -449,10 +477,12 @@ document.addEventListener("DOMContentLoaded", () => {
       safeText("runTotalNet", "-");
       safeText("runProcessedAt", "-");
       safeText("runProcessedBy", "-");
+      setRunDisplay(null);
       setTopActionsEnabled(false);
       return;
     }
 
+    setRunDisplay(run);
     safeText("runEmployees", String(run.headcount ?? 0));
     safeText("runTotalNet", peso(run.total_net ?? 0));
     safeText("runProcessedAt", run.locked_at ? formatDateTime12h(run.locked_at) : "-");
@@ -470,11 +500,12 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadRuns(forceRunId = "") {
     try {
       const data = await apiFetch("/payslips/runs");
-      const allRuns = Array.isArray(data)
+      allRuns = Array.isArray(data)
         ? data.filter((r) => r && (r.status === "Locked" || r.status === "Released"))
         : [];
 
       let effectiveMonth = monthInput?.value || "";
+      let effectiveCutoff = cutoffInput?.value || "All";
 
       if (forceRunId) {
         const forced = allRuns.find((r) => String(r.id) === String(forceRunId)) || null;
@@ -482,24 +513,83 @@ document.addEventListener("DOMContentLoaded", () => {
           monthInput.value = forced.period_month;
           effectiveMonth = forced.period_month;
         }
-      }
-
-      runs = allRuns.filter((r) => !effectiveMonth || r.period_month === effectiveMonth);
-
-      // Same behavior as Reports: if current filters yield no runs,
-      // fall back to the latest run with data and sync month to it.
-      if (!runs.length && allRuns.length && !forceRunId) {
-        const fallback = pickDefaultRun(allRuns);
-        if (fallback && monthInput) {
-          monthInput.value = fallback.period_month || monthInput.value;
-          effectiveMonth = monthInput.value || effectiveMonth;
-          runs = allRuns.filter((r) => !effectiveMonth || r.period_month === effectiveMonth);
+        const forcedCutoff = normalizeCutoffValue(forced?.cutoff);
+        if (forcedCutoff && cutoffInput) {
+          cutoffInput.value = forcedCutoff;
+          effectiveCutoff = forcedCutoff;
         }
       }
-      initRunSelect();
+
+      runs = allRuns.filter((r) => {
+        const runCutoff = normalizeCutoffValue(r.cutoff) || r.cutoff;
+        const okMonth = !effectiveMonth || r.period_month === effectiveMonth;
+        const okCutoff = effectiveCutoff === "All" || runCutoff === effectiveCutoff;
+        return okMonth && okCutoff;
+      });
+
+      return;
     } catch {
+      allRuns = [];
       runs = [];
-      initRunSelect();
+      return;
+    }
+  }
+
+  function clearSelections() {
+    selectedIdsSet.clear();
+    $$("input.rowCheck").forEach((cb) => (cb.checked = false));
+    if (checkAll) {
+      checkAll.checked = false;
+      checkAll.indeterminate = false;
+    }
+  }
+
+  async function syncRunFromFilters({ forceRunId = "", fallbackOnEmpty = false } = {}) {
+    setFilterLoading(true);
+    try {
+      await loadRuns(forceRunId);
+
+      let run = null;
+      if (forceRunId) {
+        run = runs.find((r) => String(r.id) === String(forceRunId)) || null;
+      }
+      if (!run && selectedRunId) {
+        run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
+      }
+      if (!run) {
+        run = pickDefaultRun(runs);
+      }
+
+      // Initial-load fallback: if current month/cutoff has no run,
+      // show the latest available run and sync filters to it.
+      if (!run && fallbackOnEmpty) {
+        run = pickDefaultRun(allRuns);
+        if (run) {
+          if (monthInput) monthInput.value = run.period_month || monthInput.value;
+          if (cutoffInput) cutoffInput.value = normalizeCutoffValue(run.cutoff) || cutoffInput.value || "All";
+          runs = allRuns.filter((r) => {
+            const runCutoff = normalizeCutoffValue(r.cutoff) || r.cutoff;
+            return r.period_month === (run.period_month || "") && runCutoff === (normalizeCutoffValue(run.cutoff) || "");
+          });
+        }
+      }
+
+      selectedRunId = run ? String(run.id) : "";
+      clearSelections();
+      page = 1;
+      setRunUI(run);
+
+      if (!run) {
+        payslips = [];
+        render();
+        return;
+      }
+
+      if (monthInput) monthInput.value = run.period_month || monthInput.value;
+      if (cutoffInput) cutoffInput.value = normalizeCutoffValue(run.cutoff) || cutoffInput.value || "All";
+      await loadPayslips(selectedRunId);
+    } finally {
+      setFilterLoading(false);
     }
   }
 
@@ -609,7 +699,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  initRunSelect();
   setRunUI(null);
 
   // =========================================================
@@ -672,9 +761,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyFilters(list) {
     const q = normalize(searchInput?.value || "");
     const monthVal = monthInput?.value || "";
+    const cutoffVal = cutoffInput?.value || "All";
     return list
       .filter((p) => !selectedRunId || p.runId === selectedRunId)
       .filter((p) => !monthVal || p.periodMonth === monthVal)
+      .filter((p) => cutoffVal === "All" || normalizeCutoffValue(p.cutoff) === cutoffVal)
       .filter((p) => assignmentFilter === "All" || p.assignmentType === assignmentFilter)
       .filter((p) => {
         if (!areaSubFilter) return true;
@@ -1204,41 +1295,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // filters
-  monthInput && monthInput.addEventListener("change", () => {
-    page = 1;
+  monthInput && monthInput.addEventListener("change", async () => {
     selectedRunId = "";
-    if (runSelect) runSelect.value = "";
-    setRunUI(null);
-    payslips = [];
-    loadRuns().then(() => {
-      initRunSelect();
-      render();
-    });
+    await syncRunFromFilters();
+  });
+  cutoffInput && cutoffInput.addEventListener("change", async () => {
+    selectedRunId = "";
+    await syncRunFromFilters();
   });
   searchInput && searchInput.addEventListener("input", () => { page = 1; render(); });
   // area place selection handled by dropdowns
-
-  // run change
-  runSelect &&
-    runSelect.addEventListener("change", () => {
-      selectedRunId = runSelect.value || "";
-      const run = runs.find((r) => String(r.id) === String(selectedRunId)) || null;
-      setRunUI(run);
-
-      selectedIdsSet.clear();
-      $$("input.rowCheck").forEach((cb) => (cb.checked = false));
-      if (checkAll) {
-        checkAll.checked = false;
-        checkAll.indeterminate = false;
-      }
-
-      if (run) {
-        if (monthInput) monthInput.value = run.period_month || "";
-      }
-
-      page = 1;
-      loadPayslips(selectedRunId);
-    });
 
   // check all + bulk
   checkAll &&
@@ -1419,7 +1485,6 @@ document.addEventListener("DOMContentLoaded", () => {
         run.status = res?.status || "Released";
         run.released_at = res?.released_at || new Date().toISOString();
         render();
-        initRunSelect();
         setRunUI(run);
         alert("All payslips released. Run is now Released and cannot be unlocked.");
       } catch (err) {
@@ -1489,32 +1554,21 @@ document.addEventListener("DOMContentLoaded", () => {
   const params = new URLSearchParams(window.location.search);
   const initialRunId = params.get("run_id") || "";
   const initialMonth = params.get("month") || params.get("period_month") || "";
+  const initialCutoff = normalizeCutoffValue(params.get("cutoff") || "");
   if (initialMonth && monthInput && /^\d{4}-\d{2}$/.test(initialMonth)) {
     monthInput.value = initialMonth;
+  }
+  if (initialCutoff && cutoffInput) {
+    cutoffInput.value = initialCutoff;
   }
 
   Promise.resolve()
     .then(() => loadPayrollCalendarSettings())
     .then(() => loadCompanySetup())
     .then(() => loadFilterOptions())
-    .then(() => loadRuns(initialRunId))
-    .then(() => {
-      if (initialRunId && runSelect) {
-        selectedRunId = initialRunId;
-        runSelect.value = initialRunId;
-        const run = runs.find((r) => String(r.id) === String(initialRunId)) || null;
-        setRunUI(run);
-        if (run && monthInput) monthInput.value = run.period_month || "";
-        return loadPayslips(initialRunId);
-      }
-      const auto = pickDefaultRun(runs);
-      if (auto && runSelect) {
-        selectedRunId = String(auto.id);
-        runSelect.value = selectedRunId;
-        runSelect.dispatchEvent(new Event("change"));
-        return;
-      }
-      render();
-    })
+    .then(() => syncRunFromFilters({
+      forceRunId: initialRunId,
+      fallbackOnEmpty: !initialRunId && !initialMonth && !initialCutoff,
+    }))
     .catch((err) => alert(err.message || "Failed to initialize payslips."));
 });

@@ -51,10 +51,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const query = new URLSearchParams(window.location.search);
   const initialMonthParam = query.get("month") || "";
-  const normalizeCutoffParam = (value) => {
+  const normalizeCutoffValue = (value) => {
     const v = String(value || "").trim().toLowerCase();
-    if (v === "11-25") return "11-25";
-    if (v === "26-10") return "26-10";
+    if (v === "a" || v === "16-end" || v === "26-10") return "26-10";
+    if (v === "b" || v === "1-15" || v === "11-25") return "11-25";
+    return "";
+  };
+  const normalizeCutoffParam = (value) => {
+    const normalized = normalizeCutoffValue(value);
+    if (normalized) return normalized;
     return "All";
   };
   const initialCutoffParam = normalizeCutoffParam(query.get("cutoff"));
@@ -74,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const monthInput = $("monthInput");
   const cutoffSelect = $("cutoffSelect");
   const searchInput = $("searchInput");
-  const runSelect = $("runSelect");
+  const runDisplay = $("runDisplay");
   const deptSelect = $("deptSelect");
   const statusSelect = $("statusSelect");
 
@@ -87,13 +92,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let openDropdownBtn = null;
   let assignDropdownEventsBound = false;
 
-  const viewRunBtn = $("viewRunBtn");
   const exportCsvBtn = $("exportCsvBtn");
   const downloadPdfBtn = $("downloadPdfBtn");
   const printBtn = $("printBtn");
 
   const reportTitle = $("reportTitle");
-  const runMeta = $("runMeta");
   const runBadge = $("runBadge");
   const runEmployees = $("runEmployees");
   const runTotalNet = $("runTotalNet");
@@ -137,6 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let floatingRegisterInner = null;
   let syncingRegisterScroll = false;
   let initialAssignmentApplied = false;
+  let filterLoadingCount = 0;
 
   // =========================================================
   // DEFAULTS
@@ -241,61 +245,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return sorted[0]?.id || "";
   }
 
-  function syncRunSelectInteractivity() {
-    if (!runSelect) return;
-    runSelect.disabled = true;
+  function runDisplayLabel(run) {
+    if (!run) return "No payroll run found for the selected filters.";
+    return `${run.runCode} • ${run.month} (${run.cutoffLabel}) • ${run.displayLabel} • ${run.status} • ${run.employees} employees`;
   }
 
-  function initRunSelect({ autoPick = false } = {}) {
-    if (!runSelect) return;
-    syncRunSelectInteractivity();
-
-    let list = RUNS.filter(runMatchesFilters);
-
-    // If auto-pick is requested but current filters yield no runs,
-    // fall back to the latest run with report data and sync filters to it.
-    if (autoPick && !list.length && RUNS.length) {
-      const fallbackId = pickDefaultRunId(RUNS);
-      const fallbackRun = RUNS.find((r) => r.id === fallbackId) || null;
-      if (fallbackRun) {
-        if (monthInput && fallbackRun.month) monthInput.value = fallbackRun.month;
-        if (cutoffSelect && fallbackRun.cutoff) cutoffSelect.value = fallbackRun.cutoff;
-        list = RUNS.filter(runMatchesFilters);
-      }
-    }
-
-    runSelect.innerHTML =
-      `<option value="">— Select a payroll run —</option>` +
-      list
-        .map((r) => {
-          const label = `${r.runCode} • ${r.month} (${r.cutoffLabel}) • ${r.displayLabel} • ${r.status} • ${r.employees} employees`;
-          return `<option value="${escapeHtml(r.id)}">${escapeHtml(label)}</option>`;
-        })
-        .join("");
-
-    const stillExists = !!(selectedRunId && list.some((r) => r.id === selectedRunId));
-    if (stillExists) {
-      runSelect.value = selectedRunId;
-      return;
-    }
-
-    const shouldAutoPick = autoPick;
-    const nextId = shouldAutoPick ? pickDefaultRunId(list) : "";
-
-    if (nextId) {
-      // Trigger the normal run loading pipeline.
-      runSelect.value = nextId;
-      runSelect.dispatchEvent(new Event("change"));
-      return;
-    }
-
-    // No valid selection under current filters; clear UI + actions.
-    selectedRunId = "";
-    runSelect.value = "";
-    setRunUI(null);
-    REGISTER = [];
-    FIELD_AREA_ALLOC = null;
-    setTopActionsEnabled(false);
+  function setRunDisplay(run) {
+    if (!runDisplay) return;
+    runDisplay.textContent = runDisplayLabel(run);
   }
 
   function mapRun(run) {
@@ -307,8 +264,8 @@ document.addEventListener("DOMContentLoaded", () => {
       id: String(run.id),
       runCode: run.run_code || String(run.id),
       month: run.period_month,
-      cutoff: run.cutoff,
-      cutoffLabel: run.cutoff || "—",
+      cutoff: normalizeCutoffValue(run.cutoff) || String(run.cutoff || ""),
+      cutoffLabel: normalizeCutoffValue(run.cutoff) || run.cutoff || "—",
       assignment: assignmentText,
       status: run.status || "—",
       employees: Number(run.headcount || 0),
@@ -373,21 +330,28 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch {
       RUNS = [];
     }
-    initRunSelect({ autoPick: true });
-    if (initialRunIdParam && runSelect && RUNS.some((r) => r.id === initialRunIdParam)) {
-      runSelect.value = initialRunIdParam;
-      runSelect.dispatchEvent(new Event("change"));
-    }
+    await syncRunFromFilters({
+      preferredRunId: initialRunIdParam,
+      fallbackOnEmpty: !initialRunIdParam && !initialMonthParam && initialCutoffParam === "All",
+    });
     renderAudit();
   }
 
   function setTopActionsEnabled(enabled) {
-    [viewRunBtn, exportCsvBtn, downloadPdfBtn, printBtn].forEach((b) => {
+    [exportCsvBtn, downloadPdfBtn, printBtn].forEach((b) => {
       if (!b) return;
       b.disabled = !enabled;
     });
   }
   setTopActionsEnabled(false);
+
+  function setFilterLoading(isLoading) {
+    if (isLoading) filterLoadingCount += 1;
+    else filterLoadingCount = Math.max(0, filterLoadingCount - 1);
+    const active = filterLoadingCount > 0;
+    if (runDisplay) runDisplay.classList.toggle("is-loading", active);
+    if (active && resultsMeta) resultsMeta.textContent = "Applying filters...";
+  }
 
   // =========================================================
   // PIPELINE: FILTERS
@@ -401,9 +365,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
     const statusVal = statusSelect?.value || "All";
+    const runCutoff = normalizeCutoffValue(run.cutoff) || run.cutoff;
 
     const okMonth = !monthVal || run.month === monthVal;
-    const okCutoff = cutoffVal === "All" || run.cutoff === cutoffVal;
+    const okCutoff = cutoffVal === "All" || runCutoff === cutoffVal;
     const okStatus = statusVal === "All" || run.status === statusVal;
     return okMonth && okCutoff && okStatus;
   }
@@ -501,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function setRunUI(run) {
     if (!run) {
-      if (runMeta) runMeta.textContent = "—";
+      setRunDisplay(null);
       if (runBadge) runBadge.textContent = "—";
       if (runEmployees) runEmployees.textContent = "—";
       if (runTotalNet) runTotalNet.textContent = "—";
@@ -512,7 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (runMeta) runMeta.textContent = `${run.runCode} • ${run.month} (${run.cutoff}) • Assignment: ${run.assignment}`;
+    setRunDisplay(run);
     if (runBadge) runBadge.textContent = run.status;
     if (runEmployees) runEmployees.textContent = String(run.employees);
     if (runTotalNet) runTotalNet.textContent = peso(run.totalNet);
@@ -576,13 +541,13 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="dedDetails__body">
               ${dedBreakdown
                 .filter(([, amt]) => Number(amt || 0) > 0)
-                .map(([label, amt]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(peso(amt))}</strong></div>`)
-                .join("") || `<div><span>Breakdown</span><strong>${escapeHtml(peso(0))}</strong></div>`}
+                .map(([label, amt]) => `<div><span>${escapeHtml(label)}</span><span>${escapeHtml(peso(amt))}</span></div>`)
+                .join("") || `<div><span>Breakdown</span><span>${escapeHtml(peso(0))}</span></div>`}
             </div>
           </details>
         </td>
         <td class="num">${escapeHtml(peso(r.gross))}</td>
-        <td class="num"><strong>${escapeHtml(peso(r.netPay))}</strong></td>
+        <td class="num">${escapeHtml(peso(r.netPay))}</td>
         <td>${escapeHtml(r.payslipStatus || "—")}</td>
       `;
       regTbody.appendChild(tr);
@@ -1113,12 +1078,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // FILTER EVENTS
   // =========================================================
-  [monthInput, cutoffSelect, deptSelect, statusSelect].forEach((el) => {
-    el && el.addEventListener("change", () => {
-      initRunSelect({ autoPick: true });
-      renderAll();
+  [monthInput, cutoffSelect, statusSelect].forEach((el) => {
+    el && el.addEventListener("change", async () => {
+      await syncRunFromFilters();
     });
   });
+
+  deptSelect && deptSelect.addEventListener("change", renderAll);
 
   searchInput && searchInput.addEventListener("input", renderAll);
 
@@ -1287,23 +1253,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Run selector
-  runSelect && runSelect.addEventListener("change", () => {
-    selectedRunId = runSelect.value || "";
-    const run = selectedRunId ? getRun(selectedRunId) : null;
-    setRunUI(run);
-
-    REGISTER = [];
-    FIELD_AREA_ALLOC = null;
-    renderAll();
-
-    if (!selectedRunId) {
-      setTopActionsEnabled(false);
-      return;
-    }
+  async function loadRunData(runId) {
+    if (!runId) return;
     setTopActionsEnabled(false);
 
-    const pRows = apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/rows`)
+    const pRows = apiFetch(`/payroll-runs/${encodeURIComponent(runId)}/rows`)
       .then((rows) => {
         REGISTER = Array.isArray(rows) ? rows.map(mapRow) : [];
       })
@@ -1311,7 +1265,7 @@ document.addEventListener("DOMContentLoaded", () => {
         REGISTER = [];
       });
 
-    const pAlloc = apiFetch(`/payroll-runs/${encodeURIComponent(selectedRunId)}/field-area-allocations`)
+    const pAlloc = apiFetch(`/payroll-runs/${encodeURIComponent(runId)}/field-area-allocations`)
       .then((payload) => {
         FIELD_AREA_ALLOC = payload || { employees: [], area_totals: [] };
       })
@@ -1319,11 +1273,52 @@ document.addEventListener("DOMContentLoaded", () => {
         FIELD_AREA_ALLOC = { employees: [], area_totals: [] };
       });
 
-    Promise.allSettled([pRows, pAlloc]).finally(() => {
-      setTopActionsEnabled(true);
+    await Promise.allSettled([pRows, pAlloc]);
+    setTopActionsEnabled(true);
+    renderAll();
+  }
+
+  async function syncRunFromFilters({ preferredRunId = "", fallbackOnEmpty = false } = {}) {
+    setFilterLoading(true);
+    try {
+      const list = RUNS.filter(runMatchesFilters);
+      let run = null;
+      if (preferredRunId) {
+        run = list.find((r) => r.id === String(preferredRunId)) || null;
+      }
+      if (!run && selectedRunId) {
+        run = list.find((r) => r.id === selectedRunId) || null;
+      }
+      if (!run) {
+        const nextId = pickDefaultRunId(list);
+        run = list.find((r) => r.id === nextId) || null;
+      }
+
+      if (!run && fallbackOnEmpty) {
+        const fallbackId = pickDefaultRunId(RUNS);
+        const fallback = RUNS.find((r) => r.id === fallbackId) || null;
+        if (fallback) {
+          if (monthInput) monthInput.value = fallback.month || monthInput.value;
+          if (cutoffSelect) cutoffSelect.value = fallback.cutoff || cutoffSelect.value || "All";
+          run = fallback;
+        }
+      }
+
+      selectedRunId = run ? run.id : "";
+      setRunUI(run);
+      REGISTER = [];
+      FIELD_AREA_ALLOC = null;
       renderAll();
-    });
-  });
+
+      if (!run) {
+        setTopActionsEnabled(false);
+        return;
+      }
+      await loadRunData(selectedRunId);
+    } finally {
+      setFilterLoading(false);
+    }
+  }
 
   // =========================================================
   // TOP ACTIONS
@@ -1560,38 +1555,66 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function downloadCsv(csv, filename) {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    const xlsx = window.XLSX;
+    if (!xlsx) {
+      alert("XLSX library not loaded. Please refresh the page.");
+      return;
+    }
+
+    const wb = xlsx.read(csv, { type: "string" });
+    const firstSheet = wb.SheetNames[0];
+    const safeSheetName = String(activeTab || "Report").slice(0, 31);
+    if (firstSheet && firstSheet !== safeSheetName) {
+      wb.Sheets[safeSheetName] = wb.Sheets[firstSheet];
+      delete wb.Sheets[firstSheet];
+      wb.SheetNames[0] = safeSheetName;
+    }
+
+    const outName = String(filename || "report.xlsx").replace(/\.csv$/i, ".xlsx");
+    xlsx.writeFile(wb, outName, { bookType: "xlsx" });
   }
 
   exportCsvBtn &&
     exportCsvBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const rows = applySorting(applyFilters(REGISTER));
-      exportCsv(rows, `report_${selectedRunId}_${activeTab}.csv`);
+      exportCsv(rows, `report_${selectedRunId}_${activeTab}.xlsx`);
     });
 
   printBtn &&
     printBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
+      const targetPane = $(`tab-${activeTab}`) || $("tab-register");
+      if (targetPane) targetPane.classList.add("print-target");
+
+      const finishPrint = () => {
+        window.removeEventListener("afterprint", finishPrint);
+        if (targetPane) targetPane.classList.remove("print-target");
+      };
+
+      window.addEventListener("afterprint", finishPrint);
       window.print();
     });
 
   downloadPdfBtn &&
     downloadPdfBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
-      alert("Download PDF: connect backend PDF generator later.");
-    });
+      const targetPane = $(`tab-${activeTab}`) || $("tab-register");
+      if (targetPane) targetPane.classList.add("print-target");
 
-  viewRunBtn &&
-    viewRunBtn.addEventListener("click", () => {
-      if (!selectedRunId) return;
-      alert("View Payroll Run: link this button to Payroll Processing run page later.");
+      const originalTitle = document.title;
+      const run = getRun(selectedRunId);
+      const safeTab = String(activeTab || "register").replace(/[^a-z0-9_-]/gi, "_");
+      document.title = `report_${run?.runCode || selectedRunId}_${safeTab}`;
+
+      const finishPrint = () => {
+        window.removeEventListener("afterprint", finishPrint);
+        if (targetPane) targetPane.classList.remove("print-target");
+        document.title = originalTitle;
+      };
+
+      window.addEventListener("afterprint", finishPrint);
+      window.print();
     });
 
   function loadFilterOptions() {

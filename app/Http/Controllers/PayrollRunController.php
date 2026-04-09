@@ -21,6 +21,7 @@ use App\Models\PayrollRunLoanItem;
 use App\Models\PayrollDeductionPolicy;
 use App\Models\SalaryProrationRule;
 use App\Models\TimekeepingRule;
+use App\Services\Attendance\AttendanceStatusRuleService;
 use App\Services\Payroll\PayrollCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -290,6 +291,7 @@ class PayrollRunController extends Controller
 
         $employeeIds = $rawRows->pluck('employee_id')->filter()->values()->all();
         $attendanceAgg = collect();
+        $lateDaysAgg = collect();
         $timekeeping = TimekeepingRule::query()->first() ?? TimekeepingRule::create([]);
         $proration = SalaryProrationRule::query()->first() ?? SalaryProrationRule::create([]);
         if (!empty($employeeIds) && !empty($run->period_month) && !empty($run->cutoff)) {
@@ -299,10 +301,40 @@ class PayrollRunController extends Controller
                 ->where('cutoff', (string) $run->cutoff)
                 ->get()
                 ->keyBy('employee_id');
+
+            [$start, $end] = $calculator->cutoffRangePublic((string) $run->period_month, (string) $run->cutoff);
+            $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
+            $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
+
+            $q = AttendanceRecord::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
+            $assignmentByEmployee = Employee::query()
+                ->whereIn('id', $employeeIds)
+                ->pluck('assignment_type', 'id');
+
+            $rows = $q->get(['employee_id', 'date', 'status', 'minutes_late', 'minutes_undertime', 'ot_hours'])
+                ->groupBy('employee_id');
+            $ruleSvc = new AttendanceStatusRuleService();
+            $lateDaysAgg = collect($rows->map(function ($group, $empId) use ($ruleSvc, $workMonSat, $assignmentByEmployee) {
+                $assignmentType = (string) ($assignmentByEmployee->get($empId) ?? '');
+                $filtered = collect($group)->filter(function ($r) use ($workMonSat, $assignmentType) {
+                    $date = $r->date instanceof \DateTimeInterface
+                        ? Carbon::parse($r->date->format('Y-m-d'))
+                        : Carbon::parse((string) $r->date);
+                    if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+                        return true;
+                    }
+                    $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
+                    return $workMonSat ? $dow <= 6 : $dow <= 5;
+                })->values();
+                $totals = $ruleSvc->summarize($filtered);
+                return (float) ($totals['late_days'] ?? 0);
+            }));
         }
 
         $rows = $rawRows
-            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $timekeeping, $proration) {
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $lateDaysAgg, $timekeeping, $proration) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
@@ -332,6 +364,7 @@ class PayrollRunController extends Controller
                     'external_area' => $emp?->external_area,
                     'present_days' => (float) ($summary?->present_days ?? 0),
                     'absent_days' => (float) ($summary?->absent_days ?? 0),
+                    'late_days' => (float) ($lateDaysAgg->get($r->employee_id) ?? 0),
                     'leave_days' => (float) ($summary?->leave_days ?? 0),
                     'late_minutes' => (int) ($summary?->minutes_late ?? 0),
                     'undertime_minutes' => (int) ($summary?->minutes_undertime ?? 0),
@@ -390,9 +423,6 @@ class PayrollRunController extends Controller
 
         [$start, $end] = $calculator->cutoffRangePublic($periodMonth, $cutoff);
 
-        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
-        $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
-
         $runRows = PayrollRunRow::query()
             ->where('payroll_run_id', $run->id)
             ->with(['employee'])
@@ -405,14 +435,11 @@ class PayrollRunController extends Controller
             if (strcasecmp((string) ($emp->assignment_type ?? ''), 'Field') !== 0) continue;
 
             $name = trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''));
-            $basePay = (float) ($r->basic_pay_cutoff ?? 0) + (float) ($r->allowance_cutoff ?? 0);
-
             $employees[(int) $emp->id] = [
                 'employee' => $emp,
                 'employee_id' => (int) $emp->id,
                 'emp_no' => (string) ($emp->emp_no ?? ''),
                 'name' => $name,
-                'base_pay' => $basePay,
             ];
         }
 
@@ -422,7 +449,7 @@ class PayrollRunController extends Controller
                 'range' => [
                     'from' => $start->toDateString(),
                     'to' => $end->toDateString(),
-                    'work_mon_sat' => $workMonSat,
+                    'work_mon_sat' => null,
                 ],
                 'employees' => [],
                 'area_totals' => [],
@@ -432,11 +459,6 @@ class PayrollRunController extends Controller
         $q = AttendanceRecord::query()
             ->whereIn('employee_id', $empIds)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
-        if ($workMonSat) {
-            $q->whereRaw("DAYOFWEEK(`date`) != 1");
-        } else {
-            $q->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
-        }
 
         $records = $q
             ->orderBy('employee_id')
@@ -446,17 +468,16 @@ class PayrollRunController extends Controller
         $byEmp = $records->groupBy('employee_id');
         $areaTotals = [];
         $areaEmployees = [];
+        $statusRuleService = new AttendanceStatusRuleService();
 
         foreach ($employees as $empId => $meta) {
             $emp = $meta['employee'];
-            $basePay = (float) ($meta['base_pay'] ?? 0);
-
             $rows = $byEmp->get($empId, collect());
             $items = [];
             $totalUnits = 0.0;
 
             foreach ($rows as $rec) {
-                $units = $this->paidUnitsForStatus((string) ($rec->status ?? ''));
+                $units = $this->paidUnitsForStatus((string) ($rec->status ?? ''), $statusRuleService);
                 if ($units <= 0) continue;
 
                 $date = $rec->date instanceof \DateTimeInterface
@@ -483,7 +504,9 @@ class PayrollRunController extends Controller
                 $areas[$area]['dates'][] = (string) $it['date'];
             }
 
-            $dailyRate = ($totalUnits > 0 && $basePay > 0) ? ($basePay / $totalUnits) : 0.0;
+            // Keep Field allocation daily rate stable and salary-based:
+            // use employee basic pay only (exclude allowance), divided by 26 days.
+            $dailyRate = (float) ($emp->basic_pay ?? 0) / 26;
 
             $allocs = [];
             foreach ($areas as $area => $a) {
@@ -542,7 +565,7 @@ class PayrollRunController extends Controller
             'range' => [
                 'from' => $start->toDateString(),
                 'to' => $end->toDateString(),
-                'work_mon_sat' => $workMonSat,
+                'work_mon_sat' => null,
             ],
             'areas' => $areasList,
             'area_totals' => $areaTotalsList,
@@ -1054,12 +1077,36 @@ class PayrollRunController extends Controller
         return $minutes;
     }
 
-    private function paidUnitsForStatus(string $status): float
+    private function paidUnitsForStatus(string $status, ?AttendanceStatusRuleService $ruleService = null): float
     {
-        $s = trim($status);
+        $s = strtolower(trim($status));
         if ($s === '') return 0.0;
-        if (in_array($s, ['Present', 'Late', 'Paid Leave', 'Holiday'], true)) return 1.0;
-        if ($s === 'Half-day') return 0.5;
+
+        static $cache = null;
+        if ($cache === null) {
+            $svc = $ruleService ?? new AttendanceStatusRuleService();
+            $buckets = $svc->buckets();
+
+            $paidSet = [];
+            foreach ((array) ($buckets['paid'] ?? []) as $item) {
+                $key = strtolower(trim((string) $item));
+                if ($key !== '') $paidSet[$key] = true;
+            }
+
+            $halfDaySet = [];
+            foreach ((array) ($buckets['half_day'] ?? []) as $item) {
+                $key = strtolower(trim((string) $item));
+                if ($key !== '') $halfDaySet[$key] = true;
+            }
+
+            $cache = [
+                'paid' => $paidSet,
+                'half' => $halfDaySet,
+            ];
+        }
+
+        if (isset($cache['half'][$s])) return 0.5;
+        if (isset($cache['paid'][$s])) return 1.0;
         return 0.0;
     }
 

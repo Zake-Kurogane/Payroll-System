@@ -26,10 +26,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     cal = cal || {};
     const lastDay = new Date(year, month, 0).getDate();
     const isA = cutoffType === "A";
-    let from = isA ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
-    let to   = isA ? Number(cal.cutoff_a_to   ?? 25) : Number(cal.cutoff_b_to   ?? 10);
-    if (!Number.isFinite(from) || from <= 0) from = isA ? 11 : 26;
-    if (!Number.isFinite(to)   || to   <= 0) to   = isA ? 25 : lastDay;
+    // Canonical mapping: A = 26-10, B = 11-25
+    let from = isA ? Number(cal.cutoff_b_from ?? 26) : Number(cal.cutoff_a_from ?? 11);
+    let to   = isA ? Number(cal.cutoff_b_to   ?? 10) : Number(cal.cutoff_a_to   ?? 25);
+    if (!Number.isFinite(from) || from <= 0) from = isA ? 26 : 11;
+    if (!Number.isFinite(to)   || to   <= 0) to   = isA ? 10 : lastDay;
     return { from, to };
   }
 

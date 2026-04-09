@@ -9,9 +9,8 @@
         ? '-'
         : $companySubParts->map(fn ($v) => e((string) $v))->implode(' &bull; ');
 
-    // Email PDF (dompdf) may not render the Peso sign reliably depending on available fonts.
-    // Use a safe prefix to avoid "?" characters in the output.
-    $money = fn ($v) => 'PHP ' . number_format((float) $v, 2);
+    $peso = "&#8369; ";
+    $money = fn ($v) => $peso . number_format((float) $v, 2);
     $p = $payslip ?? [];
 @endphp
 <!doctype html>
@@ -155,6 +154,27 @@
         .sum-v { text-align: right; font-weight: 900; }
         .net-label { font-weight: 900; letter-spacing: 2px; color: #64122a; font-size: 9px; }
         .net-val { font-weight: 900; font-size: 16px; margin-top: 4px; }
+
+        .notes {
+            margin-top: 8px;
+            border-top: 1px solid #d6b5c2;
+            padding-top: 6px;
+        }
+        .notes-label { font-weight: 800; font-size: 8px; margin-bottom: 3px; }
+        .notes-box {
+            border: 1px solid #c88ea5;
+            padding: 4px 6px;
+            font-size: 8px;
+            min-height: 22px;
+        }
+        .notes-small { font-size: 7px; color: #6b7280; margin-top: 3px; }
+
+        .sign-row { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        .sign-row td { width: 50%; vertical-align: top; padding: 0 6px; }
+        .sign-row td:first-child { padding-left: 0; }
+        .sign-row td:last-child { padding-right: 0; }
+        .sign-line { border-top: 1px solid #6b7280; margin-top: 22px; margin-bottom: 4px; }
+        .sign-lbl { font-size: 7px; color: #6b7280; }
     </style>
 </head>
 <body>
@@ -220,6 +240,7 @@
                                 <tr><td class="k">Employee ID</td><td class="v">{{ $p['emp_no'] ?? ($p['employee_id'] ?? '-') }}</td></tr>
                                 <tr><td class="k">Department</td><td class="v">{{ $p['department'] ?? '-' }}</td></tr>
                                 <tr><td class="k">Position</td><td class="v">{{ $p['position'] ?? '-' }}</td></tr>
+                                <tr><td class="k">Type</td><td class="v">{{ $p['employment_type'] ?? '-' }}</td></tr>
                                 <tr><td class="k">Assignment</td><td class="v">{{ $branchName }}</td></tr>
                             </table>
                         </td>
@@ -235,6 +256,10 @@
                                 </td></tr>
                                 <tr><td class="k">Pay Date</td><td class="v">{{ $payDate ?? '-' }}</td></tr>
                                 <tr><td class="k">Pay Method</td><td class="v">{{ $payMethod }}</td></tr>
+                                @if($pm === 'BANK')
+                                <tr><td class="k">Bank</td><td class="v">{{ $p['bank_name'] ?? '-' }}</td></tr>
+                                <tr><td class="k">Account</td><td class="v">{{ $p['bank_account_number'] ?? '-' }}</td></tr>
+                                @endif
                             </table>
                         </td>
                     </tr>
@@ -255,27 +280,27 @@
                     <tbody>
                         <tr>
                             <td>Daily Rate</td>
-                            <td class="num">{{ $money($p['daily_rate'] ?? 0) }}</td>
+                            <td class="num">{!! $money($p['daily_rate'] ?? 0) !!}</td>
                             <td class="num">{{ number_format((float) ($p['paid_days'] ?? 0), 2) }}</td>
-                            <td class="num">{{ $money($p['basic_pay_cutoff'] ?? 0) }}</td>
+                            <td class="num">{!! $money($p['basic_pay_cutoff'] ?? 0) !!}</td>
                         </tr>
                         <tr>
                             <td>Allowance (cutoff)</td>
                             <td class="num">-</td>
                             <td class="num">-</td>
-                            <td class="num">{{ $money($p['allowance_cutoff'] ?? 0) }}</td>
+                            <td class="num">{!! $money($p['allowance_cutoff'] ?? 0) !!}</td>
                         </tr>
                         @foreach($earnAdj as $a)
                             <tr>
                                 <td>{{ $a['name'] ?? 'Adjustment' }}</td>
                                 <td class="num">-</td>
                                 <td class="num">-</td>
-                                <td class="num">{{ $money($a['amount'] ?? 0) }}</td>
+                                <td class="num">{!! $money($a['amount'] ?? 0) !!}</td>
                             </tr>
                         @endforeach
                         <tr class="total-row">
-                            <td colspan="3">TOTAL GROSS EARNINGS</td>
-                            <td class="num">{{ $money($p['gross'] ?? 0) }}</td>
+                            <td colspan="3">Total Gross Earnings</td>
+                            <td class="num">{!! $money($p['gross'] ?? 0) !!}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -292,25 +317,25 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td>Attendance Deductions (Late/UT/Absent)</td><td class="num">-</td><td class="num">{{ $money($p['attendance_deduction'] ?? 0) }}</td></tr>
-                        <tr><td>SSS (EE)</td><td class="num">-</td><td class="num">{{ $money($p['sss_ee'] ?? 0) }}</td></tr>
-                        <tr><td>PhilHealth (EE)</td><td class="num">-</td><td class="num">{{ $money($p['philhealth_ee'] ?? 0) }}</td></tr>
-                        <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{{ $money($p['tax'] ?? 0) }}</td></tr>
-                        <tr><td>HDMF</td><td class="num">-</td><td class="num">{{ $money($p['pagibig_ee'] ?? 0) }}</td></tr>
-                        <tr><td>SSS Loan</td><td class="num">-</td><td class="num">{{ $money($sssLoan) }}</td></tr>
-                        <tr><td>HDMF Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfLoan) }}</td></tr>
-                        <tr><td>PAGIBIG Housing Loan</td><td class="num">-</td><td class="num">{{ $money($pagibigHousing) }}</td></tr>
-                        <tr><td>SSS Housing Loan</td><td class="num">-</td><td class="num">{{ $money($sssHousing) }}</td></tr>
-                        <tr><td>HDMF Calamity Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfCalamity) }}</td></tr>
-                        <tr><td>Advances</td><td class="num">-</td><td class="num">{{ $money($advances) }}</td></tr>
-                        <tr><td>Shortages</td><td class="num">-</td><td class="num">{{ $money($shortages) }}</td></tr>
-                        <tr><td>Charges</td><td class="num">-</td><td class="num">{{ $money($charges) }}</td></tr>
+                        <tr><td>Attendance Deductions (Late/UT/Absent)</td><td class="num">-</td><td class="num">{!! $money($p['attendance_deduction'] ?? 0) !!}</td></tr>
+                        <tr><td>SSS (EE)</td><td class="num">-</td><td class="num">{!! $money($p['sss_ee'] ?? 0) !!}</td></tr>
+                        <tr><td>PhilHealth (EE)</td><td class="num">-</td><td class="num">{!! $money($p['philhealth_ee'] ?? 0) !!}</td></tr>
+                        <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{!! $money($p['tax'] ?? 0) !!}</td></tr>
+                        <tr><td>HDMF</td><td class="num">-</td><td class="num">{!! $money($p['pagibig_ee'] ?? 0) !!}</td></tr>
+                        <tr><td>SSS Loan</td><td class="num">-</td><td class="num">{!! $money($sssLoan) !!}</td></tr>
+                        <tr><td>HDMF Loan</td><td class="num">-</td><td class="num">{!! $money($hdmfLoan) !!}</td></tr>
+                        <tr><td>PAGIBIG Housing Loan</td><td class="num">-</td><td class="num">{!! $money($pagibigHousing) !!}</td></tr>
+                        <tr><td>SSS Housing Loan</td><td class="num">-</td><td class="num">{!! $money($sssHousing) !!}</td></tr>
+                        <tr><td>HDMF Calamity Loan</td><td class="num">-</td><td class="num">{!! $money($hdmfCalamity) !!}</td></tr>
+                        <tr><td>Advances</td><td class="num">-</td><td class="num">{!! $money($advances) !!}</td></tr>
+                        <tr><td>Shortages</td><td class="num">-</td><td class="num">{!! $money($shortages) !!}</td></tr>
+                        <tr><td>Charges</td><td class="num">-</td><td class="num">{!! $money($charges) !!}</td></tr>
                         @foreach($dedAdj as $a)
-                            <tr><td>{{ $a['name'] ?? 'Adjustment' }}</td><td class="num">-</td><td class="num">{{ $money($a['amount'] ?? 0) }}</td></tr>
+                            <tr><td>{{ $a['name'] ?? 'Adjustment' }}</td><td class="num">-</td><td class="num">{!! $money($a['amount'] ?? 0) !!}</td></tr>
                         @endforeach
                         <tr class="total-row">
-                            <td colspan="2">Total Deds</td>
-                            <td class="num">{{ $money($p['deductions_total'] ?? 0) }}</td>
+                            <td colspan="2">Total Deductions</td>
+                            <td class="num">{!! $money($p['deductions_total'] ?? 0) !!}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -320,17 +345,18 @@
                 <tr>
                     <td class="sum-left">
                         <table class="sum-line">
-                            <tr><td class="sum-k">Gross Pay</td><td class="sum-v">{{ $money($p['gross'] ?? 0) }}</td></tr>
-                            <tr><td class="sum-k">Total Deductions</td><td class="sum-v">{{ $money($p['deductions_total'] ?? 0) }}</td></tr>
+                            <tr><td class="sum-k">Gross Pay</td><td class="sum-v">{!! $money($p['gross'] ?? 0) !!}</td></tr>
+                            <tr><td class="sum-k">Total Deductions</td><td class="sum-v">{!! $money($p['deductions_total'] ?? 0) !!}</td></tr>
                         </table>
                     </td>
                     <td style="width:10px;"></td>
                     <td class="sum-right">
                         <div class="net-label">NET PAY</div>
-                        <div class="net-val">{{ $money($p['net_pay'] ?? 0) }}</div>
+                        <div class="net-val">{!! $money($p['net_pay'] ?? 0) !!}</div>
                     </td>
                 </tr>
             </table>
+
         </div>
     </div>
 </body>

@@ -2,7 +2,6 @@
 
 namespace App\Services\Payroll;
 
-use App\Models\AttendanceCodeSetting;
 use App\Models\AttendanceSummary;
 use App\Models\AttendanceRecord;
 use App\Models\CashAdvance;
@@ -18,6 +17,7 @@ use App\Models\StatutorySetup;
 use App\Models\TimekeepingRule;
 use App\Models\WithholdingTaxBracket;
 use App\Models\WithholdingTaxPolicy;
+use App\Services\Attendance\AttendanceStatusRuleService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -36,14 +36,15 @@ class PayrollCalculator
         $wtBrackets = WithholdingTaxBracket::query()->orderBy('sort_order')->get();
         $cashPolicy = CashAdvancePolicy::query()->first();
         $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
-        $attDefaults = AttendanceCodeSetting::query()->first();
-
         $employeeIds = $employees->pluck('id')->all();
         $hasAttendanceData = false;
+        $lateDaysByEmployee = collect();
         if (count($employeeIds) > 0) {
             // Always refresh attendance summaries on compute so payroll reflects
             // current paid-day rules and latest attendance edits.
-            $hasAttendanceData = $this->buildSummariesForPeriod($employeeIds, $periodMonth, $cutoff, $start, $end);
+            $summaryBuild = $this->buildSummariesForPeriod($employeeIds, $periodMonth, $cutoff, $start, $end);
+            $hasAttendanceData = (bool) ($summaryBuild['has_attendance_data'] ?? false);
+            $lateDaysByEmployee = collect($summaryBuild['late_days_by_employee'] ?? []);
         }
         $summaries = AttendanceSummary::query()
             ->whereIn('employee_id', $employeeIds)
@@ -74,7 +75,7 @@ class PayrollCalculator
         // If there are no attendance entries in this cutoff window, return an empty preview.
         // This prevents accidental payroll generation for future/unencoded periods.
         $rows = $hasAttendanceData
-            ? $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType)
+            ? $this->computeRows($employees, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $lateDaysByEmployee, $runType)
             : [];
 
         return [
@@ -103,23 +104,17 @@ class PayrollCalculator
             ->whereIn('employee_id', $employeeIds)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
 
-        $rule = $this->workdaysRule();
-        $workMonSat = (bool) ($rule['work_mon_sat'] ?? true);
-        if ($workMonSat) {
-            $query->whereRaw("DAYOFWEEK(`date`) != 1");
-        } else {
-            $query->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
-        }
-
         return $query->exists();
     }
 
-    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
+    public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, Collection $lateDaysByEmployee, string $runType = 'External'): array
     {
+        $isFirstCutoff = $this->isFirstCutoff($cutoff);
         $employmentType = strtolower(trim((string) ($emp->employment_type ?? '')));
         $isRegular = $employmentType === 'regular';
 
         $summary = $this->summaryFromAggregate($summaries->get($emp->id));
+        $lateDays = (float) ($lateDaysByEmployee->get($emp->id) ?? 0);
         $workdaysInMonth = 26;
         $dailyRate = (float) $emp->basic_pay / $workdaysInMonth;
         $allowanceDaily = (float) $emp->allowance / $workdaysInMonth;
@@ -172,7 +167,10 @@ class PayrollCalculator
         }
 
         $zeros = ['ee' => 0.0, 'er' => 0.0, 'ee_full' => 0.0, 'er_full' => 0.0];
-        $applyPremiums = $isRegular || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false);
+        // Business rule:
+        // - 1st cutoff (26-10): apply statutory premiums
+        // - 2nd cutoff (11-25): do not apply statutory premiums
+        $applyPremiums = ($isRegular || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false)) && $isFirstCutoff;
         $sss = ($applyPremiums && $this->hasGovId($emp->sss))
             ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff, $this->isEcExempt($emp))
             : $zeros;
@@ -226,11 +224,18 @@ class PayrollCalculator
             + $pagibig['ee']
             + $withholding;
 
-        [$loanDeduction, $loanItems] = $this->computeLoanDeductions(
-            $loanSchedules->get($emp->id, collect()),
-            $gross,
-            $baseBeforeLoans
-        );
+        // Business rule:
+        // - 1st cutoff (26-10): no agency loan deduction
+        // - 2nd cutoff (11-25): apply agency loan deduction
+        if ($isFirstCutoff) {
+            [$loanDeduction, $loanItems] = [0.0, []];
+        } else {
+            [$loanDeduction, $loanItems] = $this->computeLoanDeductions(
+                $loanSchedules->get($emp->id, collect()),
+                $gross,
+                $baseBeforeLoans
+            );
+        }
 
         $availableAfterLoans = max(0.0, $gross - ($baseBeforeLoans + $loanDeduction));
         $capCharges = (bool) ($dedPolicy->cap_charges_to_net_pay ?? true) && (bool) ($dedPolicy->carry_forward_unpaid_charges ?? true);
@@ -291,6 +296,7 @@ class PayrollCalculator
             'employer_share_total' => $this->roundMoney($sss['er'] + $philhealth['er'] + $pagibig['er'], $proration),
             'present_days' => $summary['present'],
             'absent_days' => $summary['absent'],
+            'late_days' => $lateDays,
             'leave_days' => $summary['leave'],
             'status' => $this->rowStatus($emp, $summary),
             'payout_method' => $emp->payout_method ?: ($emp->bank_account_number ? 'BANK' : 'CASH'),
@@ -298,11 +304,11 @@ class PayrollCalculator
         ];
     }
 
-    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, string $runType = 'External'): array
+    private function computeRows(Collection $employees, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, Collection $lateDaysByEmployee, string $runType = 'External'): array
     {
         $rows = [];
         foreach ($employees as $emp) {
-            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $runType);
+            $rows[] = $this->computeForEmployee($emp, $start, $end, $cutoff, $overrides, $timekeeping, $proration, $overtime, $statutory, $wtPolicy, $wtBrackets, $cashPolicy, $dedPolicy, $summaries, $cashAdvances, $loanSchedules, $lateDaysByEmployee, $runType);
         }
         return $rows;
     }
@@ -438,55 +444,52 @@ class PayrollCalculator
         ];
     }
 
-    private function buildSummariesForPeriod(array $employeeIds, string $periodMonth, string $cutoff, Carbon $start, Carbon $end): bool
+    private function buildSummariesForPeriod(array $employeeIds, string $periodMonth, string $cutoff, Carbon $start, Carbon $end): array
     {
-        if (!$employeeIds) return false;
+        if (!$employeeIds) {
+            return ['has_attendance_data' => false, 'late_days_by_employee' => []];
+        }
 
         $query = AttendanceRecord::query()
             ->whereIn('employee_id', $employeeIds)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
         $rule = $this->workdaysRule();
         $workMonSat = (bool) ($rule['work_mon_sat'] ?? true);
-        if ($workMonSat) {
-            $query->whereRaw("DAYOFWEEK(`date`) != 1");
-        } else {
-            $query->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
-        }
+        $assignmentByEmployee = Employee::query()
+            ->whereIn('id', $employeeIds)
+            ->pluck('assignment_type', 'id');
 
-        $rows = $query
-            ->selectRaw("
-                employee_id,
-                SUM(CASE WHEN status IN ('Present','Late','Half-day') THEN 1 ELSE 0 END) as present_days,
-                SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
-                SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days,
-                SUM(CASE
-                    WHEN status IN ('Present','Late','Paid Leave','Holiday') THEN 1
-                    WHEN status = 'Half-day' THEN 0.5
-                    ELSE 0
-                END) as paid_days,
-                SUM(COALESCE(minutes_late, 0)) as minutes_late,
-                SUM(COALESCE(minutes_undertime, 0)) as minutes_undertime,
-                SUM(COALESCE(ot_hours, 0)) as ot_hours
-            ")
-            ->groupBy('employee_id')
-            ->get()
-            ->keyBy('employee_id');
-        $hasAttendanceData = $rows->isNotEmpty();
+        $records = $query
+            ->get(['employee_id', 'date', 'status', 'minutes_late', 'minutes_undertime', 'ot_hours']);
+        $hasAttendanceData = $records->isNotEmpty();
+        $recordsByEmp = $records->groupBy('employee_id');
+        $ruleService = new AttendanceStatusRuleService();
+        $lateDaysByEmployee = [];
 
         $upsertRows = [];
         foreach ($employeeIds as $empId) {
-            $r = $rows->get($empId);
+            $assignmentType = (string) ($assignmentByEmployee->get($empId) ?? '');
+            $filtered = $recordsByEmp->get($empId, collect())
+                ->filter(function ($r) use ($workMonSat, $assignmentType) {
+                    $date = $r->date instanceof \DateTimeInterface
+                        ? Carbon::parse($r->date->format('Y-m-d'))
+                        : Carbon::parse((string) $r->date);
+                    return $this->isWorkdayForAssignment($date, $workMonSat, $assignmentType);
+                })
+                ->values();
+            $totals = $ruleService->summarize($filtered);
+            $lateDaysByEmployee[$empId] = (float) ($totals['late_days'] ?? 0);
             $upsertRows[] = [
                 'employee_id' => $empId,
                 'period_month' => $periodMonth,
                 'cutoff' => $cutoff,
-                'present_days' => (float) ($r->present_days ?? 0),
-                'absent_days' => (float) ($r->absent_days ?? 0),
-                'leave_days' => (float) ($r->leave_days ?? 0),
-                'paid_days' => (float) ($r->paid_days ?? 0),
-                'minutes_late' => (int) ($r->minutes_late ?? 0),
-                'minutes_undertime' => (int) ($r->minutes_undertime ?? 0),
-                'ot_hours' => (float) ($r->ot_hours ?? 0),
+                'present_days' => (float) ($totals['present_days'] ?? 0),
+                'absent_days' => (float) ($totals['absent_days'] ?? 0),
+                'leave_days' => (float) ($totals['leave_days'] ?? 0),
+                'paid_days' => (float) ($totals['paid_days'] ?? 0),
+                'minutes_late' => (int) ($totals['minutes_late'] ?? 0),
+                'minutes_undertime' => (int) ($totals['minutes_undertime'] ?? 0),
+                'ot_hours' => (float) ($totals['ot_hours'] ?? 0),
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
@@ -498,7 +501,19 @@ class PayrollCalculator
             ['present_days', 'absent_days', 'leave_days', 'paid_days', 'minutes_late', 'minutes_undertime', 'ot_hours', 'updated_at']
         );
 
-        return $hasAttendanceData;
+        return [
+            'has_attendance_data' => $hasAttendanceData,
+            'late_days_by_employee' => $lateDaysByEmployee,
+        ];
+    }
+
+    private function isWorkdayForAssignment(Carbon $date, bool $workMonSat, string $assignmentType): bool
+    {
+        if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+            return true;
+        }
+        $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
+        return $workMonSat ? $dow <= 6 : $dow <= 5;
     }
 
     private function computeAttendanceDeductionParts(array $summary, float $dailyRate, TimekeepingRule $timekeeping, SalaryProrationRule $proration): array
@@ -569,7 +584,7 @@ class PayrollCalculator
         if (!$policy || !$policy->enabled) return 0.0;
         if ($advances->isEmpty()) return 0.0;
 
-        $cutoffOffset = $cutoff === '26-10' ? 1 : 0;
+        $cutoffOffset = $this->isFirstCutoff($cutoff) ? 0 : 1;
         $period = Carbon::createFromFormat('Y-m', $periodMonth)->startOfMonth();
 
         $total = 0.0;
@@ -921,7 +936,7 @@ class PayrollCalculator
 
     private function applySplitRule(float $ee, float $er, string $rule, string $cutoff): array
     {
-        $isFirst = $cutoff === '11-25';
+        $isFirst = $this->isFirstCutoff($cutoff);
         if ($rule === 'cutoff1_only' || $rule === 'monthly') {
             return ['ee' => $isFirst ? $ee : 0.0, 'er' => $isFirst ? $er : 0.0];
         }
@@ -936,11 +951,16 @@ class PayrollCalculator
 
     private function applySplitRuleSingle(float $amount, string $rule, string $cutoff): float
     {
-        $isFirst = $cutoff === '11-25';
+        $isFirst = $this->isFirstCutoff($cutoff);
         if ($rule === 'cutoff1_only' || $rule === 'monthly') return $isFirst ? $amount : 0.0;
         if ($rule === 'cutoff2_only') return $isFirst ? 0.0 : $amount;
         if ($rule === 'split_cutoffs') return $amount / 2;
         return $amount;
+    }
+
+    private function isFirstCutoff(string $cutoff): bool
+    {
+        return trim($cutoff) === '26-10';
     }
 
     private function computeLoanDeductions(Collection $loanSchedules, float $gross, float $baseDeductions): array
@@ -953,7 +973,7 @@ class PayrollCalculator
         $ordered = $loanSchedules->sortBy(function ($s) {
             $priority = (int) ($s->loan?->priority_order ?? 100);
             $loanId = (int) ($s->employee_loan_id ?? 0);
-            $cutoffWeight = ($s->due_cutoff ?? '') === '11-25' ? 1 : 2;
+            $cutoffWeight = $this->isFirstCutoff((string) ($s->due_cutoff ?? '')) ? 1 : 2;
             return [$priority, $loanId, $cutoffWeight, $s->id];
         });
 

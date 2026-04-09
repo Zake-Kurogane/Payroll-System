@@ -89,8 +89,16 @@ class PayslipMail extends Mailable
         if (!$y || !$m) return '-';
         $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
         $payOnPrev = (bool) ($calendar->pay_on_prev_workday_if_sunday ?? false);
-        $isFirst = $cutoff === '11-25';
-        $payDay = $isFirst ? ($calendar->pay_date_a ?? 15) : ($calendar->pay_date_b ?? 'EOM');
+        // Business rule:
+        // 1st cutoff = 26-10 (payday 15, next month)
+        // 2nd cutoff = 11-25 (payday 30/31 or EOM, same month)
+        $isFirst = $cutoff === '26-10';
+        $payDay = $isFirst ? ($calendar->pay_date_a ?? 15) : ($calendar->pay_date_b ?? 15);
+        // 26-10 cutoff period ends in the next month, so pay date is also next month.
+        if ($isFirst) {
+            $m++;
+            if ($m > 12) { $m = 1; $y++; }
+        }
         if (strtoupper((string) $payDay) === 'EOM') {
             $date = Carbon::create($y, $m, 1)->endOfMonth();
         } else {

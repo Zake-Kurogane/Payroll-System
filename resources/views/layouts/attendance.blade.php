@@ -82,7 +82,7 @@
 
             <div class="muted small importNote">
                 Tip: Use codes like <strong>P</strong>, <strong>L</strong>, <strong>A</strong>,
-                <strong>UL</strong>, <strong>RNR</strong>, <strong>PL</strong>, <strong>HD</strong>,
+                <strong>RNR</strong>, <strong>PL</strong>, <strong>HD</strong>,
                 <strong>OFF</strong>, <strong>HOL</strong>, <strong>LOA</strong>.
                 Codes are mapped automatically.
             </div>

@@ -170,9 +170,9 @@ document.addEventListener("DOMContentLoaded", () => {
     "A":  { status: "Absent",  isPaid: false, countsAsPresent: false },
     "AB": { status: "Absent",  isPaid: false, countsAsPresent: false },
 
-    // Unpaid Leave
-    "UL":   { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
-    "LWOP": { status: "Unpaid Leave", isPaid: false, countsAsPresent: false },
+    // Legacy aliases map to Absent
+    "UL":   { status: "Absent", isPaid: false, countsAsPresent: false },
+    "LWOP": { status: "Absent", isPaid: false, countsAsPresent: false },
     "RNR":  { status: "RNR", isPaid: false, countsAsPresent: false },
 
     // Paid Leave
@@ -199,7 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!s) return { status: "Present", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Absent") return { status: "Absent", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Leave") return { status: "Leave", isPaid: false, countsAsPresent: false, code: "" };
-      if (s === "Unpaid Leave") return { status: "Unpaid Leave", isPaid: false, countsAsPresent: false, code: "" };
+      if (s === "Unpaid Leave") return { status: "Absent", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "RNR") return { status: "RNR", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Paid Leave") return { status: "Paid Leave", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Half-day") return { status: "Half-day", isPaid: true, countsAsPresent: true, code: "" };
@@ -271,11 +271,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function resolveCutoffDays(year, month, cutoffType) {
     const lastDay = new Date(year, month, 0).getDate();
     const cal = payrollCalendar || {};
-    const isA = cutoffType === "A" || cutoffType === "11-25";
-    let from = isA ? Number(cal.cutoff_a_from ?? 11) : Number(cal.cutoff_b_from ?? 26);
-    let to = isA ? Number(cal.cutoff_a_to ?? 25) : Number(cal.cutoff_b_to ?? 10);
+    // Canonical mapping: A = 26-10, B = 11-25
+    const isA = cutoffType === "A" || cutoffType === "26-10";
+    let from = isA ? Number(cal.cutoff_b_from ?? 26) : Number(cal.cutoff_a_from ?? 11);
+    let to = isA ? Number(cal.cutoff_b_to ?? 10) : Number(cal.cutoff_a_to ?? 25);
     if (!Number.isFinite(from) || from <= 0) from = 1;
-    if (!Number.isFinite(to) || to <= 0) to = isA ? 25 : lastDay;
+    if (!Number.isFinite(to) || to <= 0) to = isA ? 10 : lastDay;
     return { from, to, lastDay };
   }
 
@@ -319,7 +320,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const legacyB = selectEl.querySelector('option[value="26-10"]');
     if (legacyB) legacyB.remove();
 
-    const normalized = current === "11-25" ? "A" : current === "26-10" ? "B" : current;
+    const normalized = current === "26-10" ? "A" : current === "11-25" ? "B" : current;
     if (normalized === "A" || normalized === "B") {
       selectEl.value = normalized;
     }
@@ -335,6 +336,39 @@ document.addEventListener("DOMContentLoaded", () => {
     const ym = parseYM(empCutoffMonthInput?.value);
     if (!ym || !empCutoffSelect) return;
     syncCutoffOptions(empCutoffSelect, ym);
+  }
+
+  function normalizeCutoffType(v) {
+    const value = String(v || "").trim();
+    if (value === "26-10") return "A";
+    if (value === "11-25") return "B";
+    return value;
+  }
+
+  async function syncEmpCutoffFromMain({ force = false, reloadIfOpen = false } = {}) {
+    if (!empCutoffMonthInput || !empCutoffSelect) return;
+
+    const mainMonth = String(cutoffMonthInput?.value || "").trim();
+    const mainCutoff = normalizeCutoffType(cutoffSelect?.value || "A") || "A";
+
+    let changed = false;
+
+    if ((force || !empCutoffMonthInput.value) && mainMonth && empCutoffMonthInput.value !== mainMonth) {
+      empCutoffMonthInput.value = mainMonth;
+      changed = true;
+    }
+
+    updateEmpCutoffOptionLabels();
+
+    if ((force || !empCutoffSelect.value) && empCutoffSelect.value !== mainCutoff) {
+      empCutoffSelect.value = mainCutoff;
+      changed = true;
+    }
+
+    if (reloadIfOpen && changed && currentEmpId) {
+      await loadEmpRecords();
+      renderEmpRecords();
+    }
   }
 
   function isDateWithinCutoff(ymd, range) {
@@ -425,8 +459,8 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-	  async function loadRecords(options = {}) {
-	    const qs = new URLSearchParams();
+  async function loadRecords(options = {}) {
+    const qs = new URLSearchParams();
     if (!options.ignoreCutoff) {
       if (cutoffMonthInput?.value) qs.set("month", cutoffMonthInput.value);
       if (cutoffSelect?.value) qs.set("cutoff", cutoffSelect.value);
@@ -443,12 +477,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const q = String(searchInput?.value || "").trim();
     if (q) qs.set("q", q);
 
-	    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
-	    const page = Number(pageState.page || 1);
-	    qs.set("per_page", String(rows));
-	    qs.set("page", String(page));
-	    qs.set("sort", String(sortState.key || "name"));
-	    qs.set("dir", String(sortState.dir || "asc"));
+    const rows = Number(attRowsSelect?.value || pageState.rows || 20);
+    const requestedPage = Number(pageState.page || 1);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1;
+    qs.set("per_page", String(rows));
+    qs.set("page", String(page));
+    qs.set("sort", String(sortState.key || "name"));
+    qs.set("dir", String(sortState.dir || "asc"));
 
     const url = qs.toString() ? `/attendance/records?${qs.toString()}` : "/attendance/records";
     const res = await apiFetch(url);
@@ -461,13 +496,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     records = Array.isArray(res?.data) ? res.data.map(mapRecordApi) : [];
     const meta = res?.meta || {};
+    const totalPages = Math.max(1, Number(meta.total_pages || 1));
+    const currentPage = Math.max(1, Math.min(Number(meta.page || page), totalPages));
     serverMeta = {
-      page: Number(meta.page || page),
+      page: currentPage,
       per_page: Number(meta.per_page || rows),
       total: Number(meta.total || records.length),
-      total_pages: Number(meta.total_pages || 1),
+      total_pages: totalPages,
       stats: meta.stats || null,
     };
+    pageState.page = currentPage;
   }
 
   // =========================================================
@@ -664,7 +702,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       updateCutoffOptionLabels();
       if (cutoffSelect && !cutoffSelect.value) {
-        cutoffSelect.value = cutoffSelect.querySelector('option[value="A"]') ? "A" : "11-25";
+        cutoffSelect.value = cutoffSelect.querySelector('option[value="A"]') ? "A" : "26-10";
       }
 
       const c = getActiveCutoff();
@@ -776,11 +814,12 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           const day = now.getDate();
           const cutoffBFrom = Number(payrollCalendar?.cutoff_b_from ?? 26);
-          const useB = day >= cutoffBFrom;
+          // Dates on/after cutoff_b_from belong to 26-10 (alias A).
+          const useA = day >= cutoffBFrom;
           if (cutoffSelect.querySelector('option[value="B"]')) {
-            cutoffSelect.value = useB ? "B" : "A";
+            cutoffSelect.value = useA ? "A" : "B";
           } else {
-            cutoffSelect.value = useB ? "26-10" : "11-25";
+            cutoffSelect.value = useA ? "26-10" : "11-25";
           }
         }
       }
@@ -793,8 +832,14 @@ document.addEventListener("DOMContentLoaded", () => {
     await refreshActiveCutoffAndLoad({ allowLatestFallback: true });
   })();
 
-  cutoffMonthInput && cutoffMonthInput.addEventListener("change", () => { refreshActiveCutoffAndLoad(); });
-  cutoffSelect && cutoffSelect.addEventListener("change", () => { refreshActiveCutoffAndLoad(); });
+  cutoffMonthInput && cutoffMonthInput.addEventListener("change", async () => {
+    await refreshActiveCutoffAndLoad();
+    await syncEmpCutoffFromMain({ force: true, reloadIfOpen: true });
+  });
+  cutoffSelect && cutoffSelect.addEventListener("change", async () => {
+    await refreshActiveCutoffAndLoad();
+    await syncEmpCutoffFromMain({ force: true, reloadIfOpen: true });
+  });
 
   // =========================================================
   // HELPERS
@@ -814,7 +859,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (status === "Present") return `<span class="chip chip--present">Present</span>`;
     if (status === "Late") return `<span class="chip chip--late">Late</span>`;
     if (status === "Absent") return `<span class="chip chip--absent">Absent</span>`;
-    if (status === "Unpaid Leave") return `<span class="chip chip--unpaid">Unpaid Leave</span>`;
     if (status === "RNR") return `<span class="chip chip--unpaid">RNR</span>`;
     if (status === "Paid Leave") return `<span class="chip chip--paid">Paid Leave</span>`;
     if (status === "Half-day") return `<span class="chip chip--halfday">Half-day</span>`;
@@ -975,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (statLate) statLate.textContent = filtered.filter(r => r.status === "Late").length;
       if (statAbsent) statAbsent.textContent = filtered.filter(r => r.status === "Absent").length;
       if (statLeave) {
-        const leaveSet = new Set(["Leave", "Unpaid Leave", "RNR", "Paid Leave", "LOA", "Holiday", "Day Off"]);
+        const leaveSet = new Set(["Leave", "RNR", "Paid Leave", "LOA", "Holiday", "Day Off"]);
         statLeave.textContent = filtered.filter(r => leaveSet.has(r.status)).length;
       }
     }
@@ -985,7 +1029,10 @@ document.addEventListener("DOMContentLoaded", () => {
       attFooterInfo.textContent = `Page ${serverMeta.page || pageState.page} of ${totalPages}`;
     }
     if (attPageTotal) attPageTotal.textContent = `/ ${totalPages}`;
-    if (attPageInput) attPageInput.value = String(serverMeta.page || pageState.page);
+    if (attPageInput) {
+      attPageInput.value = String(serverMeta.page || pageState.page);
+      attPageInput.max = String(totalPages);
+    }
     if (attFirst) attFirst.disabled = (serverMeta.page || pageState.page) <= 1;
     if (attPrev) attPrev.disabled = (serverMeta.page || pageState.page) <= 1;
     if (attNext) attNext.disabled = (serverMeta.page || pageState.page) >= totalPages;
@@ -1052,18 +1099,24 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
   });
   attNext && attNext.addEventListener("click", async () => {
-    pageState.page = (serverMeta.page || pageState.page) + 1;
+    const totalPages = Math.max(1, Number(serverMeta.total_pages || 1));
+    pageState.page = Math.min(totalPages, (serverMeta.page || pageState.page) + 1);
     await loadRecords();
     render();
   });
   attLast && attLast.addEventListener("click", async () => {
-    pageState.page = Number.MAX_SAFE_INTEGER;
+    pageState.page = Math.max(1, Number(serverMeta.total_pages || 1));
     await loadRecords();
     render();
   });
   attPageInput && attPageInput.addEventListener("change", async () => {
+    const totalPages = Math.max(1, Number(serverMeta.total_pages || 1));
     const n = Number(attPageInput.value || 1);
-    pageState.page = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+    if (Number.isFinite(n) && n > 0) {
+      pageState.page = Math.min(totalPages, Math.floor(n));
+    } else {
+      pageState.page = 1;
+    }
     await loadRecords();
     render();
   });
@@ -1853,7 +1906,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "Late",
       "Absent",
       "Leave",
-      "Unpaid Leave",
       "RNR",
       "Paid Leave",
       "Half-day",
@@ -2338,16 +2390,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (empCutoffMonthInput && !empCutoffMonthInput.value) {
-      if (cutoffMonthInput?.value) {
-        empCutoffMonthInput.value = cutoffMonthInput.value;
-      } else {
-        const now = new Date();
-        empCutoffMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      }
+      const now = new Date();
+      empCutoffMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     }
-    if (empCutoffSelect && !empCutoffSelect.value) {
-      empCutoffSelect.value = cutoffSelect?.value || (empCutoffSelect.querySelector('option[value="A"]') ? "A" : "11-25");
-    }
+    await syncEmpCutoffFromMain({ force: true, reloadIfOpen: false });
     updateEmpCutoffOptionLabels();
 
     await loadEmpRecords();
@@ -2456,7 +2502,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const noTimeStatuses = new Set([
       "Absent",
       "Leave",
-      "Unpaid Leave",
       "RNR",
       "Paid Leave",
       "Day Off",

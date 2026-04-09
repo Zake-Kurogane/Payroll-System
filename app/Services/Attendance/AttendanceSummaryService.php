@@ -4,7 +4,9 @@ namespace App\Services\Attendance;
 
 use App\Models\AttendanceRecord;
 use App\Models\AttendanceSummary;
+use App\Models\Employee;
 use App\Models\PayrollCalendarSetting;
+use App\Services\Attendance\AttendanceStatusRuleService;
 use Carbon\Carbon;
 
 class AttendanceSummaryService
@@ -27,23 +29,20 @@ class AttendanceSummaryService
         $query = AttendanceRecord::query()
             ->where('employee_id', $employeeId)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
-        $this->applyWorkdayFilter($query);
+        $employee = Employee::query()->where('id', $employeeId)->first(['assignment_type']);
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
+        $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
 
-        $row = $query
-            ->selectRaw("
-                SUM(CASE WHEN status IN ('Present','Late','Half-day') THEN 1 ELSE 0 END) as present_days,
-                SUM(CASE WHEN status IN ('Absent','Unpaid Leave','LOA') THEN 1 ELSE 0 END) as absent_days,
-                SUM(CASE WHEN status IN ('Leave','Paid Leave') THEN 1 ELSE 0 END) as leave_days,
-                SUM(CASE
-                    WHEN status IN ('Present','Late','Paid Leave','Holiday') THEN 1
-                    WHEN status = 'Half-day' THEN 0.5
-                    ELSE 0
-                END) as paid_days,
-                SUM(COALESCE(minutes_late, 0)) as minutes_late,
-                SUM(COALESCE(minutes_undertime, 0)) as minutes_undertime,
-                SUM(COALESCE(ot_hours, 0)) as ot_hours
-            ")
-            ->first();
+        $records = $query->get(['date', 'status', 'minutes_late', 'minutes_undertime', 'ot_hours'])
+            ->filter(function ($r) use ($workMonSat, $employee) {
+                $date = $r->date instanceof \DateTimeInterface
+                    ? Carbon::parse($r->date->format('Y-m-d'))
+                    : Carbon::parse((string) $r->date);
+                return $this->isWorkdayForAssignment($date, $workMonSat, (string) ($employee->assignment_type ?? ''));
+            })
+            ->values();
+        $ruleService = new AttendanceStatusRuleService();
+        $totals = $ruleService->summarize($records);
 
         AttendanceSummary::updateOrCreate(
             [
@@ -52,13 +51,13 @@ class AttendanceSummaryService
                 'cutoff' => $cutoff,
             ],
             [
-                'present_days' => (float) ($row->present_days ?? 0),
-                'absent_days' => (float) ($row->absent_days ?? 0),
-                'leave_days' => (float) ($row->leave_days ?? 0),
-                'paid_days' => (float) ($row->paid_days ?? 0),
-                'minutes_late' => (int) ($row->minutes_late ?? 0),
-                'minutes_undertime' => (int) ($row->minutes_undertime ?? 0),
-                'ot_hours' => (float) ($row->ot_hours ?? 0),
+                'present_days' => (float) ($totals['present_days'] ?? 0),
+                'absent_days' => (float) ($totals['absent_days'] ?? 0),
+                'leave_days' => (float) ($totals['leave_days'] ?? 0),
+                'paid_days' => (float) ($totals['paid_days'] ?? 0),
+                'minutes_late' => (int) ($totals['minutes_late'] ?? 0),
+                'minutes_undertime' => (int) ($totals['minutes_undertime'] ?? 0),
+                'ot_hours' => (float) ($totals['ot_hours'] ?? 0),
             ]
         );
     }
@@ -125,14 +124,12 @@ class AttendanceSummaryService
         return [$start, $end];
     }
 
-    private function applyWorkdayFilter($query): void
+    private function isWorkdayForAssignment(Carbon $date, bool $workMonSat, string $assignmentType): bool
     {
-        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
-        $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
-        if ($workMonSat) {
-            $query->whereRaw("DAYOFWEEK(`date`) != 1");
-        } else {
-            $query->whereRaw("DAYOFWEEK(`date`) NOT IN (1,7)");
+        if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+            return true;
         }
+        $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
+        return $workMonSat ? $dow <= 6 : $dow <= 5;
     }
 }

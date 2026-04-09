@@ -322,6 +322,9 @@ class EmployeeLoanController extends Controller
         }
 
         $frequency = $loan->deduction_frequency ?? 'every_cutoff';
+        // Business rule:
+        // 1st cutoff = 26-10
+        // 2nd cutoff = 11-25
         if ($frequency === 'monthly') $frequency = 'cutoff2_only';
 
         $remaining = (float) $loan->balance_remaining;
@@ -372,7 +375,7 @@ class EmployeeLoanController extends Controller
                     'employee_loan_id' => $loan->id,
                     'employee_id' => $loan->employee_id,
                     'due_month' => $currentMonth,
-                    'due_cutoff' => '11-25',
+                    'due_cutoff' => '26-10',
                     'amount' => min($monthly, $remaining),
                     'status' => 'scheduled',
                 ]);
@@ -381,7 +384,7 @@ class EmployeeLoanController extends Controller
                     'employee_loan_id' => $loan->id,
                     'employee_id' => $loan->employee_id,
                     'due_month' => $currentMonth,
-                    'due_cutoff' => '26-10',
+                    'due_cutoff' => '11-25',
                     'amount' => min($monthly, $remaining),
                     'status' => 'scheduled',
                 ]);
@@ -424,10 +427,10 @@ class EmployeeLoanController extends Controller
     private function nextCutoff(string $month, string $cutoff, string $frequency): array
     {
         if ($frequency === 'cutoff1_only') {
-            return [$this->nextMonth($month), '11-25'];
+            return [$this->nextMonth($month), '26-10'];
         }
         if ($frequency === 'cutoff2_only') {
-            return [$this->nextMonth($month), '26-10'];
+            return [$this->nextMonth($month), '11-25'];
         }
         if ($cutoff === '11-25') {
             return [$month, '26-10'];

@@ -385,17 +385,38 @@ h1 {
     box-shadow: 0 0 0 4px rgba(156, 29, 60, 0.12);
 }
 
-#runSelect {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background-image: none;
-    pointer-events: none;
-    cursor: default;
+#runDisplay {
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 0 12px;
+    font-weight: 800;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
 }
-
-#runSelect::-ms-expand {
-    display: none;
+#runDisplay.is-loading {
+    position: relative;
+    padding-right: 38px;
+}
+#runDisplay.is-loading::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    border: 2px solid rgba(107, 114, 128, 0.25);
+    border-top-color: rgba(107, 114, 128, 0.9);
+    border-radius: 50%;
+    animation: runSpin 0.7s linear infinite;
+}
+@keyframes runSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 .filterbar__row--bottom .f--grow {
     min-width: 420px;
@@ -692,7 +713,7 @@ tbody tr.row-total:hover {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-weight: 900;
+    font-weight: inherit;
 }
 .dedDetails > summary::-webkit-details-marker {
     display: none;
@@ -735,7 +756,7 @@ tbody tr.row-total:hover {
     font-size: 12px;
     line-height: 1.35;
     margin-bottom: 6px;
-    font-weight: 800;
+    font-weight: 600;
 }
 .dedDetails__body > div:last-child {
     margin-bottom: 0;
@@ -749,6 +770,9 @@ th.sortable {
 }
 th.sortable:hover {
     background: rgba(156, 29, 60, 0.06);
+}
+.printOnlyBr {
+    display: none;
 }
 .sortIcon {
     display: inline-block;
@@ -809,6 +833,15 @@ th.sortable.is-desc .sortIcon {
 
 /* Print */
 @media print {
+    @page {
+        size: A4 landscape;
+        margin: 8mm;
+    }
+    html,
+    body {
+        height: auto !important;
+        overflow: visible !important;
+    }
     body {
         background: #fff;
     }
@@ -816,22 +849,91 @@ th.sortable.is-desc .sortIcon {
     .top,
     .headline__actions,
     .filterbar,
-    .tabs {
+    .tabs,
+    .stats,
+    .tabsMeta {
         display: none !important;
     }
     .shell {
         grid-template-columns: 1fr;
         height: auto;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    .main {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
     }
     .content {
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
         overflow: visible;
     }
     .card {
         box-shadow: none;
         border: 1px solid #ddd;
     }
+    .tabsCard,
+    .tabPane,
+    .tablewrap,
+    .tablecard {
+        display: block !important;
+        overflow: visible !important;
+        max-height: none !important;
+        height: auto !important;
+        break-inside: auto;
+        page-break-inside: auto;
+    }
+    .tablewrap {
+        border: 0 !important;
+        border-radius: 0 !important;
+    }
+    .tabPane {
+        display: none !important;
+    }
+    .tabPane.print-target {
+        display: block !important;
+    }
+    .table-scroll-float {
+        display: none !important;
+    }
     .table {
-        min-width: 0;
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed;
+        font-size: 9px;
+        page-break-inside: auto;
+        break-inside: auto;
+    }
+    thead {
+        display: table-header-group;
+    }
+    tbody {
+        display: table-row-group;
+    }
+    thead th {
+        position: static !important;
+        white-space: normal;
+    }
+    tbody td {
+        white-space: normal;
+        word-break: break-word;
+    }
+    .printOnlyBr {
+        display: inline;
+    }
+    .thPrintWrap {
+        line-height: 1.1;
+    }
+    th,
+    td {
+        padding: 3px 4px !important;
+    }
+    tr {
+        break-inside: auto;
+        page-break-inside: auto;
     }
 }
 

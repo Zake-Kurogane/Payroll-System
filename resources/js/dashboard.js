@@ -23,14 +23,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const kpiDedCard = kpiDed?.closest(".kpi");
   const kpiNetCard = kpiNet?.closest(".kpi");
   const kpiUnclaimedCard = kpiUnclaimed?.closest(".kpi");
-  const todoPending = document.getElementById("todoPending");
-  const todoPayslip = document.getElementById("todoPayslip");
+  const recentActivityList = document.getElementById("recentActivityList");
   const kpiGrossLink = document.getElementById("kpiGrossLink");
   const kpiDedLink = document.getElementById("kpiDedLink");
   const kpiNetLink = document.getElementById("kpiNetLink");
   const chart = document.getElementById("chart");
   const chartLabels = document.getElementById("chartLabels");
   const yAxis = document.querySelector(".yaxis");
+  const trendByCutoffBtn = document.getElementById("trendByCutoffBtn");
+  const trendMonthlyBtn = document.getElementById("trendMonthlyBtn");
   const unclaimedLink = document.querySelector('a[aria-label="View payslip claims"]');
 
   const peso = (value) =>
@@ -134,6 +135,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   let lastTrendData = null;
+  let trendMode = "by_cutoff";
 
   function setTooltip(el, text) {
     if (!el) return;
@@ -154,14 +156,85 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${label} by assignment\n${lines.join("\n")}`;
   }
 
+  function setTrendMode(nextMode) {
+    trendMode = nextMode === "monthly_total" ? "monthly_total" : "by_cutoff";
+    trendByCutoffBtn?.classList.toggle("is-active", trendMode === "by_cutoff");
+    trendMonthlyBtn?.classList.toggle("is-active", trendMode === "monthly_total");
+    if (lastTrendData) renderTrend(lastTrendData);
+  }
+
+  function formatActivityDate(value) {
+    if (!value) return "";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  function renderRecentActivity(list) {
+    if (!recentActivityList) return;
+    const items = Array.isArray(list) ? list : [];
+    if (!items.length) {
+      recentActivityList.innerHTML = `
+        <div class="todo__item">
+          <div class="todo__name">No recent activity.</div>
+        </div>
+      `;
+      return;
+    }
+
+    recentActivityList.innerHTML = items.map((a) => {
+      const when = formatActivityDate(a?.occurred_at);
+      const actor = `${a?.actor_name || "Unknown"}${a?.actor_role ? ` (${a.actor_role})` : ""}`;
+      const desc = a?.description || "";
+      return `
+        <div class="todo__item">
+          <div class="todo__name">${a?.title || "Activity"}</div>
+          <div class="todo__meta">${actor}${when ? ` • ${when}` : ""}</div>
+          ${desc ? `<div class="todo__sub">${desc}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
   function renderTrend(trend) {
     if (!chart || !chartLabels) return;
 
-    const labels = Array.isArray(trend?.labels) ? trend.labels : [];
-    const net = Array.isArray(trend?.net) ? trend.net.map((v) => Number(v || 0)) : [];
-    const deductions = Array.isArray(trend?.deductions) ? trend.deductions.map((v) => Number(v || 0)) : [];
-    const rawMax = Math.max(1, ...net, ...deductions);
-    lastTrendData = { labels, net, deductions };
+    const months = Array.isArray(trend?.months) ? trend.months : [];
+    const hasMonths = months.length > 0;
+    const labels = hasMonths
+      ? months.map((m) => m?.label || "")
+      : (Array.isArray(trend?.labels) ? trend.labels : []);
+    lastTrendData = trend || {};
+
+    const scaleValues = [];
+    if (hasMonths) {
+      if (trendMode === "monthly_total") {
+        months.forEach((m) => {
+          scaleValues.push(Number(m?.total?.net || 0));
+          scaleValues.push(Number(m?.total?.deductions || 0));
+        });
+      } else {
+        months.forEach((m) => {
+          scaleValues.push(Number(m?.cutoffs?.["26-10"]?.net || 0));
+          scaleValues.push(Number(m?.cutoffs?.["26-10"]?.deductions || 0));
+          scaleValues.push(Number(m?.cutoffs?.["11-25"]?.net || 0));
+          scaleValues.push(Number(m?.cutoffs?.["11-25"]?.deductions || 0));
+        });
+      }
+    } else {
+      const net = Array.isArray(trend?.net) ? trend.net.map((v) => Number(v || 0)) : [];
+      const deductions = Array.isArray(trend?.deductions) ? trend.deductions.map((v) => Number(v || 0)) : [];
+      scaleValues.push(...net, ...deductions);
+    }
+
+    const rawMax = Math.max(1, ...scaleValues);
 
     chart.innerHTML = "";
     chartLabels.innerHTML = "";
@@ -241,33 +314,89 @@ document.addEventListener("DOMContentLoaded", async () => {
     labels.forEach((month, idx) => {
       const center = padX + (groupW * idx) + (groupW / 2);
 
-      const netVal = net[idx] || 0;
-      const netY = toY(netVal);
-      const netH = Math.max(0, (padTop + usableH) - netY);
-      const netRect = document.createElementNS(svgNS, "rect");
-      netRect.setAttribute("x", String(center - gap / 2 - barW));
-      netRect.setAttribute("y", String(netY));
-      netRect.setAttribute("width", String(barW));
-      netRect.setAttribute("height", String(netH));
-      netRect.setAttribute("rx", "4");
-      netRect.setAttribute("class", "trendBar trendBar--net");
-      netRect.addEventListener("mousemove", (evt) => showTip(evt, month, "Net Pay", netVal));
-      netRect.addEventListener("mouseleave", hideTip);
-      svg.appendChild(netRect);
+      if (!hasMonths || trendMode === "monthly_total") {
+        const netVal = hasMonths
+          ? Number(months[idx]?.total?.net || 0)
+          : Number((trend?.net || [])[idx] || 0);
+        const dedVal = hasMonths
+          ? Number(months[idx]?.total?.deductions || 0)
+          : Number((trend?.deductions || [])[idx] || 0);
 
-      const dedVal = deductions[idx] || 0;
-      const dedY = toY(dedVal);
-      const dedH = Math.max(0, (padTop + usableH) - dedY);
-      const dedRect = document.createElementNS(svgNS, "rect");
-      dedRect.setAttribute("x", String(center + gap / 2));
-      dedRect.setAttribute("y", String(dedY));
-      dedRect.setAttribute("width", String(barW));
-      dedRect.setAttribute("height", String(dedH));
-      dedRect.setAttribute("rx", "4");
-      dedRect.setAttribute("class", "trendBar trendBar--ded");
-      dedRect.addEventListener("mousemove", (evt) => showTip(evt, month, "Deduction", dedVal));
-      dedRect.addEventListener("mouseleave", hideTip);
-      svg.appendChild(dedRect);
+        const netY = toY(netVal);
+        const netH = Math.max(0, (padTop + usableH) - netY);
+        const netRect = document.createElementNS(svgNS, "rect");
+        netRect.setAttribute("x", String(center - gap / 2 - barW));
+        netRect.setAttribute("y", String(netY));
+        netRect.setAttribute("width", String(barW));
+        netRect.setAttribute("height", String(netH));
+        netRect.setAttribute("rx", "4");
+        netRect.setAttribute("class", "trendBar trendBar--net");
+        netRect.addEventListener("mousemove", (evt) => showTip(evt, month, "Net Pay", netVal));
+        netRect.addEventListener("mouseleave", hideTip);
+        svg.appendChild(netRect);
+
+        const dedY = toY(dedVal);
+        const dedH = Math.max(0, (padTop + usableH) - dedY);
+        const dedRect = document.createElementNS(svgNS, "rect");
+        dedRect.setAttribute("x", String(center + gap / 2));
+        dedRect.setAttribute("y", String(dedY));
+        dedRect.setAttribute("width", String(barW));
+        dedRect.setAttribute("height", String(dedH));
+        dedRect.setAttribute("rx", "4");
+        dedRect.setAttribute("class", "trendBar trendBar--ded");
+        dedRect.addEventListener("mousemove", (evt) => showTip(evt, month, "Deduction", dedVal));
+        dedRect.addEventListener("mouseleave", hideTip);
+        svg.appendChild(dedRect);
+        return;
+      }
+
+      const monthData = months[idx] || {};
+      const c1 = monthData?.cutoffs?.["26-10"] || {};
+      const c2 = monthData?.cutoffs?.["11-25"] || {};
+
+      const clusterGap = Math.min(10, groupW * 0.12);
+      const innerGap = Math.min(4, groupW * 0.04);
+      const barW2 = Math.max(6, Math.min(16, (groupW - clusterGap - innerGap * 3) / 4));
+      const leftStart = center - ((barW2 * 4 + innerGap * 3 + clusterGap) / 2);
+      const c1NetX = leftStart;
+      const c1DedX = c1NetX + barW2 + innerGap;
+      const c2NetX = c1DedX + barW2 + clusterGap;
+      const c2DedX = c2NetX + barW2 + innerGap;
+
+      const makeTip = (cutoffObj, series, value) => {
+        const label = cutoffObj?.label || "Cutoff";
+        const range = cutoffObj?.range_label ? ` • ${cutoffObj.range_label}` : "";
+        const payday = cutoffObj?.payday_label ? ` • Payday ${cutoffObj.payday_label}` : "";
+        return `${month} • ${label}${range}${payday}<br>${series}: ${peso(value)}`;
+      };
+
+      const draw = (x, value, cssClass, tipHtml) => {
+        const y = toY(value);
+        const h = Math.max(0, (padTop + usableH) - y);
+        const rect = document.createElementNS(svgNS, "rect");
+        rect.setAttribute("x", String(x));
+        rect.setAttribute("y", String(y));
+        rect.setAttribute("width", String(barW2));
+        rect.setAttribute("height", String(h));
+        rect.setAttribute("rx", "3");
+        rect.setAttribute("class", cssClass);
+        rect.addEventListener("mousemove", (evt) => {
+          tooltip.innerHTML = tipHtml;
+          tooltip.style.display = "block";
+          const rectBox = chart.getBoundingClientRect();
+          const xPos = evt.clientX - rectBox.left;
+          const yPos = evt.clientY - rectBox.top;
+          tooltip.style.left = `${xPos}px`;
+          tooltip.style.top = `${Math.max(8, yPos - 10)}px`;
+        });
+        rect.addEventListener("mouseleave", hideTip);
+        svg.appendChild(rect);
+      };
+
+      draw(c1NetX, Number(c1?.net || 0), "trendBar trendBar--net", makeTip(c1, "Net Pay", Number(c1?.net || 0)));
+      draw(c1DedX, Number(c1?.deductions || 0), "trendBar trendBar--ded", makeTip(c1, "Deduction", Number(c1?.deductions || 0)));
+      draw(c2NetX, Number(c2?.net || 0), "trendBar trendBar--net trendBar--cutoff2", makeTip(c2, "Net Pay", Number(c2?.net || 0)));
+      draw(c2DedX, Number(c2?.deductions || 0), "trendBar trendBar--ded trendBar--cutoff2", makeTip(c2, "Deduction", Number(c2?.deductions || 0)));
     });
 
     chart.appendChild(svg);
@@ -283,7 +412,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function applySummary(summary) {
     const k = summary?.kpis || {};
-    const t = summary?.todo || {};
 
     if (kpiEmployees) kpiEmployees.textContent = Number(k.employees || 0).toLocaleString();
     if (kpiGross) kpiGross.textContent = peso(k.gross || 0);
@@ -291,8 +419,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (kpiNet) kpiNet.textContent = peso(k.net || 0);
     if (kpiUnclaimed) kpiUnclaimed.textContent = Number(k.unclaimed_payslips || 0).toLocaleString();
 
-    if (todoPending) todoPending.textContent = String(Number(t.payroll_pending || 0));
-    if (todoPayslip) todoPayslip.textContent = String(Number(t.payslips_not_generated || 0));
+    renderRecentActivity(summary?.recent_activity || []);
 
     renderTrend(summary?.trend || {});
 
@@ -353,7 +480,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch {
       applySummary({
         kpis: { employees: 0, gross: 0, deductions: 0, net: 0, unclaimed_payslips: 0 },
-        todo: { payroll_pending: 0, payslips_not_generated: 0 },
+        recent_activity: [],
         trend: { labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"], net: [0, 0, 0, 0, 0, 0], deductions: [0, 0, 0, 0, 0, 0] },
       });
     }
@@ -531,6 +658,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   syncCutoffOptions();
   await buildAssignmentFilters();
+
+  trendByCutoffBtn?.addEventListener("click", () => setTrendMode("by_cutoff"));
+  trendMonthlyBtn?.addEventListener("click", () => setTrendMode("monthly_total"));
 
   const onFilterChange = () => { refreshDashboard(); };
   wireAssignButtons(onFilterChange);

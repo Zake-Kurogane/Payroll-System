@@ -9,10 +9,12 @@ use App\Models\EmploymentStatus;
 use App\Models\EmploymentType;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
+use App\Models\AttendanceCode;
 use App\Models\Department;
 use App\Models\BasedLocation;
 use App\Models\ExternalPosition;
 use App\Models\Position;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -542,6 +544,210 @@ class EmployeeController extends Controller
             'used'       => $used,
             'remaining'  => $total - $used,
             'year'       => $year,
+        ]);
+    }
+
+    public function attendanceYear(string $empNo, Request $request)
+    {
+        $employee = Employee::query()
+            ->where('emp_no', $empNo)
+            ->firstOrFail(['id', 'emp_no', 'first_name', 'middle_name', 'last_name', 'employment_type', 'assignment_type']);
+
+        $year = (int) $request->integer('year', now()->year);
+        if ($year < 2000 || $year > 2100) {
+            $year = now()->year;
+        }
+
+        $codeRows = AttendanceCode::query()
+            ->get(['code', 'description', 'counts_as_present', 'counts_as_paid', 'affects_deductions']);
+
+        $codesByDescription = [];
+        $codesByCode = [];
+        $legend = [];
+        foreach ($codeRows as $row) {
+            $code = strtoupper(trim((string) ($row->code ?? '')));
+            $description = trim((string) ($row->description ?? ''));
+            if ($code !== '') {
+                $codesByCode[strtolower($code)] = $row;
+            }
+            if ($description !== '') {
+                $codesByDescription[strtolower($description)] = $row;
+            }
+            if ($code !== '' || $description !== '') {
+                $legend[] = [
+                    'code' => $code,
+                    'description' => $description,
+                    'counts_as_present' => (bool) $row->counts_as_present,
+                    'counts_as_paid' => (bool) $row->counts_as_paid,
+                    'affects_deductions' => (bool) $row->affects_deductions,
+                ];
+            }
+        }
+
+        $records = AttendanceRecord::query()
+            ->where('employee_id', $employee->id)
+            ->whereYear('date', $year)
+            ->orderBy('date')
+            ->get([
+                'date',
+                'status',
+                'area_place',
+                'clock_in',
+                'clock_out',
+                'minutes_late',
+                'minutes_undertime',
+                'ot_hours',
+            ]);
+
+        $totals = [
+            'records' => 0,
+            'present_equivalent' => 0.0,
+            'paid_equivalent' => 0.0,
+            'late_days' => 0.0,
+            'absent_days' => 0.0,
+            'half_days' => 0.0,
+            'day_off_days' => 0.0,
+            'rnr_days' => 0.0,
+        ];
+
+        $statusTotals = [];
+        $paidLeaveDates = [];
+        $recordMap = [];
+        $recordRows = [];
+
+        foreach ($records as $record) {
+            $date = Carbon::parse($record->date)->toDateString();
+            $status = trim((string) ($record->status ?? ''));
+            $statusKey = strtolower($status);
+
+            $matchedCodeRow = $codesByDescription[$statusKey]
+                ?? $codesByCode[$statusKey]
+                ?? null;
+
+            $code = $matchedCodeRow
+                ? strtoupper(trim((string) ($matchedCodeRow->code ?? '')))
+                : strtoupper($status);
+
+            $isHalfDay = $code === 'HD' || str_contains($statusKey, 'half');
+            $unit = $isHalfDay ? 0.5 : 1.0;
+            $isLate = $code === 'L' || str_contains($statusKey, 'late');
+            $isDayOff = in_array($code, ['OFF', 'DO'], true) || str_contains($statusKey, 'day off');
+            $isRnr = $code === 'RNR';
+            $isPaidLeave = in_array($code, ['PL', 'PAID LEAVE'], true) || $statusKey === 'paid leave';
+
+            $countsAsPresent = $matchedCodeRow ? (bool) $matchedCodeRow->counts_as_present : false;
+            $countsAsPaid = $matchedCodeRow ? (bool) $matchedCodeRow->counts_as_paid : false;
+            $affectsDeductions = $matchedCodeRow ? (bool) $matchedCodeRow->affects_deductions : false;
+            $isAbsentLike = !$countsAsPresent && !$countsAsPaid && $affectsDeductions;
+
+            $totals['records'] += 1;
+            if ($isLate) {
+                $totals['late_days'] += $unit;
+            } elseif ($countsAsPresent) {
+                $totals['present_equivalent'] += $unit;
+            }
+            if ($countsAsPaid) {
+                $totals['paid_equivalent'] += $unit;
+            }
+            if ($isAbsentLike) {
+                $totals['absent_days'] += $unit;
+            }
+            if ($isHalfDay) {
+                $totals['half_days'] += 1;
+            }
+            if ($isDayOff) {
+                $totals['day_off_days'] += $unit;
+            }
+            if ($isRnr) {
+                $totals['rnr_days'] += $unit;
+            }
+            if ($isPaidLeave) {
+                $paidLeaveDates[] = $date;
+            }
+
+            if (!isset($statusTotals[$status])) {
+                $statusTotals[$status] = 0.0;
+            }
+            $statusTotals[$status] += $unit;
+
+            $item = [
+                'date' => $date,
+                'status' => $status,
+                'code' => $code,
+                'area_place' => $record->area_place,
+                'clock_in' => $record->clock_in,
+                'clock_out' => $record->clock_out,
+                'minutes_late' => (int) ($record->minutes_late ?? 0),
+                'minutes_undertime' => (int) ($record->minutes_undertime ?? 0),
+                'ot_hours' => (float) ($record->ot_hours ?? 0),
+                'counts_as_present' => $countsAsPresent,
+                'counts_as_paid' => $countsAsPaid,
+                'affects_deductions' => $affectsDeductions,
+            ];
+            $recordMap[$date] = $item;
+            $recordRows[] = $item;
+        }
+
+        $months = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $start = Carbon::create($year, $month, 1);
+            $end = $start->copy()->endOfMonth();
+            $days = [];
+
+            for ($d = 1; $d <= (int) $end->day; $d++) {
+                $dateObj = Carbon::create($year, $month, $d);
+                $date = $dateObj->toDateString();
+                $record = $recordMap[$date] ?? null;
+                $days[] = [
+                    'date' => $date,
+                    'day' => $d,
+                    'weekday' => $dateObj->dayOfWeek, // 0 Sunday ... 6 Saturday
+                    'is_weekend' => $dateObj->isWeekend(),
+                    'record' => $record,
+                ];
+            }
+
+            $months[] = [
+                'month' => $month,
+                'name' => $start->format('F'),
+                'start_weekday' => $start->dayOfWeek,
+                'days' => $days,
+            ];
+        }
+
+        $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
+        $hasAssignment = !empty($employee->assignment_type);
+        $plTotal = 5;
+        $plUsed = count($paidLeaveDates);
+        $plApplicable = $isRegular && $hasAssignment;
+
+        $statusTotalsRows = [];
+        foreach ($statusTotals as $status => $count) {
+            $statusTotalsRows[] = [
+                'status' => $status,
+                'count' => $count,
+            ];
+        }
+        usort($statusTotalsRows, fn($a, $b) => strcasecmp((string) $a['status'], (string) $b['status']));
+
+        return response()->json([
+            'employee' => [
+                'emp_no' => $employee->emp_no,
+                'name' => trim($employee->last_name . ', ' . $employee->first_name . ($employee->middle_name ? ' ' . $employee->middle_name : '')),
+            ],
+            'year' => $year,
+            'legend' => $legend,
+            'months' => $months,
+            'records' => $recordRows,
+            'totals' => $totals,
+            'status_totals' => $statusTotalsRows,
+            'paid_leave' => [
+                'applicable' => $plApplicable,
+                'total' => $plApplicable ? $plTotal : 0,
+                'used' => $plApplicable ? $plUsed : 0,
+                'remaining' => $plApplicable ? max(0, $plTotal - $plUsed) : 0,
+                'dates' => $paidLeaveDates,
+            ],
         ]);
     }
 

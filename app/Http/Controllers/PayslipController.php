@@ -13,6 +13,7 @@ use App\Models\PayrollRunRowOverride;
 use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
 use App\Models\PayrollCalendarSetting;
+use App\Services\Attendance\AttendanceStatusRuleService;
 use App\Services\Payroll\PayrollCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -339,6 +340,7 @@ class PayslipController extends Controller
             ->get()
             ->keyBy('id');
 
+        /** @var \Illuminate\Support\Collection<int, Payslip> $existing */
         $existing = Payslip::query()
             ->where('payroll_run_id', $run->id)
             ->whereIn('employee_id', $rows->pluck('employee_id')->filter()->values())
@@ -365,6 +367,7 @@ class PayslipController extends Controller
             foreach ($rows as $row) {
                 $emp = $empMap->get($row->employee_id);
                 $baseNo = 'PS-' . ($run->run_code ?: ('RUN-' . $run->id)) . '-' . ($emp?->emp_no ?: $row->employee_id);
+                /** @var Payslip|null $payslip */
                 $payslip = $existing->get($row->employee_id);
 
                 if (!$payslip) {
@@ -431,6 +434,10 @@ class PayslipController extends Controller
             return response()->json(['message' => 'Run must be locked or released before releasing payslips.'], 409);
         }
 
+        // If run is still locked, release it through payroll release flow first
+        // so deductions/balances are posted (CA, loans, charges).
+        $this->ensureRunReleasedWithPosting($run);
+
         $released = Payslip::query()
             ->where('payroll_run_id', $run->id)
             ->whereIn('id', $validated['payslip_ids'])
@@ -447,22 +454,31 @@ class PayslipController extends Controller
             return response()->json(['message' => 'Run must be locked or released before releasing payslips.'], 409);
         }
 
-        DB::transaction(function () use ($run) {
-            if ($run->status !== 'Released') {
-                $run->status = 'Released';
-                $run->released_at = now();
-                $run->save();
-            }
-            Payslip::query()
-                ->where('payroll_run_id', $run->id)
-                ->update(['release_status' => 'Released']);
-        });
+        // Ensure payroll posting is performed when transitioning from Locked -> Released.
+        $this->ensureRunReleasedWithPosting($run);
+
+        Payslip::query()
+            ->where('payroll_run_id', $run->id)
+            ->update(['release_status' => 'Released']);
+
+        $run->refresh();
 
         return response()->json([
             'run_id' => $run->id,
             'status' => $run->status,
             'released_at' => $run->released_at,
         ]);
+    }
+
+    private function ensureRunReleasedWithPosting(PayrollRun $run): void
+    {
+        if ($run->status !== 'Locked') {
+            return;
+        }
+
+        // Reuse PayrollRunController::release so posting logic stays in one place.
+        app(PayrollRunController::class)->release($run);
+        $run->refresh();
     }
 
     private function uniquePayslipNo(string $base, array &$used): string
@@ -519,7 +535,7 @@ class PayslipController extends Controller
             ];
             if ($emp) {
                 $records = $attendance->get($emp->id, collect());
-                $att = $this->attendanceBreakdownInRange($records, $start, $end, $workMonSat);
+                $att = $this->attendanceBreakdownInRange($records, $start, $end, $workMonSat, (string) ($emp->assignment_type ?? ''));
             }
 
             return [
@@ -617,8 +633,16 @@ class PayslipController extends Controller
         if (!$y || !$m) return '-';
         $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
         $payOnPrev = (bool) ($calendar->pay_on_prev_workday_if_sunday ?? false);
-        $isFirst = $cutoff === '11-25';
-        $payDay = $isFirst ? ($calendar->pay_date_a ?? 15) : ($calendar->pay_date_b ?? 'EOM');
+        // Business rule:
+        // 1st cutoff = 26-10 (payday 15, next month)
+        // 2nd cutoff = 11-25 (payday 30/31 or EOM, same month)
+        $isFirst = $cutoff === '26-10';
+        $payDay = $isFirst ? ($calendar->pay_date_a ?? 15) : ($calendar->pay_date_b ?? 15);
+        // 26-10 cutoff period ends in the next month, so pay date is also next month.
+        if ($isFirst) {
+            $m++;
+            if ($m > 12) { $m = 1; $y++; }
+        }
         if (strtoupper((string) $payDay) === 'EOM') {
             $date = Carbon::create($y, $m, 1)->endOfMonth();
         } else {
@@ -630,64 +654,41 @@ class PayslipController extends Controller
         return $date->format('m-d-Y');
     }
 
-    private function attendanceBreakdownInRange($records, Carbon $start, Carbon $end, bool $workMonSat): array
+    private function attendanceBreakdownInRange($records, Carbon $start, Carbon $end, bool $workMonSat, string $assignmentType = ''): array
     {
         $map = collect($records)->keyBy(fn ($r) => $r->date?->format('Y-m-d'));
-        $paidDays = 0.0;
-        $presentDays = 0.0;
-        $absentDays = 0.0;
-        $leaveDays = 0.0;
-        $minutesLate = 0;
-        $minutesUndertime = 0;
-
-        $presentStatuses = ['Present', 'Late', 'Half-day'];
-        $absentStatuses = ['Absent', 'Unpaid Leave', 'LOA'];
-        $leaveStatuses = ['Leave', 'Paid Leave'];
+        $workdayRows = [];
 
         $d = $start->copy();
         while ($d->lte($end)) {
             $dow = (int) $d->dayOfWeekIso; // 1=Mon ... 7=Sun
-            $isWorkday = $workMonSat ? $dow <= 6 : $dow <= 5;
+            $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
+            $isWorkday = $isField ? true : ($workMonSat ? $dow <= 6 : $dow <= 5);
             if ($isWorkday) {
                 $key = $d->format('Y-m-d');
                 $rec = $map->get($key);
-                $status = $rec?->status ?? null;
-                if (is_string($status)) {
-                    if (in_array($status, $presentStatuses, true)) $presentDays += 1.0;
-                    if (in_array($status, $absentStatuses, true)) $absentDays += 1.0;
-                    if (in_array($status, $leaveStatuses, true)) $leaveDays += 1.0;
-                }
-
-                $paidDays += $this->paidDayFraction($status);
-
                 if ($rec) {
-                    $minutesLate += (int) ($rec->minutes_late ?? 0);
-                    $minutesUndertime += (int) ($rec->minutes_undertime ?? 0);
+                    $workdayRows[] = [
+                        'status' => (string) ($rec->status ?? ''),
+                        'minutes_late' => (int) ($rec->minutes_late ?? 0),
+                        'minutes_undertime' => (int) ($rec->minutes_undertime ?? 0),
+                        'ot_hours' => (float) ($rec->ot_hours ?? 0),
+                    ];
                 }
             }
             $d->addDay();
         }
-        return [
-            'paid_days' => $paidDays,
-            'present_days' => $presentDays,
-            'absent_days' => $absentDays,
-            'leave_days' => $leaveDays,
-            'minutes_late' => $minutesLate,
-            'minutes_undertime' => $minutesUndertime,
-        ];
-    }
 
-    private function paidDayFraction(?string $status): float
-    {
-        if ($status === null) return 0.0;
-        $paid = [
-            'Present',
-            'Late',
-            'Paid Leave',
-            'Holiday',
+        $ruleService = new AttendanceStatusRuleService();
+        $totals = $ruleService->summarize($workdayRows);
+
+        return [
+            'paid_days' => (float) ($totals['paid_days'] ?? 0),
+            'present_days' => (float) ($totals['present_days'] ?? 0),
+            'absent_days' => (float) ($totals['absent_days'] ?? 0),
+            'leave_days' => (float) ($totals['leave_days'] ?? 0),
+            'minutes_late' => (int) ($totals['minutes_late'] ?? 0),
+            'minutes_undertime' => (int) ($totals['minutes_undertime'] ?? 0),
         ];
-        if (in_array($status, $paid, true)) return 1.0;
-        if ($status === 'Half-day') return 0.5;
-        return 0.0;
     }
 }

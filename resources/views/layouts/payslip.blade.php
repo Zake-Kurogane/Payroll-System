@@ -32,6 +32,15 @@
                     <input id="monthInput" type="month" />
                 </div>
 
+                <div class="f">
+                    <label>Cutoff</label>
+                    <select id="cutoffInput">
+                        <option value="All" selected>Both</option>
+                        <option value="11-25">11-25</option>
+                        <option value="26-10">26-10</option>
+                    </select>
+                </div>
+
                 <div class="f f--grow">
                     <label>Search</label>
                     <input id="searchInput" type="search" placeholder="Search Emp ID / Name" />
@@ -46,14 +55,12 @@
         <!-- SELECT PAYROLL RUN -->
         <section class="card runCard">
             <div class="runCard__left">
-                <div class="card__title big">Select Payroll Run</div>
+                <div class="card__title big">Payroll Run</div>
 
                 <div class="runRow">
                     <div class="f f--grow">
-                        <label>Payroll Run</label>
-                        <select id="runSelect">
-                            <option value="" selected>- Select a run -</option>
-                        </select>
+                        <label>Matched Run</label>
+                        <div id="runDisplay" class="runDisplay">No payroll run selected.</div>
                     </div>
                 </div>
             </div>

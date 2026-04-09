@@ -355,6 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
       halfAllowance: Number(r.allowance_cutoff || 0),
       present: Number(r.present_days || 0),
       absent: Number(r.absent_days || 0),
+      late: Number(r.late_days || 0),
       leave: Number(r.leave_days || 0),
       payoutMethod: r.payout_method || r.pay_method || "CASH",
       accountMasked: r.account_masked || r.bank_account_masked || "",
@@ -752,7 +753,7 @@ document.addEventListener("DOMContentLoaded", () => {
           : (Number(r.dailyRate || 0) * 26);
       const disabled = locked ? "disabled" : "";
 
-      const attText = `${r.present}/${r.absent}/${r.leave}`;
+      const attText = `${r.present}/${r.absent}/${r.late}`;
       const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" • ");
       const payoutLine = `${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}`;
 

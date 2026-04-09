@@ -6,7 +6,8 @@
         $company?->company_email,
     ])->filter()->implode(' • ');
     $companySub = $companySub ?: '-';
-    $money = fn ($v) => '₱ ' . number_format((float) $v, 2);
+    $peso = "&#8369; ";
+    $money = fn ($v) => $peso . number_format((float) $v, 2);
 @endphp
 <!doctype html>
 <html>
@@ -258,27 +259,27 @@
                         <tbody>
                             <tr>
                                 <td>Daily Rate</td>
-                                <td class="num">{{ $money($p['daily_rate'] ?? 0) }}</td>
+                                <td class="num">{!! $money($p['daily_rate'] ?? 0) !!}</td>
                                 <td class="num">{{ number_format((float) ($p['paid_days'] ?? 0), 2) }}</td>
-                                <td class="num">{{ $money($p['basic_pay_cutoff'] ?? 0) }}</td>
+                                <td class="num">{!! $money($p['basic_pay_cutoff'] ?? 0) !!}</td>
                             </tr>
                             <tr>
                                 <td>Allowance (cutoff)</td>
                                 <td class="num">-</td>
                                 <td class="num">-</td>
-                                <td class="num">{{ $money($p['allowance_cutoff'] ?? 0) }}</td>
+                                <td class="num">{!! $money($p['allowance_cutoff'] ?? 0) !!}</td>
                             </tr>
                             @foreach($earnAdj as $a)
                                 <tr>
                                     <td>{{ $a['name'] ?? 'Adjustment' }}</td>
                                     <td class="num">-</td>
                                     <td class="num">-</td>
-                                    <td class="num">{{ $money($a['amount'] ?? 0) }}</td>
+                                    <td class="num">{!! $money($a['amount'] ?? 0) !!}</td>
                                 </tr>
                             @endforeach
                             <tr class="psTotalRow">
-                                <td colspan="3">TOTAL GROSS EARNINGS</td>
-                                <td class="num">{{ $money($p['gross'] ?? 0) }}</td>
+                                <td colspan="3">Total Gross Earnings</td>
+                                <td class="num">{!! $money($p['gross'] ?? 0) !!}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -296,11 +297,11 @@
                             <tr>
                                 <td>Attendance Deductions (Late/UT/Absent)</td>
                                 <td class="num">-</td>
-                                <td class="num">{{ $money($p['attendance_deduction'] ?? 0) }}</td>
+                                <td class="num">{!! $money($p['attendance_deduction'] ?? 0) !!}</td>
                             </tr>
-                            <tr><td>SSS (EE)</td><td class="num">-</td><td class="num">{{ $money($p['sss_ee'] ?? 0) }}</td></tr>
-                            <tr><td>PhilHealth (EE)</td><td class="num">-</td><td class="num">{{ $money($p['philhealth_ee'] ?? 0) }}</td></tr>
-                            <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{{ $money($p['tax'] ?? 0) }}</td></tr>
+                            <tr><td>SSS (EE)</td><td class="num">-</td><td class="num">{!! $money($p['sss_ee'] ?? 0) !!}</td></tr>
+                            <tr><td>PhilHealth (EE)</td><td class="num">-</td><td class="num">{!! $money($p['philhealth_ee'] ?? 0) !!}</td></tr>
+                            <tr><td>Withholding Tax</td><td class="num">-</td><td class="num">{!! $money($p['tax'] ?? 0) !!}</td></tr>
                             @php
                                 $loanItems = collect($p['loan_items'] ?? [])->filter(fn ($i) => (float) ($i['deducted_amount'] ?? 0) > 0);
                                 $sumType = function (string $needle) use ($loanItems) {
@@ -320,37 +321,37 @@
                                 $charges = (float) ($p['charges_deduction'] ?? 0);
                                 $shortages = 0.0;
                             @endphp
-                            <tr><td>HDMF</td><td class="num">-</td><td class="num">{{ $money($p['pagibig_ee'] ?? 0) }}</td></tr>
-                            <tr><td>SSS Loan</td><td class="num">-</td><td class="num">{{ $money($sssLoan) }}</td></tr>
-                            <tr><td>HDMF Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfLoan) }}</td></tr>
-                            <tr><td>PAGIBIG Housing Loan</td><td class="num">-</td><td class="num">{{ $money($pagibigHousing) }}</td></tr>
-                            <tr><td>SSS Housing Loan</td><td class="num">-</td><td class="num">{{ $money($sssHousing) }}</td></tr>
-                            <tr><td>HDMF Calamity Loan</td><td class="num">-</td><td class="num">{{ $money($hdmfCalamity) }}</td></tr>
-                            <tr><td>Advances</td><td class="num">-</td><td class="num">{{ $money($advances) }}</td></tr>
-                            <tr><td>Shortages</td><td class="num">-</td><td class="num">{{ $money($shortages) }}</td></tr>
-                            <tr><td>Charges</td><td class="num">-</td><td class="num">{{ $money($charges) }}</td></tr>
+                            <tr><td>HDMF</td><td class="num">-</td><td class="num">{!! $money($p['pagibig_ee'] ?? 0) !!}</td></tr>
+                            <tr><td>SSS Loan</td><td class="num">-</td><td class="num">{!! $money($sssLoan) !!}</td></tr>
+                            <tr><td>HDMF Loan</td><td class="num">-</td><td class="num">{!! $money($hdmfLoan) !!}</td></tr>
+                            <tr><td>PAGIBIG Housing Loan</td><td class="num">-</td><td class="num">{!! $money($pagibigHousing) !!}</td></tr>
+                            <tr><td>SSS Housing Loan</td><td class="num">-</td><td class="num">{!! $money($sssHousing) !!}</td></tr>
+                            <tr><td>HDMF Calamity Loan</td><td class="num">-</td><td class="num">{!! $money($hdmfCalamity) !!}</td></tr>
+                            <tr><td>Advances</td><td class="num">-</td><td class="num">{!! $money($advances) !!}</td></tr>
+                            <tr><td>Shortages</td><td class="num">-</td><td class="num">{!! $money($shortages) !!}</td></tr>
+                            <tr><td>Charges</td><td class="num">-</td><td class="num">{!! $money($charges) !!}</td></tr>
                             @foreach($dedAdj as $a)
                                 <tr>
                                     <td>{{ $a['name'] ?? 'Adjustment' }}</td>
                                     <td class="num">-</td>
-                                    <td class="num">{{ $money($a['amount'] ?? 0) }}</td>
+                                    <td class="num">{!! $money($a['amount'] ?? 0) !!}</td>
                                 </tr>
                             @endforeach
                             <tr class="psTotalRow">
-                                <td colspan="2">Total Deds</td>
-                                <td class="num">{{ $money($p['deductions_total'] ?? 0) }}</td>
+                                <td colspan="2">Total Deductions</td>
+                                <td class="num">{!! $money($p['deductions_total'] ?? 0) !!}</td>
                             </tr>
                         </tbody>
                     </table>
 
                     <div class="psSummaryGrid">
                         <div class="psSummaryBox">
-                            <div class="psSummaryLine"><span>Gross Pay</span><strong>{{ $money($p['gross'] ?? 0) }}</strong></div>
-                            <div class="psSummaryLine"><span>Total Deductions</span><strong>{{ $money($p['deductions_total'] ?? 0) }}</strong></div>
+                            <div class="psSummaryLine"><span>Gross Pay</span><strong>{!! $money($p['gross'] ?? 0) !!}</strong></div>
+                            <div class="psSummaryLine"><span>Total Deductions</span><strong>{!! $money($p['deductions_total'] ?? 0) !!}</strong></div>
                         </div>
                         <div class="psSummaryNet">
                             <div class="psSummaryLabel">NET PAY</div>
-                            <div class="psSummaryValue">{{ $money($p['net_pay'] ?? 0) }}</div>
+                            <div class="psSummaryValue">{!! $money($p['net_pay'] ?? 0) !!}</div>
                         </div>
                     </div>
                 </div>

@@ -53,6 +53,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/employees/pl-balances', [EmployeeController::class, 'paidLeaveBalances'])->name('employees.plBalances');
         Route::get('/employees/{emp_no}/area-history', [EmployeeController::class, 'areaHistory'])->name('employees.areaHistory');
         Route::get('/employees/{emp_no}/pl-balance', [EmployeeController::class, 'paidLeaveBalance'])->name('employees.plBalance');
+        Route::get('/employees/{emp_no}/attendance-year', [EmployeeController::class, 'attendanceYear'])->name('employees.attendanceYear');
 
         // Employee Case Management
         Route::get('/employee-cases', [EmployeeCaseController::class, 'page'])->name('employee.cases');

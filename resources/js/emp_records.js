@@ -302,7 +302,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const historyDrawerExternalEl = document.getElementById("historyDrawerExternal");
   const areaHistoryList = document.getElementById("areaHistoryList");
   const historySearch = document.getElementById("historySearch");
+  const attendanceYearDrawer = document.getElementById("attendanceYearDrawer");
+  const attendanceYearOverlay = document.getElementById("attendanceYearOverlay");
+  const closeAttendanceYearBtn = document.getElementById("closeAttendanceYearBtn");
+  const attendanceYearSubtitleEl = document.getElementById("attendanceYearSubtitle");
+  const attendanceYearSelect = document.getElementById("attendanceYearSelect");
+  const attendanceYearTotalsEl = document.getElementById("attendanceYearTotals");
+  const attendanceYearLegendEl = document.getElementById("attendanceYearLegend");
+  const attendanceYearGridEl = document.getElementById("attendanceYearGrid");
+  const attendanceYearTraceEl = document.getElementById("attendanceYearTrace");
+  const attendanceYearPlEl = document.getElementById("attendanceYearPl");
   let allHistoryRanges = [];
+  let selectedAttendanceYearEmpId = null;
 
   const plInfoWrap = document.getElementById("plInfoWrap");
   const f_plCount = document.getElementById("f_plCount");
@@ -446,6 +457,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     historyDrawer.classList.remove("is-open");
     historyDrawer.setAttribute("aria-hidden", "true");
     if (historyDrawerOverlay) historyDrawerOverlay.setAttribute("hidden", "");
+  }
+
+  function openAttendanceYearDrawer(emp) {
+    if (!attendanceYearDrawer) return;
+    selectedAttendanceYearEmpId = emp?.empId || null;
+    if (attendanceYearSubtitleEl) {
+      attendanceYearSubtitleEl.textContent = `${fullName(emp)} - ${emp.empId}`;
+    }
+    attendanceYearDrawer.classList.add("is-open");
+    attendanceYearDrawer.setAttribute("aria-hidden", "false");
+    if (attendanceYearOverlay) attendanceYearOverlay.removeAttribute("hidden");
+  }
+
+  function closeAttendanceYearDrawer() {
+    if (!attendanceYearDrawer) return;
+    attendanceYearDrawer.classList.remove("is-open");
+    attendanceYearDrawer.setAttribute("aria-hidden", "true");
+    if (attendanceYearOverlay) attendanceYearOverlay.setAttribute("hidden", "");
+    selectedAttendanceYearEmpId = null;
   }
 
   function showToast(message) {
@@ -1250,6 +1280,133 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function toMonthName(monthNumber) {
+    return new Date(2000, Number(monthNumber || 1) - 1, 1).toLocaleString(undefined, { month: "long" });
+  }
+
+  function formatYmd(isoDate) {
+    if (!isoDate) return "";
+    const d = new Date(`${isoDate}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return isoDate;
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function renderAttendanceYear(data) {
+    if (!attendanceYearTotalsEl || !attendanceYearLegendEl || !attendanceYearGridEl || !attendanceYearTraceEl || !attendanceYearPlEl) return;
+
+    const totals = data?.totals || {};
+    attendanceYearTotalsEl.innerHTML = `
+      <span class="badge">Present Eq: ${Number(totals.present_equivalent || 0).toFixed(1)}</span>
+      <span class="badge">Late: ${Number(totals.late_days || 0).toFixed(1)}</span>
+      <span class="badge">Absent: ${Number(totals.absent_days || 0).toFixed(1)}</span>
+      <span class="badge">Paid Eq: ${Number(totals.paid_equivalent || 0).toFixed(1)}</span>
+      <span class="badge">Half-day: ${Number(totals.half_days || 0).toFixed(1)}</span>
+      <span class="badge">RNR: ${Number(totals.rnr_days || 0).toFixed(1)}</span>
+      <span class="badge">Day-off: ${Number(totals.day_off_days || 0).toFixed(1)}</span>
+      <span class="badge">Records: ${Number(totals.records || 0)}</span>
+    `;
+
+    const legend = Array.isArray(data?.legend) ? data.legend : [];
+    attendanceYearLegendEl.innerHTML = legend
+      .map((item) => {
+        const code = String(item.code || "").trim() || "?";
+        const desc = String(item.description || "").trim();
+        return `<span class="legendItem" title="${escapeHtml(desc)}">${escapeHtml(code)}${desc ? ` - ${escapeHtml(desc)}` : ""}</span>`;
+      })
+      .join("");
+
+    const months = Array.isArray(data?.months) ? data.months : [];
+    attendanceYearGridEl.innerHTML = months
+      .map((month) => {
+        const cells = [];
+        const start = Number(month.start_weekday || 0);
+        for (let i = 0; i < start; i += 1) {
+          cells.push('<div class="attendanceDay attendanceDay--empty"></div>');
+        }
+        (month.days || []).forEach((day) => {
+          const record = day.record || null;
+          const codeRaw = String(record?.code || "").toUpperCase().trim();
+          const code = codeRaw || "-";
+          const normalizedCode = code.replace(/[^A-Z0-9]/g, "") || "NONE";
+          const classes = [
+            "attendanceDay",
+            day.is_weekend ? "attendanceDay--weekend" : "",
+            codeRaw ? `attendanceDay--${normalizedCode}` : "",
+          ].filter(Boolean).join(" ");
+          const title = record
+            ? `${day.date} - ${record.status}${record.area_place ? ` (${record.area_place})` : ""}`
+            : `${day.date} - No record`;
+          cells.push(`
+            <div class="${classes}" title="${escapeHtml(title)}">
+              <span class="attendanceDay__n">${day.day}</span>
+              <span class="attendanceDay__code">${escapeHtml(code)}</span>
+            </div>
+          `);
+        });
+        return `
+          <section class="attendanceMonth">
+            <h4>${escapeHtml(toMonthName(month.month || 1))}</h4>
+            <div class="attendanceWeekdays">
+              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            </div>
+            <div class="attendanceDays">${cells.join("")}</div>
+          </section>
+        `;
+      })
+      .join("");
+
+    const pl = data?.paid_leave || {};
+    if (pl.applicable) {
+      attendanceYearPlEl.textContent = `PL ${Number(pl.remaining || 0)}/${Number(pl.total || 0)} remaining (${Number(pl.used || 0)} used)`;
+    } else {
+      attendanceYearPlEl.textContent = "Paid Leave not applicable";
+    }
+
+    const statusTotals = Array.isArray(data?.status_totals) ? data.status_totals : [];
+    const statusText = statusTotals.length
+      ? statusTotals.map((row) => `${row.status}: ${row.count}`).join(", ")
+      : "No attendance records found for this year.";
+    const plDates = Array.isArray(pl.dates) ? pl.dates : [];
+    const plDateText = plDates.length
+      ? plDates.map((d) => formatYmd(d)).join(", ")
+      : "No Paid Leave dates recorded.";
+
+    attendanceYearTraceEl.innerHTML = `
+      <div><strong>Status Totals:</strong> ${escapeHtml(statusText)}</div>
+      <div style="margin-top:6px;"><strong>Paid Leave Dates:</strong> ${escapeHtml(plDateText)}</div>
+    `;
+  }
+
+  function populateAttendanceYearSelect(selectedYear) {
+    if (!attendanceYearSelect) return;
+    const base = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
+    const years = [];
+    for (let y = base + 2; y >= base - 5; y -= 1) {
+      years.push(y);
+    }
+    attendanceYearSelect.innerHTML = years
+      .map((y) => `<option value="${y}">${y}</option>`)
+      .join("");
+    attendanceYearSelect.value = String(base);
+  }
+
+  async function loadAttendanceYear(empNo, year) {
+    if (!attendanceYearGridEl || !attendanceYearTotalsEl || !attendanceYearTraceEl) return;
+    attendanceYearTotalsEl.innerHTML = '<span class="badge">Loading...</span>';
+    attendanceYearLegendEl.innerHTML = "";
+    attendanceYearGridEl.innerHTML = "";
+    attendanceYearTraceEl.innerHTML = "";
+
+    try {
+      const data = await apiFetch(`/employees/${encodeURIComponent(empNo)}/attendance-year?year=${encodeURIComponent(year)}`);
+      populateAttendanceYearSelect(data?.year);
+      renderAttendanceYear(data);
+    } catch (err) {
+      attendanceYearTotalsEl.innerHTML = '<span class="badge">Failed to load yearly attendance.</span>';
+      attendanceYearTraceEl.innerHTML = `<div>${escapeHtml(err?.message || "Failed to load yearly attendance.")}</div>`;
+    }
+  }
+
   function syncCashAdvanceFields() {
     if (!f_caEligible) return;
     const ca = computeCashAdvance(f_type?.value || "");
@@ -1485,6 +1642,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         <!-- ? NEW -->
         <td>${payrollBadgeHTML(emp)}</td>
         <td class="actions">
+          <button class="iconbtn" type="button" data-action="attendance-year" data-id="${emp.empId}" title="Attendance Year" aria-label="Attendance Year">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </button>
           <button class="iconbtn" type="button" data-action="edit" data-id="${emp.empId}" title="Edit" aria-label="Edit">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 20h9"></path>
@@ -1537,6 +1702,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (document.hidden) return true;
     if (drawer?.classList.contains("is-open")) return true;
     if (historyDrawer?.classList.contains("is-open")) return true;
+    if (attendanceYearDrawer?.classList.contains("is-open")) return true;
     const active = document.activeElement;
     if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return true;
     if (selectedIds.size > 0) return true;
@@ -1838,6 +2004,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const emp = employees.find(x => x.empId === id);
     if (!emp) return;
 
+    if (action === "attendance-year") {
+      openAttendanceYearDrawer(emp);
+      const initialYear = new Date().getFullYear();
+      populateAttendanceYearSelect(initialYear);
+      await loadAttendanceYear(emp.empId, initialYear);
+    }
     if (action === "edit") {
       selectedEmpId = id;
       fillForm(emp);
@@ -1933,11 +2105,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
   closeHistoryDrawerBtn && closeHistoryDrawerBtn.addEventListener("click", closeHistoryDrawer);
   historyDrawerOverlay && historyDrawerOverlay.addEventListener("click", closeHistoryDrawer);
+  closeAttendanceYearBtn && closeAttendanceYearBtn.addEventListener("click", closeAttendanceYearDrawer);
+  attendanceYearOverlay && attendanceYearOverlay.addEventListener("click", closeAttendanceYearDrawer);
+  attendanceYearSelect && attendanceYearSelect.addEventListener("change", async () => {
+    if (!selectedAttendanceYearEmpId) return;
+    const year = Number(attendanceYearSelect.value || new Date().getFullYear());
+    await loadAttendanceYear(selectedAttendanceYearEmpId, year);
+  });
   historySearch && historySearch.addEventListener("input", renderHistoryRows);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     closeDrawer();
     closeHistoryDrawer();
+    closeAttendanceYearDrawer();
   });
 
   // live cash advance preview

@@ -104,9 +104,15 @@
                 <div class="card__head">
                     <div class="card__title">Payroll Cost Trend (Last 6 Months)</div>
 
-                    <div class="legend">
-                        <span class="dot dot--net"></span><span>Net pay</span>
-                        <span class="dot dot--ded"></span><span>Deduction</span>
+                    <div class="legend" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="dot dot--net"></span><span>Net pay</span>
+                            <span class="dot dot--ded"></span><span>Deduction</span>
+                        </div>
+                        <div class="trendMode" role="group" aria-label="Trend view mode">
+                            <button type="button" class="trendMode__btn is-active" id="trendByCutoffBtn">By Cutoff</button>
+                            <button type="button" class="trendMode__btn" id="trendMonthlyBtn">Monthly Total</button>
+                        </div>
                     </div>
                 </div>
 
@@ -121,25 +127,15 @@
                 <div class="xaxis" id="chartLabels"></div>
             </section>
 
-            <!-- TODO -->
+            <!-- Recent Activity -->
             <section class="card todo">
                 <div class="card__head">
-                    <div class="card__title">To-Do / Actions</div>
+                    <div class="card__title">Recent Activity</div>
                 </div>
 
-                <div class="todo__list">
+                <div class="todo__list" id="recentActivityList">
                     <div class="todo__item">
-                        <div class="todo__name">Attendance import</div>
-                    </div>
-
-                    <div class="todo__item">
-                        <div class="todo__name">Payroll pending:</div>
-                        <div class="todo__value" id="todoPending">12</div>
-                    </div>
-
-                    <div class="todo__item">
-                        <div class="todo__name">Payslips not generated:</div>
-                        <div class="todo__value" id="todoPayslip">6</div>
+                        <div class="todo__name">No recent activity.</div>
                     </div>
                 </div>
             </section>

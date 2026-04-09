@@ -21,6 +21,8 @@ class PayslipClaimController extends Controller
         $runId = $request->query('run_id');
         $monthFilter = $this->normalizePeriodMonth($request->query('month'));
         $cutoffFilter = $this->normalizeCutoff($request->query('cutoff'));
+        $assignmentFilter = $this->normalizeAssignment($request->query('assignment'));
+        $areaPlaceFilter = $this->normalizeAreaPlace($request->query('area_place'));
 
         $runs = PayrollRun::query()
             ->whereIn('status', ['Released'])
@@ -33,6 +35,8 @@ class PayslipClaimController extends Controller
         $employees = collect();
         $summary = null;
         $proofs = collect();
+        $assignmentOptions = collect();
+        $assignmentAreaPlaces = [];
 
         if ($runId) {
             $selectedRun = $runs->firstWhere('id', (int) $runId);
@@ -58,7 +62,36 @@ class PayslipClaimController extends Controller
 
         if ($selectedRun) {
             $employees = $this->runEmployeesWithClaimStatus($selectedRun);
-            $summary = $this->computeRunClaimSummary($selectedRun);
+            $assignmentOptions = $employees
+                ->pluck('assignment_type')
+                ->map(fn ($v) => trim((string) $v))
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values();
+            $assignmentAreaPlaces = $employees
+                ->groupBy(fn ($r) => trim((string) ($r['assignment_type'] ?? '')))
+                ->map(function ($rows) {
+                    return collect($rows)
+                        ->pluck('area_place')
+                        ->map(fn ($v) => trim((string) $v))
+                        ->filter()
+                        ->unique()
+                        ->sort()
+                        ->values()
+                        ->all();
+                })
+                ->filter(fn ($v, $k) => $k !== '')
+                ->all();
+
+            if (!$assignmentFilter || !array_key_exists($assignmentFilter, $assignmentAreaPlaces)) {
+                $areaPlaceFilter = null;
+            } elseif ($areaPlaceFilter && !in_array($areaPlaceFilter, $assignmentAreaPlaces[$assignmentFilter] ?? [], true)) {
+                $areaPlaceFilter = null;
+            }
+
+            $employees = $this->filterEmployees($employees, $assignmentFilter, $areaPlaceFilter);
+            $summary = $this->computeClaimSummaryFromRows($employees);
             $proofs = PayslipClaimProof::query()
                 ->where('payroll_run_id', $selectedRun->id)
                 ->orderByDesc('id')
@@ -73,17 +106,23 @@ class PayslipClaimController extends Controller
             'proofs' => $proofs,
             'monthFilter' => $monthFilter,
             'cutoffFilter' => $cutoffFilter,
+            'assignmentFilter' => $assignmentFilter,
+            'assignmentOptions' => $assignmentOptions,
+            'areaPlaceFilter' => $areaPlaceFilter,
+            'assignmentAreaPlaces' => $assignmentAreaPlaces,
         ]);
     }
 
-    public function downloadClaimSheet(PayrollRun $run)
+    public function downloadClaimSheet(Request $request, PayrollRun $run)
     {
         if ($run->status !== 'Released') {
             return response()->json(['message' => 'Claim sheet is available only for released runs.'], 409);
         }
 
         $company = CompanySetup::query()->first();
-        $rows = $this->runEmployeesWithClaimStatus($run);
+        $assignmentFilter = $this->normalizeAssignment($request->query('assignment'));
+        $areaPlaceFilter = $this->normalizeAreaPlace($request->query('area_place'));
+        $rows = $this->filterEmployees($this->runEmployeesWithClaimStatus($run), $assignmentFilter, $areaPlaceFilter);
         $pages = $this->buildClaimSheetPages($rows, 25, $run->id);
 
         $html = view('print.payslip_claim_sheet', [
@@ -145,6 +184,8 @@ class PayslipClaimController extends Controller
             'run_id' => $run->id,
             'month' => $this->normalizePeriodMonth($request->input('month')),
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+            'assignment' => $this->normalizeAssignment($request->input('assignment')),
+            'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
         ])
             ->with('success', count($storedProofs) . ' proof file(s) uploaded and processed.');
     }
@@ -184,6 +225,8 @@ class PayslipClaimController extends Controller
             'run_id' => $run->id,
             'month' => $this->normalizePeriodMonth($request->input('month')),
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+            'assignment' => $this->normalizeAssignment($request->input('assignment')),
+            'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
         ]);
     }
 
@@ -218,6 +261,8 @@ class PayslipClaimController extends Controller
             'run_id' => $runId ?: null,
             'month' => $this->normalizePeriodMonth($request->input('month')),
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+            'assignment' => $this->normalizeAssignment($request->input('assignment')),
+            'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
         ])
             ->with('success', 'Proof deleted.');
     }
@@ -320,23 +365,34 @@ class PayslipClaimController extends Controller
         });
     }
 
-    private function computeRunClaimSummary(PayrollRun $run): array
+    private function computeClaimSummaryFromRows($rows): array
     {
-        $total = PayrollRunRow::query()->where('payroll_run_id', $run->id)->count();
-        $claimed = PayslipClaim::query()
-            ->where('payroll_run_id', $run->id)
-            ->whereNotNull('claimed_at')
-            ->count();
-        $needsReview = PayslipClaim::query()
-            ->where('payroll_run_id', $run->id)
-            ->where('review_status', 'needs_review')
-            ->count();
+        $rows = collect($rows);
+        $total = $rows->count();
+        $claimed = $rows->filter(fn ($r) => !empty($r['claimed_at']))->count();
+        $needsReview = $rows->filter(fn ($r) => (($r['review_status'] ?? null) === 'needs_review'))->count();
         return [
             'total'        => (int) $total,
             'claimed'      => (int) $claimed,
             'needs_review' => (int) $needsReview,
             'unclaimed'    => max(0, (int) $total - (int) $claimed),
         ];
+    }
+
+    private function filterEmployees($rows, ?string $assignmentFilter, ?string $areaPlaceFilter = null)
+    {
+        $rows = collect($rows);
+        if (!$assignmentFilter) {
+            return $rows->values();
+        }
+
+        return $rows->filter(function ($r) use ($assignmentFilter, $areaPlaceFilter) {
+            $assignment = trim((string) ($r['assignment_type'] ?? ''));
+            if (strcasecmp($assignment, $assignmentFilter) !== 0) return false;
+            if (!$areaPlaceFilter) return true;
+            $area = trim((string) ($r['area_place'] ?? ''));
+            return strcasecmp($area, $areaPlaceFilter) === 0;
+        })->values();
     }
 
     private function processUploadedProofs(PayrollRun $run, array $proofs): void
@@ -607,6 +663,23 @@ class PayslipClaimController extends Controller
     {
         $value = trim((string) $value);
         if ($value === '') return null;
-        return in_array($value, ['11-25', '26-10'], true) ? $value : null;
+        $upper = strtoupper($value);
+        if ($upper === 'A' || $value === '26-10') return '26-10';
+        if ($upper === 'B' || $value === '11-25') return '11-25';
+        return null;
+    }
+
+    private function normalizeAssignment(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strcasecmp($value, 'all') === 0) return null;
+        return $value;
+    }
+
+    private function normalizeAreaPlace(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strcasecmp($value, 'all') === 0) return null;
+        return $value;
     }
 }

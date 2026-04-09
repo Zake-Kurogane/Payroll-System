@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Payslip Claims')
 
@@ -17,7 +17,7 @@
                 <button class="btn" type="button" id="claimPrintCloseBtn">Close</button>
             </div>
         </div>
-        <div id="claimPrintLoading" class="muted small" style="padding: 12px 14px;">Loading PDF…</div>
+        <div id="claimPrintLoading" class="muted small" style="padding: 12px 14px;">Loading PDFâ€¦</div>
         <iframe class="modal__frame" id="claimPrintFrame" title="Claim Sheet Print Preview" hidden></iframe>
     </aside>
 @endsection
@@ -45,7 +45,7 @@
 
         <section class="card runCard">
             <div class="runCard__left">
-                <div class="card__title big">Select Released Payroll Run</div>
+                <div class="card__title big">Released Payroll Run</div>
                 <form method="GET" action="{{ route('payslip.claims') }}">
                     <div class="runRow">
                         <div class="f">
@@ -60,18 +60,28 @@
                                 <option value="26-10" @selected(($cutoffFilter ?? '') === '26-10')>26-10</option>
                             </select>
                         </div>
+                        <div class="f f--grow">
+                            <label>Assignment</label>
+                            <input type="hidden" name="assignment" id="assignmentInput" value="{{ $assignmentFilter ?? '' }}" />
+                            <input type="hidden" name="area_place" id="areaPlaceInput" value="{{ $areaPlaceFilter ?? '' }}" />
+                            <div class="seg seg--pill claimsAssignSeg" id="assignSeg" role="group"
+                                aria-label="Filter by assignment"
+                                data-active-assign="{{ $assignmentFilter ?? '' }}"
+                                data-active-place="{{ $areaPlaceFilter ?? '' }}">
+                                <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="runRow">
                         <div class="f f--grow">
-                            <label>Payroll Run</label>
-                            <select name="run_id" onchange="this.form.submit()">
-                                <option value="" selected>- Select a released run -</option>
-                                @foreach ($runs as $r)
-                                    <option value="{{ $r->id }}" @selected($selectedRun && $selectedRun->id === $r->id)>
-                                        {{ ($r->run_code ?: ('RUN-' . $r->id)) . ' • ' . ($r->period_month ?: '-') . ' (' . ($r->cutoff ?: '-') . ') • ' . $r->displayLabel() }}
-                                    </option>
-                                @endforeach
-                            </select>
+                            <label>Matched Run</label>
+                            <div class="runDisplay">
+                                @if ($selectedRun)
+                                    {{ ($selectedRun->run_code ?: ('RUN-' . $selectedRun->id)) . ' • ' . ($selectedRun->period_month ?: '-') . ' (' . ($selectedRun->cutoff ?: '-') . ') • ' . $selectedRun->displayLabel() }}
+                                @else
+                                    No released payroll run found for the selected filters.
+                                @endif
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -99,11 +109,11 @@
 
                 @if ($selectedRun)
                     <div class="runActions" style="gap: 10px; flex-wrap: wrap;">
-                        <a class="btn btn--soft" href="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id]) }}">
+                        <a class="btn btn--soft" href="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id, 'assignment' => $assignmentFilter, 'area_place' => $areaPlaceFilter]) }}">
                             Download Claim Sheet (PDF)
                         </a>
                         <button class="btn btn--soft" type="button" id="printClaimSheetBtn"
-                            data-url="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id]) }}">
+                            data-url="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id, 'assignment' => $assignmentFilter, 'area_place' => $areaPlaceFilter]) }}">
                             Print Claim Sheet
                         </button>
                     </div>
@@ -128,7 +138,6 @@
                         <div class="f f--grow">
                             <label>Proof file(s)</label>
                             <input type="file" name="proofs[]" accept=".jpg,.jpeg,.png,.pdf,application/pdf" multiple required />
-                            <div class="muted small" style="margin-top:6px;">Tip: scan at 300 DPI, crop to page edges, avoid shadows.</div>
                         </div>
                         <div class="f" style="min-width: 180px;">
                             <button class="btn btn--maroon" type="submit">Upload + Process</button>
@@ -136,6 +145,8 @@
                     </div>
                     <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                     <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
+                    <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
+                    <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
                 </form>
             </section>
 
@@ -161,7 +172,7 @@
                                 <tr>
                                     <td>{{ $p->created_at?->format('Y-m-d H:i') }}</td>
                                     <td>{{ $p->original_name }}</td>
-                                    <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : '—' }}</td>
+                                    <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : 'â€”' }}</td>
                                     <td>
                                         <div class="iconrow">
                                             <a class="iconbtn" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}" title="Download" aria-label="Download">
@@ -177,6 +188,8 @@
                                                 @method('DELETE')
                                                 <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                                                 <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
+                                                <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
+                                                <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
                                                 <button class="iconbtn" type="submit" title="Delete" aria-label="Delete">
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                         <path d="M3 6h18"></path>
@@ -206,7 +219,7 @@
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big" style="color:#92400e;">&#9888; Needs Review ({{ $needsReviewRows->count() }})</div>
-                        <div class="muted small">QR code could not be read or did not match — HR must verify these manually. Click Confirm to mark as claimed.</div>
+                        <div class="muted small">QR code could not be read or did not match â€” HR must verify these manually. Click Confirm to mark as claimed.</div>
                     </div>
                 </div>
                 <div class="tablewrap">
@@ -225,8 +238,8 @@
                                 <tr>
                                     <td>{{ $e['emp_no'] }}</td>
                                     <td>{{ $e['name'] }}</td>
-                                    <td>{{ $e['area_place'] ?: '—' }}</td>
-                                    <td>{{ isset($e['confidence']) ? round((float)$e['confidence'] * 100) . '%' : '—' }}</td>
+                                    <td>{{ $e['area_place'] ?: 'â€”' }}</td>
+                                    <td>{{ isset($e['confidence']) ? round((float)$e['confidence'] * 100) . '%' : 'â€”' }}</td>
                                     <td>
                                         <form method="POST"
                                             action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
@@ -234,6 +247,8 @@
                                             @csrf
                                             <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                                             <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
+                                            <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
+                                            <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
                                             <button class="btn btn--soft" type="submit" title="Mark as claimed (confirmed)">Confirm</button>
                                         </form>
                                     </td>
@@ -269,8 +284,8 @@
                                 <tr>
                                     <td>{{ $e['emp_no'] }}</td>
                                     <td>{{ $e['name'] }}</td>
-                                    <td>{{ $e['assignment_type'] ?: '—' }}</td>
-                                    <td>{{ $e['area_place'] ?: '—' }}</td>
+                                    <td>{{ $e['assignment_type'] ?: 'â€”' }}</td>
+                                    <td>{{ $e['area_place'] ?: 'â€”' }}</td>
                                     <td style="text-align:center;">
                                         <form method="POST"
                                             action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
@@ -278,6 +293,8 @@
                                             @csrf
                                             <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                                             <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
+                                            <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
+                                            <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
                                             <button type="submit"
                                                 title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"
                                                 style="background:none;border:none;cursor:pointer;padding:0;">
@@ -309,4 +326,8 @@
         @endif
     </section>
 @endsection
+
+
+
+
 

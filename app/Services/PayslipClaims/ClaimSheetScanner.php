@@ -459,7 +459,7 @@ class ClaimSheetScanner
         $size = (int) round(min($cw, $ch) * $ratio);
         $bx1  = (int) round($x1 + ($cw - $size) / 2);
         $by1  = (int) round($y1 + ($ch - $size) / 2);
-        $in   = (int) max(1, round($size * 0.12));
+        $in   = (int) round($size * 0.12);
         return [$bx1 + $in, $by1 + $in, $bx1 + $size - $in, $by1 + $size - $in];
     }
 

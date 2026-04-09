@@ -493,21 +493,79 @@ input[type="file"]::-webkit-file-upload-button {
     grid-template-columns: 1.2fr 1fr;
     gap: 14px;
 }
+.content--claims .runCard {
+    align-items: stretch;
+}
 .runCard__left {
     display: grid;
     gap: 10px;
     align-content: start;
+}
+.content--claims .runCard__left {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+.content--claims .runCard__left > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.content--claims .runCard__left > form .runRow:last-child {
+    margin-top: auto;
 }
 .runCard__right {
     display: grid;
     gap: 10px;
     justify-items: end;
 }
+.content--claims .runCard {
+    grid-template-columns: 1.45fr 0.85fr;
+}
+.content--claims .runCard__right {
+    width: 100%;
+    max-width: 520px;
+    justify-self: end;
+}
 .runRow {
     gap: 12px;
     display: flex;
     align-items: end;
     flex-wrap: wrap;
+}
+.runDisplay {
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 0 12px;
+    font-weight: 800;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+}
+.runDisplay.is-loading {
+    position: relative;
+    padding-right: 38px;
+}
+.runDisplay.is-loading::after {
+    content: "";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    border: 2px solid rgba(107, 114, 128, 0.25);
+    border-top-color: rgba(107, 114, 128, 0.9);
+    border-radius: 50%;
+    animation: runSpin 0.7s linear infinite;
+}
+@keyframes runSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .runBadge {

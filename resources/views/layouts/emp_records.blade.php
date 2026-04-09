@@ -243,6 +243,16 @@
                                                 <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
                                             </svg>
                                         </button>
+                                        <button class="iconbtn" type="button" data-action="attendance-year"
+                                            data-id="{{ $emp->emp_no }}" title="Attendance Year"
+                                            aria-label="Attendance Year">
+                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                                            </svg>
+                                        </button>
                                         @if ($emp->assignment_type === 'Field')
                                             <button class="iconbtn" type="button" data-action="history"
                                                 data-id="{{ $emp->emp_no }}" title="Area History"
@@ -759,6 +769,33 @@
             </form>
         </aside>
 
+        <!-- ATTENDANCE YEAR DRAWER -->
+        <div class="overlay" id="attendanceYearOverlay" hidden></div>
+        <aside class="drawer drawer--wide" id="attendanceYearDrawer" role="dialog" aria-modal="true"
+            aria-labelledby="attendanceYearTitle" aria-hidden="true">
+            <div class="drawer__head">
+                <div>
+                    <div class="drawer__title" id="attendanceYearTitle">Yearly Attendance</div>
+                    <div class="muted small" id="attendanceYearSubtitle"></div>
+                </div>
+                <button class="iconbtn" id="closeAttendanceYearBtn" type="button" aria-label="Close">x</button>
+            </div>
+            <div class="form">
+                <div class="attendanceYearToolbar">
+                    <div class="field">
+                        <label for="attendanceYearSelect">Year</label>
+                        <select id="attendanceYearSelect"></select>
+                    </div>
+                    <div class="attendanceYearPl" id="attendanceYearPl"></div>
+                </div>
+
+                <div class="attendanceYearTotals" id="attendanceYearTotals"></div>
+                <div class="attendanceYearLegend" id="attendanceYearLegend"></div>
+                <div class="attendanceYearGrid" id="attendanceYearGrid"></div>
+                <div class="attendanceYearTrace" id="attendanceYearTrace"></div>
+            </div>
+        </aside>
+
         <!-- AREA HISTORY DRAWER -->
         <div class="overlay" id="historyDrawerOverlay" hidden></div>
         <aside class="drawer drawer--narrow" id="historyDrawer" role="dialog" aria-modal="true"
@@ -803,7 +840,7 @@
 
         #empTable th:last-child,
         #empTable td:last-child {
-            width: 130px;
+            width: 180px;
         }
 
         #historyDrawer .form {
@@ -817,6 +854,161 @@
         #historyDrawer .tablewrap {
             flex: 1;
             overflow-y: auto;
+        }
+
+        #attendanceYearDrawer .form {
+            display: grid;
+            gap: 12px;
+            align-content: start;
+        }
+
+        .attendanceYearToolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: end;
+        }
+
+        .attendanceYearToolbar .field {
+            min-width: 140px;
+            max-width: 180px;
+        }
+
+        .attendanceYearPl {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--maroon);
+            background: rgba(156, 29, 60, 0.08);
+            border: 1px solid rgba(156, 29, 60, 0.16);
+            border-radius: 999px;
+            padding: 8px 12px;
+            min-height: 42px;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .attendanceYearTotals {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .attendanceYearTotals .badge {
+            font-size: 12px;
+            font-weight: 900;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .attendanceYearLegend {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .attendanceYearLegend .legendItem {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 800;
+            background: #fff;
+        }
+
+        .attendanceYearGrid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+
+        .attendanceMonth {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 8px;
+            background: #fff;
+        }
+
+        .attendanceMonth h4 {
+            margin: 0 0 8px;
+            font-size: 13px;
+            color: var(--maroon);
+        }
+
+        .attendanceWeekdays,
+        .attendanceDays {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 4px;
+        }
+
+        .attendanceWeekdays span {
+            font-size: 10px;
+            font-weight: 900;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .attendanceDay {
+            min-height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            display: grid;
+            align-content: center;
+            justify-items: center;
+            font-size: 10px;
+            font-weight: 800;
+            background: #fff;
+        }
+
+        .attendanceDay--empty {
+            border: none;
+            background: transparent;
+        }
+
+        .attendanceDay--weekend {
+            background: #fafafa;
+        }
+
+        .attendanceDay__n {
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1;
+        }
+
+        .attendanceDay__code {
+            font-size: 10px;
+            line-height: 1;
+        }
+
+        .attendanceDay--P,
+        .attendanceDay--L,
+        .attendanceDay--PL,
+        .attendanceDay--HD,
+        .attendanceDay--HOL {
+            border-color: rgba(5, 150, 105, 0.35);
+            background: rgba(16, 185, 129, 0.12);
+        }
+
+        .attendanceDay--A {
+            border-color: rgba(185, 28, 28, 0.35);
+            background: rgba(239, 68, 68, 0.12);
+        }
+
+        .attendanceDay--OFF,
+        .attendanceDay--RNR {
+            border-color: rgba(107, 114, 128, 0.35);
+            background: rgba(107, 114, 128, 0.12);
+        }
+
+        .attendanceYearTrace {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            background: #fff;
         }
     </style>
 
