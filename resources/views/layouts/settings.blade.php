@@ -1149,7 +1149,7 @@
                 </div>
 
                 @if (session('success'))
-                    <div class="notice notice--success" style="margin-bottom:12px;">{{ session('success') }}</div>
+                    <div class="notice notice--success js-autoHideAlert" data-hide-ms="3000" style="margin-bottom:12px;">{{ session('success') }}</div>
                 @endif
                 @if ($errors->any())
                     <div class="notice notice--danger" style="margin-bottom:12px;">

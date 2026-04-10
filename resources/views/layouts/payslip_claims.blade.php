@@ -32,7 +32,7 @@
         </div>
 
         @if (session('success'))
-            <div class="card" style="margin-bottom: 12px; border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.06);">
+            <div class="card js-autoHideAlert" data-hide-ms="3000" style="margin-bottom: 12px; border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.06);">
                 <div style="font-weight: 900; color: #166534;">{{ session('success') }}</div>
             </div>
         @endif
@@ -164,6 +164,7 @@
                                 <th>Uploaded At</th>
                                 <th>File</th>
                                 <th>Processed</th>
+                                <th>Result</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -173,6 +174,27 @@
                                     <td>{{ $p->created_at?->format('Y-m-d H:i') }}</td>
                                     <td>{{ $p->original_name }}</td>
                                     <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : 'â€”' }}</td>
+                                    <td>
+                                        @php($ps = is_array($p->processed_summary ?? null) ? $p->processed_summary : [])
+                                        @if (!empty($ps))
+                                            <div class="small">
+                                                rows: {{ (int) ($ps['rows_scanned'] ?? 0) }},
+                                                detected: {{ (int) ($ps['claimed_detected'] ?? 0) }},
+                                                new: {{ (int) ($ps['claimed_new'] ?? 0) }}
+                                            </div>
+                                            @if (!empty($ps['checkbox_cutoff']))
+                                                <div class="small muted">cutoff: {{ $ps['checkbox_cutoff'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['geo']['layout_used']))
+                                                <div class="small muted">layout: {{ $ps['geo']['layout_used'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['error']))
+                                                <div class="small" style="color:#b91c1c; font-weight:700;">{{ $ps['error'] }}</div>
+                                            @endif
+                                        @else
+                                            <span class="muted">No summary yet.</span>
+                                        @endif
+                                    </td>
                                     <td>
                                         <div class="iconrow">
                                             <a class="iconbtn" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}" title="Download" aria-label="Download">
@@ -205,7 +227,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="muted">No proof uploads yet.</td>
+                                    <td colspan="5" class="muted">No proof uploads yet.</td>
                                 </tr>
                             @endforelse
                         </tbody>

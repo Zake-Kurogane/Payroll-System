@@ -118,7 +118,7 @@
                                 </div>
                             @endif
                             @if (session('success'))
-                                <div class="hint" style="display:block; color:#0f766e; font-weight:900;">
+                                <div class="hint js-autoHideAlert" data-hide-ms="3000" style="display:block; color:#0f766e; font-weight:900;">
                                     {{ session('success') }}
                                 </div>
                             @endif

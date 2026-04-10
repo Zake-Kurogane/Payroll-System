@@ -49,7 +49,7 @@ class ClaimSheetScanner
 
     private function scanImage($img, int $expectedRows, array $rowTokens): array
     {
-        // ── 1. Scale to a comfortable working width ───────────────────────────
+        // 1) Scale to a comfortable working width.
         $w = imagesx($img);
         $h = imagesy($img);
         if ($w > 1500) {
@@ -59,14 +59,14 @@ class ClaimSheetScanner
             $h     = imagesy($img);
         }
 
-        // ── 2. Grayscale copy for density scanning ────────────────────────────
+        // 2) Grayscale copy for density scanning.
         $gray = imagecreatetruecolor($w, $h);
         imagecopy($gray, $img, 0, 0, 0, 0, $w, $h);
         imagefilter($gray, IMG_FILTER_GRAYSCALE);
 
         $step = 2;
 
-        // ── 3. Detect horizontal table borders (full-width density) ───────────
+        // 3) Detect horizontal table borders (full-width density).
         $rowDens = [];
         for ($y = 0; $y < $h; $y++) {
             $black = 0; $total = 0;
@@ -79,21 +79,21 @@ class ClaimSheetScanner
 
         $hLines = $this->pickDenseLines($rowDens, 0.50, 6);
         $hLines = array_values(array_filter($hLines, fn ($y) => $y > $h * 0.04 && $y < $h * 0.97));
-        if (\count($hLines) < 2) {
+        if (count($hLines) < 2) {
             $hLines = $this->pickDenseLines($rowDens, 0.30, 6);
             $hLines = array_values(array_filter($hLines, fn ($y) => $y > $h * 0.04 && $y < $h * 0.97));
         }
-        if (\count($hLines) < 2) {
+        if (count($hLines) < 2) {
             return $this->fallbackResult($expectedRows, $rowTokens, 'no_hlines', $gray, $w, $h);
         }
 
         $tableTop    = $hLines[0];
-        $tableBottom = $hLines[\count($hLines) - 1];
+        $tableBottom = $hLines[count($hLines) - 1];
         if ($tableBottom - $tableTop < $h * 0.05) {
             return $this->fallbackResult($expectedRows, $rowTokens, 'table_too_small', $gray, $w, $h);
         }
 
-        // ── 4. Detect vertical table borders ─────────────────────────────────
+        // 4) Detect vertical table borders.
         $colDens = [];
         for ($x = 0; $x < $w; $x++) {
             $black = 0; $total = 0;
@@ -105,7 +105,7 @@ class ClaimSheetScanner
         }
 
         $vLines = $this->pickDenseLines($colDens, 0.50, 6);
-        if (\count($vLines) < 2) $vLines = $this->pickDenseLines($colDens, 0.30, 6);
+        if (count($vLines) < 2) $vLines = $this->pickDenseLines($colDens, 0.30, 6);
 
         $leftCandidates  = array_filter($vLines, fn ($x) => $x < $w * 0.20);
         $rightCandidates = array_filter($vLines, fn ($x) => $x > $w * 0.80);
@@ -118,28 +118,11 @@ class ClaimSheetScanner
         $tableW     = max(1, $tableRight - $tableLeft);
         $tableH     = max(1, $tableBottom - $tableTop);
 
-        // ── 5. Find the header/data separator ────────────────────────────────
+        // 5) Find header/data separator.
         $approxRowH   = $tableH / max(1, $expectedRows + 1);
         $headerBottom = $this->findHeaderSeparator($rowDens, $tableTop, $approxRowH, $tableBottom);
 
-        // ── 6. Column positions from the new CSS layout ───────────────────────
-        // Sheet columns (% of table width):
-        //   #(5%) | EmpID(10%) | Name(26%) | Area(15%) | QR(12%) | Sig(22%) | □(7%) | Date(3%)
-        // Cumulative left edges:
-        //   QR  : 56 % → 68 %
-        //   Sig : 68 % → 90 %
-        //   Rec : 90 % → 97 %
-        $qrX1  = $tableLeft + (int) round($tableW * 0.57);
-        $qrX2  = $tableLeft + (int) round($tableW * 0.68);
-        $sigX1 = $tableLeft + (int) round($tableW * 0.69);
-        $sigX2 = $tableLeft + (int) round($tableW * 0.89);
-        $recX1 = $tableLeft + (int) round($tableW * 0.91);
-        $recX2 = $tableLeft + (int) round($tableW * 0.96);
-
-        // ── 7. Row walker — find each separator independently ─────────────────
-        // Recompute density restricted to the table's horizontal span so that
-        // row separator lines (only ~70–80 % of the full image width) appear
-        // at full strength instead of being diluted by the margins.
+        // 6) Row boundaries.
         $tableRowDens = [];
         for ($y = $tableTop; $y <= $tableBottom; $y++) {
             $black = 0; $total = 0;
@@ -156,7 +139,7 @@ class ClaimSheetScanner
             $expectedY   = (int) ($headerBottom + $r * $approxDataH);
             $searchRange = (int) ($approxDataH * 0.30);
             $searchStart = max($headerBottom + 1, $expectedY - $searchRange);
-            $searchEnd   = min($tableBottom   - 1, $expectedY + $searchRange);
+            $searchEnd   = min($tableBottom - 1, $expectedY + $searchRange);
             $bestY = $expectedY;
             $bestD = -1.0;
             for ($sy = $searchStart; $sy <= $searchEnd; $sy++) {
@@ -169,90 +152,157 @@ class ClaimSheetScanner
         }
         $boundaries[] = $tableBottom;
 
-        // ── 8. Per-row scan ───────────────────────────────────────────────────
-        $rows         = [];
-        $dbgRec       = [];
-        $dbgSig       = [];
-        $dbgQr        = [];
-        $canReadQr    = !empty($rowTokens) && class_exists(\Zxing\QrReader::class);
-        $sigPadX      = (int) max(2, round(($sigX2 - $sigX1) * 0.03));
+        // 7) Per-row scan: auto-try both layouts (with/without # column).
+        $layouts = [
+            ['name' => 'no_no_col',          'qr1' => 0.52,  'qr2' => 0.64,  'sig1' => 0.64,  'sig2' => 0.93,  'rec1' => 0.94,  'rec2' => 0.99],
+            ['name' => 'no_no_col_left',     'qr1' => 0.505, 'qr2' => 0.625, 'sig1' => 0.625, 'sig2' => 0.915, 'rec1' => 0.925, 'rec2' => 0.985],
+            ['name' => 'no_no_col_right',    'qr1' => 0.535, 'qr2' => 0.655, 'sig1' => 0.655, 'sig2' => 0.945, 'rec1' => 0.955, 'rec2' => 0.995],
+            ['name' => 'with_no_col',        'qr1' => 0.57,  'qr2' => 0.69,  'sig1' => 0.69,  'sig2' => 0.93,  'rec1' => 0.94,  'rec2' => 0.99],
+            ['name' => 'with_no_col_left',   'qr1' => 0.555, 'qr2' => 0.675, 'sig1' => 0.675, 'sig2' => 0.915, 'rec1' => 0.925, 'rec2' => 0.985],
+            ['name' => 'with_no_col_right',  'qr1' => 0.585, 'qr2' => 0.705, 'sig1' => 0.705, 'sig2' => 0.945, 'rec1' => 0.955, 'rec2' => 0.995],
+        ];
 
-        for ($i = 0; $i < $expectedRows; $i++) {
-            $cellH   = $boundaries[$i + 1] - $boundaries[$i];
-            $padY    = max(2, (int) ($cellH * 0.12));
-            $y1      = $boundaries[$i]     + $padY;
-            $y2      = $boundaries[$i + 1] - $padY;
-            $expTok  = $rowTokens[$i] ?? null;
+        $canReadQr = !empty($rowTokens) && class_exists(\Zxing\QrReader::class);
+        $bestRows = [];
+        $bestScore = -INF;
+        $bestCutoff = 0.15;
+        $bestDbgRec = [];
+        $bestDbgSig = [];
+        $bestDbgQr = [];
+        $bestLayout = 'no_no_col';
+        $bestRecX1 = 0;
+        $bestRecX2 = 0;
+        $bestQrX1 = 0;
+        $bestQrX2 = 0;
 
-            if ($y2 <= $y1) {
-                $rows[]  = $this->makeRow(false, 0.0, 0.0, null, $expTok, 'invalid_row');
-                $dbgRec[] = 0; $dbgSig[] = 0; $dbgQr[] = 0;
-                continue;
+        foreach ($layouts as $layout) {
+            $qrX1  = $tableLeft + (int) round($tableW * $layout['qr1']);
+            $qrX2  = $tableLeft + (int) round($tableW * $layout['qr2']);
+            $sigX1 = $tableLeft + (int) round($tableW * $layout['sig1']);
+            $sigX2 = $tableLeft + (int) round($tableW * $layout['sig2']);
+            $recX1 = $tableLeft + (int) round($tableW * $layout['rec1']);
+            $recX2 = $tableLeft + (int) round($tableW * $layout['rec2']);
+            $sigPadX = (int) max(2, round(($sigX2 - $sigX1) * 0.03));
+
+            $rows = [];
+            $rowMetrics = [];
+            $dbgRec = [];
+            $dbgSig = [];
+            $dbgQr = [];
+            $qrCount = 0;
+            $tokenMatchCount = 0;
+            $recSum = 0.0;
+            $recMax = 0.0;
+
+            for ($i = 0; $i < $expectedRows; $i++) {
+                $cellH   = $boundaries[$i + 1] - $boundaries[$i];
+                $padY    = max(2, (int) ($cellH * 0.12));
+                $y1      = $boundaries[$i] + $padY;
+                $y2      = $boundaries[$i + 1] - $padY;
+                $expTok  = $rowTokens[$i] ?? null;
+
+                if ($y2 <= $y1) {
+                    $rowMetrics[] = [
+                        'force' => 'invalid_row',
+                        'recInk' => 0.0,
+                        'sigInk' => 0.0,
+                        'tokenFound' => null,
+                        'expectedToken' => $expTok,
+                    ];
+                    $dbgRec[] = 0;
+                    $dbgSig[] = 0;
+                    $dbgQr[] = 0;
+                    continue;
+                }
+
+                $tokenFound = null;
+                if ($canReadQr) {
+                    // Use the full cell bounds (just 2px border margin) for QR reading.
+                    // The 12% content-padding used for ink ratios clips the QR image —
+                    // the printed QR is ~14mm tall in a ~17mm row, so it gets cut off.
+                    $qrY1 = $boundaries[$i] + 2;
+                    $qrY2 = $boundaries[$i + 1] - 2;
+                    $tokenFound = $this->readQr($img, $qrX1, $qrY1, $qrX2, $qrY2);
+                }
+
+                ['strict' => $recInk] = $this->receivedInkRatios($gray, $recX1, $y1, $recX2, $y2);
+                $sigInk = $sigX2 > $sigX1 + 10
+                    ? $this->inkRatio($gray, $sigX1 + $sigPadX, $y1, $sigX2 - $sigPadX, $y2, 140)
+                    : 0.0;
+
+                $rowMetrics[] = [
+                    'force' => '',
+                    'recInk' => $recInk,
+                    'sigInk' => $sigInk,
+                    'tokenFound' => $tokenFound,
+                    'expectedToken' => $expTok,
+                ];
+                $dbgRec[] = round($recInk, 4);
+                $dbgSig[] = round($sigInk, 4);
+                $dbgQr[]  = $tokenFound !== null ? 1 : 0;
             }
 
-            // Try to read QR from the QR column area of this row.
-            $tokenFound = null;
-            if ($canReadQr) {
-                $tokenFound = $this->readQr($img, $qrX1, $y1, $qrX2, $y2);
+            $pageCutoff = $this->calibrateCheckboxCutoff(array_map(
+                fn ($m) => (float) ($m['recInk'] ?? 0.0),
+                array_filter($rowMetrics, fn ($m) => ($m['force'] ?? '') === '')
+            ));
+
+            foreach ($rowMetrics as $m) {
+                $force = (string) ($m['force'] ?? '');
+                $recInk = (float) ($m['recInk'] ?? 0.0);
+                $sigInk = (float) ($m['sigInk'] ?? 0.0);
+                $tokenFound = $m['tokenFound'] ?? null;
+                $expectedToken = $m['expectedToken'] ?? null;
+                $hasCheckedBox = $recInk >= $pageCutoff;
+                $rows[] = $this->makeRow($hasCheckedBox, $recInk, $sigInk, $tokenFound, $expectedToken, $force);
+
+                if ($tokenFound !== null) $qrCount++;
+                if ($tokenFound !== null && $expectedToken !== null && $tokenFound === $expectedToken) $tokenMatchCount++;
+                $recSum += $recInk;
+                $recMax = max($recMax, $recInk);
             }
 
-            // Checkbox ink: strict threshold < 140 (phone shadows stay > 160).
-            ['strict' => $recInk] = $this->receivedInkRatios($gray, $recX1, $y1, $recX2, $y2);
-
-            // Signature ink: inset to skip column border lines.
-            $sigInk = $sigX2 > $sigX1 + 10
-                ? $this->inkRatio($gray, $sigX1 + $sigPadX, $y1, $sigX2 - $sigPadX, $y2, 140)
-                : 0.0;
-
-            // Require meaningful ink — phone-photo shadows/texture stay well below these.
-            // recInk: checkbox must be ≥15 % filled (genuine shade).
-            // sigInk: signature must cover ≥5 % of the column (a real pen stroke).
-            $hasInk = $recInk > 0.15 || $sigInk > 0.05;
-
-            $rows[]   = $this->makeRow($hasInk, $recInk, $sigInk, $tokenFound, $expTok);
-            $dbgRec[] = round($recInk,  4);
-            $dbgSig[] = round($sigInk,  4);
-            $dbgQr[]  = $tokenFound !== null ? 1 : 0;
+            // Strongly prefer true token matches to avoid wrong-row detections.
+            $score = ($tokenMatchCount * 6.0) + ($qrCount * 1.5) + $recSum + ($recMax * 2.0);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestRows = $rows;
+                $bestCutoff = $pageCutoff;
+                $bestDbgRec = $dbgRec;
+                $bestDbgSig = $dbgSig;
+                $bestDbgQr = $dbgQr;
+                $bestLayout = (string) $layout['name'];
+                $bestRecX1 = $recX1;
+                $bestRecX2 = $recX2;
+                $bestQrX1 = $qrX1;
+                $bestQrX2 = $qrX2;
+            }
         }
 
         $debug = [
-            'img_w'          => $w,
-            'img_h'          => $h,
-            'table_left'     => $tableLeft,
-            'table_right'    => $tableRight,
-            'table_top'      => $tableTop,
-            'table_bottom'   => $tableBottom,
-            'header_bottom'  => $headerBottom,
-            'rec_x1'         => $recX1,
-            'rec_x2'         => $recX2,
-            'qr_x1'          => $qrX1,
-            'qr_x2'          => $qrX2,
-            'row_h'          => round($approxDataH, 1),
-            'row_ink_strict' => implode(',', $dbgRec),
-            'row_sig_ink'    => implode(',', $dbgSig),
-            'row_qr_found'   => implode(',', $dbgQr),
+            'img_w'           => $w,
+            'img_h'           => $h,
+            'table_left'      => $tableLeft,
+            'table_right'     => $tableRight,
+            'table_top'       => $tableTop,
+            'table_bottom'    => $tableBottom,
+            'header_bottom'   => $headerBottom,
+            'layout_used'     => $bestLayout,
+            'rec_x1'          => $bestRecX1,
+            'rec_x2'          => $bestRecX2,
+            'qr_x1'           => $bestQrX1,
+            'qr_x2'           => $bestQrX2,
+            'row_h'           => round($approxDataH, 1),
+            'checkbox_cutoff' => round($bestCutoff, 4),
+            'row_ink_strict'  => implode(',', $bestDbgRec),
+            'row_sig_ink'     => implode(',', $bestDbgSig),
+            'row_qr_found'    => implode(',', $bestDbgQr),
         ];
 
-        return ['rows' => $rows, 'debug' => $debug];
+        return ['rows' => $bestRows, 'debug' => $debug];
     }
-
-    // ── Row classification ────────────────────────────────────────────────────
-
-    /**
-     * Build a per-row result array with status + confidence.
-     *
-     * Decision table:
-     *   QR match  + ink  → confirmed    (0.95) — definitive via QR + ink
-     *   QR match  + none → unclaimed    (0.92) — definitively empty row
-     *   QR mismatch      → needs_review (0.50) — row alignment problem; human must check
-     *   No QR     + ink  → confirmed    (0.65) — ink-based; QR just unreadable in photo
-     *   No QR     + none → unclaimed    (0.60) — nothing detected
-     *
-     * needs_review is reserved for genuine QR mismatches (wrong-row attribution).
-     * Unreadable QR is normal for phone photos and falls back to ink detection.
-     */
-    private function makeRow(
-        bool    $hasInk,
+private function makeRow(
+        bool    $hasCheckedBox,
         float   $recInk,
         float   $sigInk,
         ?string $tokenFound,
@@ -272,18 +322,27 @@ class ClaimSheetScanner
         $qrOk       = $tokenFound !== null;
         $tokenMatch = $qrOk && $expectedToken !== null && $tokenFound === $expectedToken;
 
-        if ($tokenMatch && $hasInk) {
-            [$status, $conf] = ['confirmed',    0.95];
+        // QR is the only reliable confirmation signal.
+        // Checkbox ink alone is not trustworthy: the 4 mm box is easily
+        // contaminated by signature bleed, scan noise, or border artifacts.
+        if ($tokenMatch && $hasCheckedBox) {
+            // QR matches this employee AND checkbox is shaded — confirmed.
+            [$status, $conf] = ['confirmed',    0.98];
         } elseif ($tokenMatch) {
-            [$status, $conf] = ['unclaimed',    0.92];
+            // QR matches but no checkbox ink — employee present but not shaded.
+            [$status, $conf] = ['unclaimed',    0.95];
+        } elseif ($qrOk && $hasCheckedBox) {
+            // QR decoded but token doesn't match expected row — possible mis-sort or
+            // wrong page assigned; flag for manual review.
+            [$status, $conf] = ['needs_review', 0.70];
         } elseif ($qrOk) {
-            // QR was read but doesn't match the expected row — genuine misalignment.
-            [$status, $conf] = ['needs_review', 0.50];
-        } elseif ($hasInk) {
-            // QR unreadable (normal for phone photos) — trust the ink detection.
-            [$status, $conf] = ['confirmed',    0.65];
-        } else {
-            // No QR, no ink — unclaimed.
+            // QR decoded, no token match, no checkbox — unclaimed.
+            [$status, $conf] = ['unclaimed',    0.80];
+        } elseif ($hasCheckedBox) {
+        } elseif ($hasCheckedBox) {
+            // No QR at all - skip to avoid wrong-employee tagging.
+            [$status, $conf] = ['unclaimed',    0.60];
+            // No QR, no checkbox ink — unclaimed.
             [$status, $conf] = ['unclaimed',    0.60];
         }
 
@@ -317,24 +376,49 @@ class ClaimSheetScanner
             $cropW = $x2 - $x1;
             $cropH = $y2 - $y1;
 
-            // Upscale so the smallest dimension is at least 120 px — gives the
-            // QR decoder enough pixels to locate finder patterns reliably.
-            $scale = max(1.0, 120.0 / min($cropW, $cropH));
+            // Upscale so the smallest dimension is at least 300 px — the QR
+            // version used by claim tokens needs ~255 px minimum in each dimension
+            // for ZXing to reliably locate the three finder patterns.
+            // Cap at 500 px wide to keep ZXing fast (pure PHP is slow on large images).
+            $scale = max(1.0, 300.0 / min($cropW, $cropH));
+            $scale = min($scale, 500.0 / max(1, $cropW));
+            $scale = max($scale, 1.0);
             $destW = (int) round($cropW * $scale);
             $destH = (int) round($cropH * $scale);
 
-            $crop  = imagecreatetruecolor($destW, $destH);
+            $crop = imagecreatetruecolor($destW, $destH);
             imagefill($crop, 0, 0, imagecolorallocate($crop, 255, 255, 255));
             imagecopyresampled($crop, $img, 0, 0, $x1, $y1, $destW, $destH, $cropW, $cropH);
 
+            $decoded = $this->decodeQrFromGd($crop);
+            if ($decoded !== null) {
+                imagedestroy($crop);
+                return $decoded;
+            }
+
+            // Retry with sharpening — helps with blurry phone photos or
+            // soft JPEG artifacts that confuse ZXing's finder pattern detection.
+            imagefilter($crop, \IMG_FILTER_SHARPEN);
+            imagefilter($crop, \IMG_FILTER_CONTRAST, -15);
+            $decoded = $this->decodeQrFromGd($crop);
+            imagedestroy($crop);
+            return $decoded;
+
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function decodeQrFromGd($crop): ?string
+    {
+        try {
             ob_start();
             imagepng($crop);
             $png = ob_get_clean();
-            imagedestroy($crop);
-
-            $reader  = new \Zxing\QrReader((string) $png, \Zxing\QrReader::SOURCE_TYPE_BLOB);
+            // Pass false to disable Imagick — GD is faster for small crops and
+            // avoids the Imagick luminance source timeout on high-res images.
+            $reader  = new \Zxing\QrReader((string) $png, \Zxing\QrReader::SOURCE_TYPE_BLOB, false);
             $decoded = $reader->text();
-
             return ($decoded && \is_string($decoded) && $decoded !== '') ? strtoupper(trim($decoded)) : null;
         } catch (\Throwable) {
             return null;
@@ -350,10 +434,10 @@ class ClaimSheetScanner
     private function fallbackResult(int $expectedRows, array $rowTokens, string $reason, $gray, int $w, int $h): array
     {
         // Approximate positions from CSS layout (% of image width).
-        $recX1 = (int) round($w * 0.91);
-        $recX2 = (int) round($w * 0.96);
-        $sigX1 = (int) round($w * 0.69);
-        $sigX2 = (int) round($w * 0.89);
+        $recX1 = (int) round($w * 0.94);
+        $recX2 = (int) round($w * 0.99);
+        $sigX1 = (int) round($w * 0.64);
+        $sigX2 = (int) round($w * 0.93);
 
         $tableTop    = (int) round($h * 0.18);
         $tableBottom = (int) round($h * 0.94);
@@ -361,21 +445,35 @@ class ClaimSheetScanner
         $sigPadX     = (int) max(2, round(($sigX2 - $sigX1) * 0.03));
 
         $rows = [];
+        $rowMetrics = [];
         for ($i = 0; $i < $expectedRows; $i++) {
             $y1 = $tableTop + (int) ($i * $rowH) + 6;
             $y2 = $tableTop + (int) (($i + 1) * $rowH) - 6;
 
             ['strict' => $recInk] = $this->receivedInkRatios($gray, $recX1, $y1, $recX2, $y2);
             $sigInk  = $y2 > $y1 ? $this->inkRatio($gray, $sigX1 + $sigPadX, $y1, $sigX2 - $sigPadX, $y2, 140) : 0.0;
-            $hasInk  = $recInk > 0.15 || $sigInk > 0.05;
+            $rowMetrics[] = [
+                'recInk' => $recInk,
+                'sigInk' => $sigInk,
+                'expectedToken' => $rowTokens[$i] ?? null,
+            ];
+        }
 
-            // No QR available in fallback — everything with ink becomes needs_review.
-            $rows[] = $this->makeRow($hasInk, $recInk, $sigInk, null, $rowTokens[$i] ?? null);
+        $pageCutoff = $this->calibrateCheckboxCutoff(array_map(
+            fn ($m) => (float) ($m['recInk'] ?? 0.0),
+            $rowMetrics
+        ));
+
+        foreach ($rowMetrics as $m) {
+            $recInk = (float) ($m['recInk'] ?? 0.0);
+            $sigInk = (float) ($m['sigInk'] ?? 0.0);
+            $hasCheckedBox = $recInk >= $pageCutoff;
+            $rows[] = $this->makeRow($hasCheckedBox, $recInk, $sigInk, null, $m['expectedToken'] ?? null);
         }
 
         return [
             'rows'  => $rows,
-            'debug' => ['fallback_reason' => $reason],
+            'debug' => ['fallback_reason' => $reason, 'checkbox_cutoff' => round($pageCutoff, 4)],
         ];
     }
 
@@ -465,12 +563,82 @@ class ClaimSheetScanner
 
     private function receivedInkRatios($img, int $x1, int $y1, int $x2, int $y2): array
     {
-        $best = 0.0;
+        $bestStrict = 0.0;
+        $bestSoft = 0.0;
         foreach ([0.30, 0.45, 0.60, 0.75] as $ratio) {
             [$rx1, $ry1, $rx2, $ry2] = $this->receivedBoxInnerRect($x1, $y1, $x2, $y2, $ratio);
             if ($rx2 - $rx1 < 4 || $ry2 - $ry1 < 4) continue;
-            $best = max($best, $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 140));
+            $adaptiveThreshold = $this->adaptiveInkThreshold($img, $rx1, $ry1, $rx2, $ry2);
+            $bestStrict = max($bestStrict, $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, $adaptiveThreshold));
+            $bestSoft = max($bestSoft, $this->inkRatio($img, $rx1, $ry1, $rx2, $ry2, 140));
         }
-        return ['strict' => $best, 'soft' => $best];
+        return ['strict' => $bestStrict, 'soft' => $bestSoft];
+    }
+
+    private function adaptiveInkThreshold($img, int $x1, int $y1, int $x2, int $y2): int
+    {
+        [$mean, $std] = $this->regionLumaStats($img, $x1, $y1, $x2, $y2);
+        // Dark-ink threshold adjusted per box based on local brightness + contrast.
+        $threshold = (int) round($mean - max(10.0, $std * 0.55));
+        return max(85, min(185, $threshold));
+    }
+
+    private function regionLumaStats($img, int $x1, int $y1, int $x2, int $y2): array
+    {
+        $iw = imagesx($img); $ih = imagesy($img);
+        $x1 = max(0, min($iw - 1, $x1)); $x2 = max(0, min($iw - 1, $x2));
+        $y1 = max(0, min($ih - 1, $y1)); $y2 = max(0, min($ih - 1, $y2));
+
+        $sum = 0.0;
+        $sumSq = 0.0;
+        $count = 0;
+        for ($y = $y1; $y <= $y2; $y += 2) {
+            for ($x = $x1; $x <= $x2; $x += 2) {
+                $g = (float) (imagecolorat($img, $x, $y) & 0xFF);
+                $sum += $g;
+                $sumSq += $g * $g;
+                $count++;
+            }
+        }
+        if ($count <= 0) return [255.0, 0.0];
+        $mean = $sum / $count;
+        $variance = max(0.0, ($sumSq / $count) - ($mean * $mean));
+        return [$mean, sqrt($variance)];
+    }
+
+    private function calibrateCheckboxCutoff(array $inks): float
+    {
+        $vals = array_values(array_filter(array_map(
+            fn ($v) => is_numeric($v) ? (float) $v : null,
+            $inks
+        ), fn ($v) => $v !== null));
+
+        $default = 0.15;
+        $n = count($vals);
+        if ($n < 4) return $default;
+
+        sort($vals);
+        $c1 = $vals[0];
+        $c2 = $vals[$n - 1];
+
+        for ($iter = 0; $iter < 8; $iter++) {
+            $sum1 = 0.0; $sum2 = 0.0; $n1 = 0; $n2 = 0;
+            foreach ($vals as $v) {
+                if (abs($v - $c1) <= abs($v - $c2)) {
+                    $sum1 += $v; $n1++;
+                } else {
+                    $sum2 += $v; $n2++;
+                }
+            }
+            if ($n1 === 0 || $n2 === 0) return $default;
+            $c1 = $sum1 / $n1;
+            $c2 = $sum2 / $n2;
+        }
+
+        if (abs($c2 - $c1) < 0.04) return $default;
+
+        $cut = ($c1 + $c2) / 2.0;
+        return max(0.12, min(0.30, $cut));
     }
 }
+

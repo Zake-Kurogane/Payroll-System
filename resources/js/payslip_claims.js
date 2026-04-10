@@ -241,61 +241,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const printBtn = document.getElementById("printClaimSheetBtn");
   if (printBtn) {
+    let printFrame = null;
+    let lastObjectUrl = "";
+
+    const ensurePrintFrame = () => {
+      if (printFrame && document.body.contains(printFrame)) return printFrame;
+      printFrame = document.createElement("iframe");
+      printFrame.style.position = "fixed";
+      printFrame.style.right = "0";
+      printFrame.style.bottom = "0";
+      printFrame.style.width = "1px";
+      printFrame.style.height = "1px";
+      printFrame.style.border = "0";
+      printFrame.setAttribute("aria-hidden", "true");
+      document.body.appendChild(printFrame);
+      return printFrame;
+    };
+
     printBtn.addEventListener("click", async () => {
       const url = printBtn.getAttribute("data-url");
       if (!url) return;
-
-      const overlay = document.getElementById("claimPrintOverlay");
-      const modal = document.getElementById("claimPrintModal");
-      const frame = document.getElementById("claimPrintFrame");
-      const closeBtn = document.getElementById("claimPrintCloseBtn");
-      const modalPrintBtn = document.getElementById("claimPrintBtn");
-      const loading = document.getElementById("claimPrintLoading");
-      if (!overlay || !modal || !frame || !closeBtn || !modalPrintBtn || !loading) return;
-
-      const tryPrint = () => {
-        try {
-          frame.contentWindow?.focus?.();
-          frame.contentWindow?.print?.();
-        } catch {
-          // Best-effort; some browsers/PDF viewers block programmatic printing.
-        }
-      };
-
-      const onKeyDown = (e) => {
-        if (e.key === "Escape") close();
-      };
-
-      let objectUrl = "";
-      const close = () => {
-        overlay.hidden = true;
-        modal.hidden = true;
-        modal.setAttribute("aria-hidden", "true");
-        frame.hidden = true;
-        loading.hidden = false;
-        modalPrintBtn.disabled = true;
-        frame.onload = null;
-        frame.src = "about:blank";
-        document.removeEventListener("keydown", onKeyDown);
-        try {
-          if (objectUrl) URL.revokeObjectURL(objectUrl);
-        } catch {
-          // ignore
-        }
-        objectUrl = "";
-      };
-
-      overlay.hidden = false;
-      modal.hidden = false;
-      modal.setAttribute("aria-hidden", "false");
-      modalPrintBtn.disabled = true;
-      frame.hidden = true;
-      loading.hidden = false;
-
-      overlay.onclick = close;
-      closeBtn.onclick = close;
-      document.addEventListener("keydown", onKeyDown);
-      modalPrintBtn.onclick = tryPrint;
 
       const prevText = printBtn.textContent;
       printBtn.disabled = true;
@@ -316,20 +281,30 @@ document.addEventListener("DOMContentLoaded", () => {
           if (head !== "%PDF-") throw new Error("Not a PDF response");
           pdfBlob = new Blob([blob], { type: "application/pdf" });
         }
-        objectUrl = URL.createObjectURL(pdfBlob);
+        const objectUrl = URL.createObjectURL(pdfBlob);
+        const hiddenFrame = ensurePrintFrame();
 
-        frame.onload = () => {
-          loading.hidden = true;
-          frame.hidden = false;
-          modalPrintBtn.disabled = false;
-
-          // Attempt auto-print, but keep the visible preview so the user can print manually if blocked.
-          setTimeout(tryPrint, 350);
-          setTimeout(tryPrint, 1400);
+        hiddenFrame.onload = () => {
+          try {
+            const w = hiddenFrame.contentWindow;
+            if (w) {
+              w.focus();
+              w.print();
+            }
+          } catch {
+            // Best-effort only.
+          }
         };
-        frame.src = objectUrl;
+        hiddenFrame.src = objectUrl;
+
+        // Never clean up while print dialog is open; revoke only previous blob URL.
+        if (lastObjectUrl) {
+          window.setTimeout(() => {
+            try { URL.revokeObjectURL(lastObjectUrl); } catch {}
+          }, 120000);
+        }
+        lastObjectUrl = objectUrl;
       } catch (err) {
-        close();
         alert("Unable to print the claim sheet. Please try again.");
       } finally {
         printBtn.disabled = false;

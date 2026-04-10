@@ -54,19 +54,16 @@
             font-size: 9px;
         }
 
-        /* Column widths — must match ClaimSheetScanner column % positions:
-           QR  57–68 %  (start = 5+10+26+16 = 57 %)
-           Sig 68–90 %
-           □   90–97 %
-           Date 97-100% */
-        .col-no   { width: 5%;  text-align: center; }
+        /* Column widths - must match ClaimSheetScanner column % positions:
+           QR  52-64 %  (start = 10+26+16 = 52 %)
+           Sig 64-93 %
+           Rec 93-100 % */
         .col-emp  { width: 10%; }
         .col-name { width: 26%; }
         .col-area { width: 16%; }
         .col-qr   { width: 12%; text-align: center; padding: 2px; }
-        .col-sign { width: 22%; }
+        .col-sign { width: 29%; }
         .col-rec  { width: 7%;  text-align: center; font-size: 9px; padding: 2px; }
-        .col-date { width: 2%;  font-size: 8px; padding: 2px; }
 
         tbody td  { height: 17mm; }
 
@@ -138,20 +135,17 @@
         <table>
             <thead>
                 <tr>
-                    <th class="col-no">#</th>
                     <th class="col-emp">Emp ID</th>
                     <th class="col-name">Name</th>
                     <th class="col-area">Area</th>
                     <th class="col-qr">QR</th>
-                    <th class="col-sign">Signature</th>
+                    <th class="col-sign">Signature / Date</th>
                     <th class="col-rec">&#9744; Rec.</th>
-                    <th class="col-date">Date</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($rows as $r)
                     <tr>
-                        <td class="col-no">{{ $r['no'] ?? '' }}</td>
                         <td class="col-emp">{{ $r['emp_no'] }}</td>
                         <td class="col-name">{{ $r['name'] }}</td>
                         <td class="col-area">{{ $r['area_place'] ?: '-' }}</td>
@@ -165,7 +159,6 @@
                         <td class="col-rec">
                             <div class="receivedBox"></div>
                         </td>
-                        <td class="col-date">&nbsp;</td>
                     </tr>
                 @endforeach
             </tbody>

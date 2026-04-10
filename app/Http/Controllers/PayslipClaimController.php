@@ -44,8 +44,7 @@ class PayslipClaimController extends Controller
             $selectedRun = $runs->first();
         }
 
-        // Same behavior as Reports: if current filters yield no run,
-        // fall back to the latest released run and sync filters to it.
+        // If no run matched the current filters, fall back to the latest released run.
         if (!$selectedRun) {
             $fallbackRuns = PayrollRun::query()
                 ->whereIn('status', ['Released'])
@@ -55,9 +54,16 @@ class PayslipClaimController extends Controller
             if ($fallbackRuns->isNotEmpty()) {
                 $selectedRun = $fallbackRuns->first();
                 $runs = $fallbackRuns;
-                $monthFilter = $selectedRun->period_month ?: $monthFilter;
-                $cutoffFilter = $selectedRun->cutoff ?: $cutoffFilter;
             }
+        }
+
+        // Always sync month/cutoff inputs from the selected run so the filter
+        // fields are never blank while a run is displayed — this matters when
+        // arriving via run_id redirect (after upload/delete) which carries no
+        // month or cutoff in the URL.
+        if ($selectedRun) {
+            $monthFilter  = $monthFilter  ?: $selectedRun->period_month;
+            $cutoffFilter = $cutoffFilter ?: $selectedRun->cutoff;
         }
 
         if ($selectedRun) {
@@ -149,6 +155,8 @@ class PayslipClaimController extends Controller
 
     public function uploadProof(Request $request, PayrollRun $run)
     {
+        $this->extendExecutionForProofScanning();
+
         if ($run->status !== 'Released') {
             return back()->withErrors(['proof' => 'Proof upload is available only for released runs.']);
         }
@@ -397,6 +405,8 @@ class PayslipClaimController extends Controller
 
     private function processUploadedProofs(PayrollRun $run, array $proofs): void
     {
+        $this->extendExecutionForProofScanning();
+
         $rowsPerPage = 25;
         $employees = $this->runEmployeesForClaimSheet($run)->values();
         $pages = $this->buildClaimSheetPages($employees, $rowsPerPage);
@@ -432,35 +442,91 @@ class PayslipClaimController extends Controller
 
             foreach ($assets as $assetIndex => $asset) {
                 $suggested = $assetIndex === 0 ? $this->inferPageIndexFromFilename($proof->original_name) : null;
-                $pageIndex = $this->nextAvailablePageIndex($pages, $usedPageIndexes, $nextPageIndex, $suggested, $i);
-                if ($pageIndex === null) {
+                $seedPageIndex = $this->nextAvailablePageIndex($pages, $usedPageIndexes, $nextPageIndex, $suggested, $i);
+                if ($seedPageIndex === null) {
                     break;
                 }
-                $usedPageIndexes[$pageIndex] = true;
-                $nextPageIndex = max($nextPageIndex, $pageIndex + 1);
-                $firstPageIndexUsed = $firstPageIndexUsed ?? $pageIndex;
-
-                $page = $pages[$pageIndex] ?? null;
-                $slice = $page ? (array) ($page['rows'] ?? []) : [];
-                $expectedRows = count($slice);
-                if ($expectedRows === 0) {
-                    continue;
-                }
-
-                $sliceFirst = $slice[0] ?? null;
-                $sliceLast = $slice[$expectedRows - 1] ?? null;
-                $sliceFirstEmpNo = $sliceFirstEmpNo ?? (string) ($sliceFirst['emp_no'] ?? '');
-                $sliceLastEmpNo = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
 
                 try {
-                    // Build per-row tokens so the scanner can verify QR codes.
-                    $rowTokens = array_map(
-                        fn ($r) => ClaimToken::generate($run->id, (int) ($r['employee_id'] ?? 0)),
-                        $slice
-                    );
+                    // Try nearby page indexes and pick the page with strongest QR token matches.
+                    $candidates = [$seedPageIndex];
+                    if ($suggested !== null && isset($pages[$suggested]) && !isset($usedPageIndexes[$suggested])) {
+                        // If filename says PAGE3, prioritize that exact page to avoid cross-page misassignment.
+                        $candidates = [$suggested];
+                    } else {
+                        foreach ([-1, 1, -2, 2] as $off) {
+                            $cand = $seedPageIndex + $off;
+                            if ($cand >= 0 && isset($pages[$cand]) && !isset($usedPageIndexes[$cand])) {
+                                $candidates[] = $cand;
+                            }
+                        }
+                    }
+                    $candidates = array_values(array_unique($candidates));
 
-                    $scan = $scanner->scanImageFile($asset['path'], $expectedRows, $rowTokens);
-                    $scanDebug = $scanner->getLastDebug();
+                    $best = null;
+                    foreach ($candidates as $candPageIndex) {
+                        $page = $pages[$candPageIndex] ?? null;
+                        $candSlice = $page ? (array) ($page['rows'] ?? []) : [];
+                        $candExpectedRows = count($candSlice);
+                        if ($candExpectedRows === 0) continue;
+
+                        $rowTokens = array_map(
+                            fn ($r) => ClaimToken::generate($run->id, (int) ($r['employee_id'] ?? 0)),
+                            $candSlice
+                        );
+                        $candScan = $scanner->scanImageFile($asset['path'], $candExpectedRows, $rowTokens);
+                        $candDebug = $scanner->getLastDebug();
+
+                        $matchCount = 0;
+                        $qrFoundCount = 0;
+                        $confirmedCount = 0;
+                        $rows = min($candExpectedRows, count($candScan));
+                        for ($m = 0; $m < $rows; $m++) {
+                            if (!empty($candScan[$m]['token_match'])) $matchCount++;
+                            if (!empty($candScan[$m]['qr_found'])) $qrFoundCount++;
+                            if (($candScan[$m]['status'] ?? '') === 'confirmed') $confirmedCount++;
+                        }
+                        $score = ($matchCount * 10) + ($qrFoundCount * 2) + $confirmedCount;
+
+                        if (!$best || $score > $best['score']) {
+                            $best = [
+                                'score' => $score,
+                                'matchCount' => $matchCount,
+                                'qrFoundCount' => $qrFoundCount,
+                                'pageIndex' => $candPageIndex,
+                                'slice' => $candSlice,
+                                'expectedRows' => $candExpectedRows,
+                                'scan' => $candScan,
+                                'scanDebug' => $candDebug,
+                            ];
+                        }
+                    }
+
+                    if (!$best) {
+                        continue;
+                    }
+
+                    $pageIndex = (int) $best['pageIndex'];
+                    $slice = (array) $best['slice'];
+                    $expectedRows = (int) $best['expectedRows'];
+                    $scan = (array) $best['scan'];
+                    $scanDebug = (array) ($best['scanDebug'] ?? []);
+                    $bestMatchCount = (int) ($best['matchCount'] ?? 0);
+                    // Only trust a page when at least one QR token actually matches.
+                    $pageTrusted = $bestMatchCount > 0;
+                    if (!$pageTrusted && !$error) {
+                        $error = 'Skipped auto-assignment for this page because no QR token matched the expected page rows.';
+                    }
+
+                    $usedPageIndexes[$pageIndex] = true;
+                    $nextPageIndex = max($nextPageIndex, $pageIndex + 1);
+                    $firstPageIndexUsed = $firstPageIndexUsed ?? $pageIndex;
+
+                    $sliceFirst = $slice[0] ?? null;
+                    $sliceLast = $slice[$expectedRows - 1] ?? null;
+                    $sliceFirstEmpNo = $sliceFirstEmpNo ?? (string) ($sliceFirst['emp_no'] ?? '');
+                    $sliceLastEmpNo = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
+
                     $rowsScanned = min($expectedRows, count($scan));
                     $rowsScannedTotal += $rowsScanned;
                     $pagesProcessed++;
@@ -489,6 +555,7 @@ class PayslipClaimController extends Controller
                         $slice,
                         $scan,
                         $existing,
+                        $pageTrusted,
                         $rowsScanned,
                         &$claimedNewTotal,
                         &$claimedDetectedTotal
@@ -504,6 +571,11 @@ class PayslipClaimController extends Controller
                             $status     = (string) ($res['status'] ?? 'unclaimed');
                             $confidence = (float)  ($res['confidence'] ?? 0.0);
                             $already    = $existing->get($empId);
+
+                            // Hard guard against wrong-employee tagging when page-to-row mapping is uncertain.
+                            if (!$pageTrusted && $status !== 'unclaimed') {
+                                continue;
+                            }
 
                             if ($status === 'confirmed') {
                                 $claimedDetectedTotal++;
@@ -586,12 +658,34 @@ class PayslipClaimController extends Controller
             ]];
         }
 
-        if (!class_exists(\Imagick::class)) {
-            throw new \RuntimeException('PDF uploaded, but Imagick is not installed on the server. Install php-imagick to enable PDF claim scanning.');
+        $imagickExtLoaded = extension_loaded('imagick');
+        $imagickClassOk = class_exists(\Imagick::class);
+        if (!$imagickExtLoaded && !$imagickClassOk) {
+            throw new \RuntimeException(
+                'PDF uploaded, but Imagick is not installed on the server. '
+                . 'Install php-imagick to enable PDF claim scanning. '
+                . '[sapi=' . php_sapi_name()
+                . ', ini=' . (php_ini_loaded_file() ?: 'none')
+                . ', ext=' . ($imagickExtLoaded ? '1' : '0')
+                . ', class=' . ($imagickClassOk ? '1' : '0') . ']'
+            );
         }
 
-        $imagick = new \Imagick();
-        $imagick->setResolution(300, 300);
+        try {
+            $imagick = new \Imagick();
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                'Imagick is available but failed to initialize for PDF scanning: '
+                . $e->getMessage()
+                . ' [sapi=' . php_sapi_name()
+                . ', ini=' . (php_ini_loaded_file() ?: 'none')
+                . ', ext=' . ($imagickExtLoaded ? '1' : '0')
+                . ', class=' . ($imagickClassOk ? '1' : '0') . ']'
+            );
+        }
+        // 300 DPI is expensive for large scans and often causes request timeouts.
+        // 220 DPI keeps checkbox/QR detection quality while staying much faster.
+        $imagick->setResolution(220, 220);
         $imagick->readImage($fullPath);
 
         $assets = [];
@@ -650,6 +744,15 @@ class PayslipClaimController extends Controller
         }
 
         return null;
+    }
+
+    private function extendExecutionForProofScanning(): void
+    {
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '1024M');
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
     }
 
     private function normalizePeriodMonth(?string $value): ?string

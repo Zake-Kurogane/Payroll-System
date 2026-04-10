@@ -38,11 +38,12 @@ Route::middleware('auth')->group(function () {
 
         // Payslip claims (Admin + HR)
         Route::get('/payslip-claims', [PayslipClaimController::class, 'page'])->name('payslip.claims');
-        Route::get('/payslip-claims/{run}/claim-sheet', [PayslipClaimController::class, 'downloadClaimSheet'])->name('payslip.claims.sheet');
-        Route::post('/payslip-claims/{run}/proofs', [PayslipClaimController::class, 'uploadProof'])->name('payslip.claims.proofs.upload');
-        Route::get('/payslip-claims/proofs/{proof}/download', [PayslipClaimController::class, 'downloadProof'])->name('payslip.claims.proofs.download');
-        Route::delete('/payslip-claims/proofs/{proof}', [PayslipClaimController::class, 'destroyProof'])->name('payslip.claims.proofs.destroy');
-        Route::post('/payslip-claims/{run}/employees/{employeeId}/toggle', [PayslipClaimController::class, 'toggleClaim'])->name('payslip.claims.toggle');
+        Route::get('/payslip-claims/{run}/claim-sheet', [PayslipClaimController::class, 'downloadClaimSheet'])->name('payslip.claims.sheet')->whereNumber('run');
+        Route::post('/payslip-claims/{run}/proofs', [PayslipClaimController::class, 'uploadProof'])->name('payslip.claims.proofs.upload')->whereNumber('run');
+        Route::get('/payslip-claims/{run}/proofs', fn ($run) => redirect()->route('payslip.claims', ['run_id' => $run]))->whereNumber('run');
+        Route::get('/payslip-claims/proofs/{proof}/download', [PayslipClaimController::class, 'downloadProof'])->name('payslip.claims.proofs.download')->whereNumber('proof');
+        Route::delete('/payslip-claims/proofs/{proof}', [PayslipClaimController::class, 'destroyProof'])->name('payslip.claims.proofs.destroy')->whereNumber('proof');
+        Route::post('/payslip-claims/{run}/employees/{employeeId}/toggle', [PayslipClaimController::class, 'toggleClaim'])->name('payslip.claims.toggle')->whereNumber(['run', 'employeeId']);
 
         // Employee data endpoints used by pages
         Route::get('/employees', [EmployeeController::class, 'index'])->name('employees.index');
