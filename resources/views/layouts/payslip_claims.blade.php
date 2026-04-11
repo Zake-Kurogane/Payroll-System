@@ -188,6 +188,18 @@
                                             @if (!empty($ps['geo']['layout_used']))
                                                 <div class="small muted">layout: {{ $ps['geo']['layout_used'] }}</div>
                                             @endif
+                                            @if (!empty($ps['geo']['fallback_reason']))
+                                                <div class="small muted">fallback: {{ $ps['geo']['fallback_reason'] }}</div>
+                                            @endif
+                                            @if (isset($ps['geo']['row_qr_found']) && $ps['geo']['row_qr_found'] !== '')
+                                                <div class="small muted">qr/row: {{ $ps['geo']['row_qr_found'] }}</div>
+                                            @endif
+                                            @if (isset($ps['geo']['probe_page_index']))
+                                                <div class="small muted">probe→pg: {{ $ps['geo']['probe_page_index'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['geo']['first_mismatch']))
+                                                <div class="small" style="color:#b45309;">{{ $ps['geo']['first_mismatch'] }}</div>
+                                            @endif
                                             @if (!empty($ps['error']))
                                                 <div class="small" style="color:#b91c1c; font-weight:700;">{{ $ps['error'] }}</div>
                                             @endif

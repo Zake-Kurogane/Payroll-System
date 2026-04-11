@@ -409,10 +409,23 @@ class PayslipClaimController extends Controller
 
         $rowsPerPage = 25;
         $employees = $this->runEmployeesForClaimSheet($run)->values();
-        $pages = $this->buildClaimSheetPages($employees, $rowsPerPage);
+        // Important: include run id so expected per-row QR tokens are generated.
+        // Without this, expected tokens are empty and token_match is always false.
+        $pages = $this->buildClaimSheetPages($employees, $rowsPerPage, (int) $run->id);
         $scanner = new ClaimSheetScanner();
         $usedPageIndexes = [];
         $nextPageIndex = 0;
+
+        // Build a flat token→page-index lookup so a quick QR probe can identify
+        // the correct employee slice even when the filename page number doesn't
+        // align with the all-employee page index (e.g. after a filtered download).
+        $tokenPageMap = [];
+        foreach ($pages as $pageIdx => $page) {
+            foreach (($page['rows'] ?? []) as $row) {
+                $t = (string) ($row['token'] ?? '');
+                if ($t !== '') $tokenPageMap[$t] = $pageIdx;
+            }
+        }
 
         foreach (array_values($proofs) as $i => $proof) {
             $claimedNewTotal = 0;
@@ -428,6 +441,9 @@ class PayslipClaimController extends Controller
             $firstPageIndexUsed = null;
             $sliceFirstEmpNo = null;
             $sliceLastEmpNo = null;
+            $qrFoundTotal = 0;
+            $tokenMatchTotal = 0;
+            $tokenInPageTotal = 0;
 
             $assets = [];
             try {
@@ -448,20 +464,35 @@ class PayslipClaimController extends Controller
                 }
 
                 try {
-                    // Try nearby page indexes and pick the page with strongest QR token matches.
-                    $candidates = [$seedPageIndex];
-                    if ($suggested !== null && isset($pages[$suggested]) && !isset($usedPageIndexes[$suggested])) {
-                        // If filename says PAGE3, prioritize that exact page to avoid cross-page misassignment.
-                        $candidates = [$suggested];
+                    // Probe a few QR codes from fixed positions to identify the correct
+                    // employee slice. This handles the case where the claim sheet was
+                    // downloaded with an area filter, so the filename page number doesn't
+                    // match the all-employee page index used during scanning.
+                    $probeTokens    = $scanner->probeQrTokens($asset['path']);
+                    $probePageIndex = null;
+                    foreach ($probeTokens as $probed) {
+                        if (isset($tokenPageMap[$probed]) && !isset($usedPageIndexes[$tokenPageMap[$probed]])) {
+                            $probePageIndex = $tokenPageMap[$probed];
+                            break;
+                        }
+                    }
+
+                    if ($probePageIndex !== null) {
+                        // A QR token matched a known employee — use that page directly.
+                        $candidates = [$probePageIndex];
                     } else {
+                        // Fall back to filename hint + nearby offsets.
+                        $candidates = [$seedPageIndex];
+                        $hintIdx = ($suggested !== null && isset($pages[$suggested]) && !isset($usedPageIndexes[$suggested]))
+                            ? $suggested : $seedPageIndex;
                         foreach ([-1, 1, -2, 2] as $off) {
-                            $cand = $seedPageIndex + $off;
+                            $cand = $hintIdx + $off;
                             if ($cand >= 0 && isset($pages[$cand]) && !isset($usedPageIndexes[$cand])) {
                                 $candidates[] = $cand;
                             }
                         }
+                        $candidates = array_values(array_unique($candidates));
                     }
-                    $candidates = array_values(array_unique($candidates));
 
                     $best = null;
                     foreach ($candidates as $candPageIndex) {
@@ -479,20 +510,25 @@ class PayslipClaimController extends Controller
 
                         $matchCount = 0;
                         $qrFoundCount = 0;
+                        $tokenInPageCount = 0;
                         $confirmedCount = 0;
+                        $tokenSet = array_fill_keys(array_filter($rowTokens, fn ($t) => $t !== ''), true);
                         $rows = min($candExpectedRows, count($candScan));
                         for ($m = 0; $m < $rows; $m++) {
                             if (!empty($candScan[$m]['token_match'])) $matchCount++;
                             if (!empty($candScan[$m]['qr_found'])) $qrFoundCount++;
+                            $tok = (string) ($candScan[$m]['token_found'] ?? '');
+                            if ($tok !== '' && isset($tokenSet[$tok])) $tokenInPageCount++;
                             if (($candScan[$m]['status'] ?? '') === 'confirmed') $confirmedCount++;
                         }
-                        $score = ($matchCount * 10) + ($qrFoundCount * 2) + $confirmedCount;
+                        $score = ($matchCount * 10) + ($tokenInPageCount * 6) + ($qrFoundCount * 2) + $confirmedCount;
 
                         if (!$best || $score > $best['score']) {
                             $best = [
                                 'score' => $score,
                                 'matchCount' => $matchCount,
                                 'qrFoundCount' => $qrFoundCount,
+                                'tokenInPageCount' => $tokenInPageCount,
                                 'pageIndex' => $candPageIndex,
                                 'slice' => $candSlice,
                                 'expectedRows' => $candExpectedRows,
@@ -511,9 +547,18 @@ class PayslipClaimController extends Controller
                     $expectedRows = (int) $best['expectedRows'];
                     $scan = (array) $best['scan'];
                     $scanDebug = (array) ($best['scanDebug'] ?? []);
+                    if ($probePageIndex !== null) {
+                        $scanDebug['probe_page_index'] = $probePageIndex;
+                    }
                     $bestMatchCount = (int) ($best['matchCount'] ?? 0);
-                    // Only trust a page when at least one QR token actually matches.
-                    $pageTrusted = $bestMatchCount > 0;
+                    $bestQrFoundCount = (int) ($best['qrFoundCount'] ?? 0);
+                    $bestTokenInPageCount = (int) ($best['tokenInPageCount'] ?? 0);
+                    // Trust the page when either exact row token match exists OR decoded
+                    // tokens are known to belong to this page (scan row offset tolerated).
+                    $pageTrusted = $bestMatchCount > 0 || $bestTokenInPageCount > 0;
+                    $qrFoundTotal += $bestQrFoundCount;
+                    $tokenMatchTotal += $bestMatchCount;
+                    $tokenInPageTotal += $bestTokenInPageCount;
                     if (!$pageTrusted && !$error) {
                         $error = 'Skipped auto-assignment for this page because no QR token matched the expected page rows.';
                     }
@@ -629,6 +674,9 @@ class PayslipClaimController extends Controller
                 'rows_scanned' => $rowsScannedTotal,
                 'claimed_detected' => $claimedDetectedTotal,
                 'claimed_new' => $claimedNewTotal,
+                'qr_found' => $qrFoundTotal,
+                'token_matches' => $tokenMatchTotal,
+                'token_in_page' => $tokenInPageTotal,
                 'claimed_rows_detected' => $claimedRowIndexes,
                 'claimed_emp_nos_detected' => array_values(array_filter($claimedEmpNos, fn ($v) => $v !== '')),
                 'slice_first_emp_no' => (string) ($sliceFirstEmpNo ?? ''),
