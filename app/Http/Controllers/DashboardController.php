@@ -70,6 +70,7 @@ class DashboardController extends Controller
             'cutoff' => ['nullable', 'in:all,11-25,26-10,A,B'],
             'assignment' => ['nullable', 'string', 'max:100'],
             'place' => ['nullable', 'string', 'max:150'],
+            'deduction_type' => ['nullable', 'in:all,loans,government,attendance,charges,cash_advance'],
         ]);
 
         $latestProcessedGlobal = PayrollRun::query()
@@ -84,6 +85,11 @@ class DashboardController extends Controller
             $assignment = 'All';
         }
         $place = trim((string) ($validated['place'] ?? ''));
+        $deductionType = strtolower(trim((string) ($validated['deduction_type'] ?? 'all')));
+        if ($deductionType === '') {
+            $deductionType = 'all';
+        }
+        $deductionExpr = $this->deductionExpression($deductionType);
         $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
 
         $periodMonthsForDisplay = [$month];
@@ -145,7 +151,7 @@ class DashboardController extends Controller
 
             $employees = (int) (clone $rowQuery)->distinct('payroll_run_rows.employee_id')->count('payroll_run_rows.employee_id');
             $gross = (float) ((clone $rowQuery)->sum('payroll_run_rows.gross') ?? 0);
-            $deductions = (float) ((clone $rowQuery)->sum('payroll_run_rows.deductions_total') ?? 0);
+            $deductions = (float) ((clone $rowQuery)->selectRaw("SUM({$deductionExpr}) as deductions_value")->value('deductions_value') ?? 0);
             $net = (float) ((clone $rowQuery)->sum('payroll_run_rows.net_pay') ?? 0);
             $expectedPayslips = (int) (clone $rowQuery)->count('payroll_run_rows.id');
 
@@ -176,7 +182,7 @@ class DashboardController extends Controller
                 ->selectRaw("COALESCE(NULLIF(TRIM(e.assignment_type), ''), 'Unassigned') as assignment_label")
                 ->selectRaw('COUNT(DISTINCT payroll_run_rows.employee_id) as employees')
                 ->selectRaw('SUM(payroll_run_rows.gross) as gross')
-                ->selectRaw('SUM(payroll_run_rows.deductions_total) as deductions')
+                ->selectRaw("SUM({$deductionExpr}) as deductions")
                 ->selectRaw('SUM(payroll_run_rows.net_pay) as net')
                 ->groupBy('e.assignment_type')
                 ->get();
@@ -292,7 +298,7 @@ class DashboardController extends Controller
             ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
             ->selectRaw('pr.period_month as period_month, pr.cutoff as cutoff')
             ->selectRaw('SUM(payroll_run_rows.net_pay) as net')
-            ->selectRaw('SUM(payroll_run_rows.deductions_total) as deductions')
+            ->selectRaw("SUM({$deductionExpr}) as deductions")
             ->groupBy('pr.period_month', 'pr.cutoff')
             ->get();
 
@@ -345,6 +351,7 @@ class DashboardController extends Controller
                 'cutoff' => $cutoff,
                 'assignment' => $assignment,
                 'place' => $place,
+                'deduction_type' => $deductionType,
             ],
             'latest_run' => $latestRun ? [
                 'id' => $latestRun->id,
@@ -386,6 +393,18 @@ class DashboardController extends Controller
             return '11-25';
         }
         return 'all';
+    }
+
+    private function deductionExpression(string $deductionType): string
+    {
+        return match ($deductionType) {
+            'loans' => 'COALESCE(payroll_run_rows.loan_deduction, 0)',
+            'government' => 'COALESCE(payroll_run_rows.sss_ee, 0) + COALESCE(payroll_run_rows.philhealth_ee, 0) + COALESCE(payroll_run_rows.pagibig_ee, 0) + COALESCE(payroll_run_rows.tax, 0)',
+            'attendance' => 'COALESCE(payroll_run_rows.attendance_deduction, 0)',
+            'charges' => 'COALESCE(payroll_run_rows.charges_deduction, 0)',
+            'cash_advance' => 'COALESCE(payroll_run_rows.cash_advance, 0)',
+            default => 'COALESCE(payroll_run_rows.deductions_total, 0)',
+        };
     }
 
     private function displayMonthForRun(string $periodMonth, string $cutoff, PayrollCalendarSetting $calendar): string

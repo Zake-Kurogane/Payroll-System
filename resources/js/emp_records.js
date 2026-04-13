@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let externalPositionsCatalog = Array.isArray(window.__externalPositions) ? window.__externalPositions : [];
 
   const CAN_VIEW_COMP = window.__canViewCompensation !== undefined ? !!window.__canViewCompensation : true;
+  const CAN_DELETE_EMPLOYEE = window.__canDeleteEmployee !== undefined ? !!window.__canDeleteEmployee : true;
 
   // ===== Payroll Required Field Rules =====
   const PAYROLL_REQUIRED = {
@@ -1662,7 +1663,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               <path d="M12 7v5l3 3"></path>
             </svg>
           </button>` : ""}
-          <button class="iconbtn" type="button" data-action="delete" data-id="${emp.empId}" title="Delete" aria-label="Delete">
+          ${CAN_DELETE_EMPLOYEE ? `<button class="iconbtn" type="button" data-action="delete" data-id="${emp.empId}" title="Delete" aria-label="Delete">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M3 6h18"></path>
               <path d="M8 6V4h8v2"></path>
@@ -1670,7 +1671,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               <path d="M10 11v6"></path>
               <path d="M14 11v6"></path>
             </svg>
-          </button>
+          </button>` : ""}
         </td>
       `;
       tbody.appendChild(tr);
@@ -2025,6 +2026,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       loadAreaHistory(emp.empId);
     }
     if (action === "delete") {
+      if (!CAN_DELETE_EMPLOYEE) return;
       if (!confirm(`Delete employee ${fullName(emp)} (${emp.empId})?`)) return;
       try {
         await apiFetch(`/employees/${encodeURIComponent(id)}`, { method: "DELETE" });

@@ -88,8 +88,10 @@
                 <div class="actionsTop">
                     <div class="bulk" id="bulkBarEmp" aria-hidden="true" style="display:none">
                         <span class="bulk__text"><span id="selectedCountEmp">0</span> selected</span>
-                        <button class="btn btn--soft" type="button" id="bulkDeleteEmpBtn">Delete
-                            Selected</button>
+                        @can('admin')
+                            <button class="btn btn--soft" type="button" id="bulkDeleteEmpBtn">Delete
+                                Selected</button>
+                        @endcan
 
                         <select class="bulkSelect" id="bulkAssignSelect" aria-label="Set assignment">
                             <option value="">Set assignment...</option>
@@ -263,16 +265,18 @@
                                                 </svg>
                                             </button>
                                         @endif
-                                        <button class="iconbtn" type="button" data-action="delete"
-                                            data-id="{{ $emp->emp_no }}" title="Delete" aria-label="Delete">
-                                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                                                <path d="M3 6h18"></path>
-                                                <path d="M8 6V4h8v2"></path>
-                                                <path d="M19 6l-1 14H6L5 6"></path>
-                                                <path d="M10 11v6"></path>
-                                                <path d="M14 11v6"></path>
-                                            </svg>
-                                        </button>
+                                        @can('admin')
+                                            <button class="iconbtn" type="button" data-action="delete"
+                                                data-id="{{ $emp->emp_no }}" title="Delete" aria-label="Delete">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                    <path d="M3 6h18"></path>
+                                                    <path d="M8 6V4h8v2"></path>
+                                                    <path d="M19 6l-1 14H6L5 6"></path>
+                                                    <path d="M10 11v6"></path>
+                                                    <path d="M14 11v6"></path>
+                                                </svg>
+                                            </button>
+                                        @endcan
                                     </div>
                                 </td>
                             </tr>
@@ -345,6 +349,7 @@
             window.__serverEmployees = @json($employees->items());
             window.__areaPlaces = @json($groupedAreaPlaces);
             window.__canViewCompensation = @json(Gate::allows('viewCompensation'));
+            window.__canDeleteEmployee = @json(Gate::allows('admin'));
             window.__positions = @json($positions ?? []);
             window.__externalPositions = @json($externalPositions ?? []);
         </script>
@@ -761,7 +766,9 @@
                 @endif
 
                 <div class="form__actions">
-                    <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
+                    @can('admin')
+                        <button class="btn btn--soft" type="button" id="deleteBtn">Delete</button>
+                    @endcan
                     <div class="spacer"></div>
                     <button class="btn btn--soft" type="button" id="cancelBtn">Cancel</button>
                     <button class="btn btn--maroon" type="submit" id="saveBtn">Save</button>

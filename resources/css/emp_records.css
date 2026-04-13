@@ -735,19 +735,19 @@ h1 {
 }
 #empTable[data-has-comp="1"] th:nth-child(3),
 #empTable[data-has-comp="1"] td:nth-child(3) {
-    width: 13%;
+    width: 12%;
 }
 #empTable[data-has-comp="1"] th:nth-child(4),
 #empTable[data-has-comp="1"] td:nth-child(4) {
-    width: 15%;
+    width: 13%;
 } /* Department */
 #empTable[data-has-comp="1"] th:nth-child(5),
 #empTable[data-has-comp="1"] td:nth-child(5) {
-    width: 11%;
+    width: 10%;
 }
 #empTable[data-has-comp="1"] th:nth-child(6),
 #empTable[data-has-comp="1"] td:nth-child(6) {
-    width: 12%;
+    width: 11%;
 }
 #empTable[data-has-comp="1"] th:nth-child(7),
 #empTable[data-has-comp="1"] td:nth-child(7) {
@@ -763,12 +763,12 @@ h1 {
 } /* Total Salary */
 #empTable[data-has-comp="1"] th:nth-child(10),
 #empTable[data-has-comp="1"] td:nth-child(10) {
-    width: 10%;
+    width: 13%;
 }
 #empTable[data-has-comp="1"] th:nth-child(11),
 #empTable[data-has-comp="1"] td:nth-child(11) {
-    width: 10%;
-    min-width: 140px;
+    width: 13%;
+    min-width: 132px;
 }
 
 /* WITHOUT compensation (8 cols): 1-check 2-emp 3-name 4-dept 5-position 6-assignment 7-payroll 8-actions */
@@ -778,32 +778,32 @@ h1 {
 }
 #empTable[data-has-comp="0"] th:nth-child(2),
 #empTable[data-has-comp="0"] td:nth-child(2) {
-    width: 8%;
+    width: 7%;
 }
 #empTable[data-has-comp="0"] th:nth-child(3),
 #empTable[data-has-comp="0"] td:nth-child(3) {
-    width: 16%;
+    width: 15%;
 }
 #empTable[data-has-comp="0"] th:nth-child(4),
 #empTable[data-has-comp="0"] td:nth-child(4) {
-    width: 20%;
+    width: 17%;
 } /* Department */
 #empTable[data-has-comp="0"] th:nth-child(5),
 #empTable[data-has-comp="0"] td:nth-child(5) {
-    width: 18%;
+    width: 14%;
 }
 #empTable[data-has-comp="0"] th:nth-child(6),
 #empTable[data-has-comp="0"] td:nth-child(6) {
-    width: 18%;
+    width: 16%;
 }
 #empTable[data-has-comp="0"] th:nth-child(7),
 #empTable[data-has-comp="0"] td:nth-child(7) {
-    width: 7%;
+    width: 14%;
 }
 #empTable[data-has-comp="0"] th:nth-child(8),
 #empTable[data-has-comp="0"] td:nth-child(8) {
-    width: 10%;
-    min-width: 140px;
+    width: 14%;
+    min-width: 132px;
 }
 
 thead th {
@@ -856,9 +856,9 @@ input.empCheck,
 }
 
 .iconbtn {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     border: 1px solid var(--line);
     background: #fff;
     cursor: pointer;
@@ -873,8 +873,8 @@ input.empCheck,
 }
 
 .iconbtn svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -1485,6 +1485,13 @@ th.sortable.is-desc .sortIcon {
     vertical-align: middle;
     padding-left: 2px;
     padding-right: 2px;
+}
+
+/* Give Payroll Required content room so badges don't look cramped */
+#empTable[data-has-comp="1"] td:nth-child(10),
+#empTable[data-has-comp="0"] td:nth-child(7) {
+    overflow: visible;
+    text-overflow: clip;
 }
 
 #empTable td.actions .iconbtn {

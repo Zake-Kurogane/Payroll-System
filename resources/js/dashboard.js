@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const cutoffMonthInput = document.getElementById("cutoffMonth");
   const cutoffSelect = document.getElementById("cutoffSelect");
   const assignSeg = document.getElementById("assignSeg");
+  const deductionTypeSeg = document.getElementById("deductionTypeSeg");
 
   const kpiEmployees = document.getElementById("kpiEmployees");
   const kpiGross = document.getElementById("kpiGross");
@@ -126,11 +127,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   function getCurrentFilters() {
     const assignment = (assignSeg?.dataset.assign || "All").trim() || "All";
     const place = (assignSeg?.dataset.place || "").trim();
+    const deductionType = (deductionTypeSeg?.dataset.deductionType || "all").trim() || "all";
     return {
       month: cutoffMonthInput?.value || "",
       cutoff: cutoffSelect?.value || "all",
       assignment,
       place,
+      deduction_type: deductionType,
     };
   }
 
@@ -458,6 +461,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (filters.cutoff) qs.set("cutoff", filters.cutoff);
     if (filters.assignment && filters.assignment !== "All") qs.set("assignment", filters.assignment);
     if (filters.place) qs.set("place", filters.place);
+    if (filters.deduction_type && filters.deduction_type !== "all") qs.set("deduction_type", filters.deduction_type);
 
     try {
       const summary = await apiFetch(`/dashboard/summary?${qs.toString()}`);
@@ -474,6 +478,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             cutoffSelect.value = wanted;
           }
         }
+        setDeductionTypeSelection(summary.filters.deduction_type || "all");
       }
 
       applySummary(summary);
@@ -567,6 +572,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     contentScroller?.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
   }
 
+  function setAssignmentSelection(assignment = "All", place = "") {
+    if (!assignSeg) return;
+    assignSeg.dataset.assign = assignment || "All";
+    assignSeg.dataset.place = place || "";
+
+    assignBtns.forEach((btn) => {
+      const rawAssign = btn.getAttribute("data-assign");
+      const group = rawAssign && rawAssign !== "" ? rawAssign : "All";
+      btn.classList.toggle("is-active", group === assignSeg.dataset.assign);
+    });
+
+    assignSeg.querySelectorAll(".seg__dropdown-item").forEach((item) => {
+      const itemPlace = item.getAttribute("data-place") || "";
+      item.classList.toggle("is-active", !!place && itemPlace === place);
+    });
+
+    if (!assignBtns.some((btn) => btn.classList.contains("is-active"))) {
+      const allBtn = assignSeg.querySelector('.seg__btn--emp[data-assign=""]');
+      allBtn?.classList.add("is-active");
+      assignSeg.dataset.assign = "All";
+      assignSeg.dataset.place = "";
+    }
+  }
+
+  function setDeductionTypeSelection(next = "all") {
+    if (!deductionTypeSeg) return;
+    const selected = String(next || "all").toLowerCase();
+    deductionTypeSeg.dataset.deductionType = selected;
+    deductionTypeSeg.querySelectorAll(".seg__btn[data-deduction-type]").forEach((btn) => {
+      const type = String(btn.getAttribute("data-deduction-type") || "all").toLowerCase();
+      btn.classList.toggle("is-active", type === selected);
+    });
+  }
+
   function buildFallbackAssignments() {
     if (!assignSeg) return;
     const assignments = ["Davao", "Tagum", "Field"];
@@ -655,6 +694,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     assignSeg.dataset.assign = "All";
     assignSeg.dataset.place = "";
   }
+  if (deductionTypeSeg) {
+    deductionTypeSeg.dataset.deductionType = "all";
+  }
 
   syncCutoffOptions();
   await buildAssignmentFilters();
@@ -664,6 +706,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const onFilterChange = () => { refreshDashboard(); };
   wireAssignButtons(onFilterChange);
+  deductionTypeSeg?.querySelectorAll(".seg__btn[data-deduction-type]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = btn.getAttribute("data-deduction-type") || "all";
+      setDeductionTypeSelection(next);
+      refreshDashboard();
+    });
+  });
 
   cutoffMonthInput?.addEventListener("change", () => {
     syncCutoffOptions();

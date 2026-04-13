@@ -91,46 +91,69 @@
             </a>
         @endcan
 
-        <details id="employeeRecordsGroup"
-            class="menu__group {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-open' : '' }}"
-            {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'open' : '' }}>
-            <summary class="menu__item menu__item--parent {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-active' : '' }}">
-                <span class="menu__icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" class="ico">
-                        <path
-                            d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5S14.34 11 16 11zM8 11c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11zm0 2c-2.33 0-7 1.17-7 3.5V20h14v-3.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.94 1.97 3.45V20h7v-3.5c0-2.33-4.67-3.5-7-3.5z" />
-                    </svg>
-                </span>
-                <a class="menu__parent-link" href="{{ route('employee.records') }}">EMPLOYEE<br />RECORDS</a>
-                <span class="menu__chevron" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
-                        <path d="M7 10l5 5 5-5z" />
-                    </svg>
-                </span>
-            </summary>
-            <div class="submenu">
-                <a class="menu__item menu__item--child {{ request()->routeIs('employee.records') ? 'is-active' : '' }}"
-                    href="{{ route('employee.records') }}">
+        @can('admin')
+            <details id="employeeRecordsGroup"
+                class="menu__group {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-open' : '' }}"
+                {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'open' : '' }}>
+                <summary class="menu__item menu__item--parent {{ request()->routeIs('employee.records', 'employee.disciplinary', 'employee.cases') ? 'is-active' : '' }}">
                     <span class="menu__icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" class="ico">
                             <path
                                 d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5S14.34 11 16 11zM8 11c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11zm0 2c-2.33 0-7 1.17-7 3.5V20h14v-3.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.94 1.97 3.45V20h7v-3.5c0-2.33-4.67-3.5-7-3.5z" />
                         </svg>
                     </span>
-                    <span>Employee List</span>
-                </a>
-                <a class="menu__item menu__item--child {{ request()->routeIs('employee.cases') ? 'is-active' : '' }}"
-                    href="{{ route('employee.cases') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico">
-                            <path fill="currentColor"
-                                d="M2.75 21.25a1.25 1.25 0 0 1 1.25-1.25H12a1.25 1.25 0 1 1 0 2.5H4a1.25 1.25 0 0 1-1.25-1.25ZM4.7 14.7l6.58 6.58 2.12-2.12-6.58-6.58-2.12 2.12Zm8.7-7.41 1.41-1.41 6.6 6.6a1 1 0 0 1 0 1.41l-2.12 2.12a1 1 0 0 1-1.41 0L13.4 8.42 7.82 14l-2.12-2.12 7.7-7.7a1 1 0 0 1 1.41 0Z" />
+                    <a class="menu__parent-link" href="{{ route('employee.records') }}">EMPLOYEE<br />RECORDS</a>
+                    <span class="menu__chevron" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
+                            <path d="M7 10l5 5 5-5z" />
                         </svg>
                     </span>
-                    <span>Employee Case Management</span>
-                </a>
-            </div>
-        </details>
+                </summary>
+                <div class="submenu">
+                    <a class="menu__item menu__item--child {{ request()->routeIs('employee.records') ? 'is-active' : '' }}"
+                        href="{{ route('employee.records') }}">
+                        <span class="menu__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="ico">
+                                <path
+                                    d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5S14.34 11 16 11zM8 11c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11zm0 2c-2.33 0-7 1.17-7 3.5V20h14v-3.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.94 1.97 3.45V20h7v-3.5c0-2.33-4.67-3.5-7-3.5z" />
+                            </svg>
+                        </span>
+                        <span>Employee List</span>
+                    </a>
+                    <a class="menu__item menu__item--child {{ request()->routeIs('employee.cases') ? 'is-active' : '' }}"
+                        href="{{ route('employee.cases') }}">
+                        <span class="menu__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="ico">
+                                <path fill="currentColor"
+                                    d="M2.75 21.25a1.25 1.25 0 0 1 1.25-1.25H12a1.25 1.25 0 1 1 0 2.5H4a1.25 1.25 0 0 1-1.25-1.25ZM4.7 14.7l6.58 6.58 2.12-2.12-6.58-6.58-2.12 2.12Zm8.7-7.41 1.41-1.41 6.6 6.6a1 1 0 0 1 0 1.41l-2.12 2.12a1 1 0 0 1-1.41 0L13.4 8.42 7.82 14l-2.12-2.12 7.7-7.7a1 1 0 0 1 1.41 0Z" />
+                            </svg>
+                        </span>
+                        <span>Employee Case Management</span>
+                    </a>
+                </div>
+            </details>
+        @else
+            <a class="menu__item {{ request()->routeIs('employee.records') ? 'is-active' : '' }}"
+                href="{{ route('employee.records') }}">
+                <span class="menu__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="ico">
+                        <path
+                            d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5S14.34 11 16 11zM8 11c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11zm0 2c-2.33 0-7 1.17-7 3.5V20h14v-3.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.94 1.97 3.45V20h7v-3.5c0-2.33-4.67-3.5-7-3.5z" />
+                    </svg>
+                </span>
+                <span>EMPLOYEE<br />RECORDS</span>
+            </a>
+            <a class="menu__item {{ request()->routeIs('employee.cases') ? 'is-active' : '' }}"
+                href="{{ route('employee.cases') }}">
+                <span class="menu__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="ico">
+                        <path fill="currentColor"
+                            d="M2.75 21.25a1.25 1.25 0 0 1 1.25-1.25H12a1.25 1.25 0 1 1 0 2.5H4a1.25 1.25 0 0 1-1.25-1.25ZM4.7 14.7l6.58 6.58 2.12-2.12-6.58-6.58-2.12 2.12Zm8.7-7.41 1.41-1.41 6.6 6.6a1 1 0 0 1 0 1.41l-2.12 2.12a1 1 0 0 1-1.41 0L13.4 8.42 7.82 14l-2.12-2.12 7.7-7.7a1 1 0 0 1 1.41 0Z" />
+                    </svg>
+                </span>
+                <span>EMPLOYEE CASE<br />MANAGEMENT</span>
+            </a>
+        @endcan
 
         <a class="menu__item {{ request()->routeIs('attendance') ? 'is-active' : '' }}"
             href="{{ route('attendance') }}">
@@ -167,26 +190,26 @@
             </a>
         @endcan
 
-        <details id="payslipGroup"
-            class="menu__group {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-open' : '' }}"
-            {{ request()->routeIs('payslip', 'payslip.claims') ? 'open' : '' }}>
-            <summary
-                class="menu__item menu__item--parent {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-active' : '' }}">
-                <span class="menu__icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" class="ico">
-                        <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
-                        <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
-                    </svg>
-                </span>
-                <a class="menu__parent-link" href="{{ Gate::allows('admin') ? route('payslip') : route('payslip.claims') }}">PAYSLIP</a>
-                <span class="menu__chevron" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
-                        <path d="M7 10l5 5 5-5z" />
-                    </svg>
-                </span>
-            </summary>
-            <div class="submenu">
-                @can('admin')
+        @can('admin')
+            <details id="payslipGroup"
+                class="menu__group {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-open' : '' }}"
+                {{ request()->routeIs('payslip', 'payslip.claims') ? 'open' : '' }}>
+                <summary
+                    class="menu__item menu__item--parent {{ request()->routeIs('payslip', 'payslip.claims') ? 'is-active' : '' }}">
+                    <span class="menu__icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" class="ico">
+                            <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1v5h5" />
+                            <path d="M7 12h10v2H7v-2zm0 4h10v2H7v-2z" />
+                        </svg>
+                    </span>
+                    <a class="menu__parent-link" href="{{ route('payslip') }}">PAYSLIP</a>
+                    <span class="menu__chevron" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;display:block;">
+                            <path d="M7 10l5 5 5-5z" />
+                        </svg>
+                    </span>
+                </summary>
+                <div class="submenu">
                     <a class="menu__item menu__item--child {{ request()->routeIs('payslip') ? 'is-active' : '' }}"
                         href="{{ route('payslip') }}">
                         <span class="menu__icon" aria-hidden="true">
@@ -197,25 +220,40 @@
                         </span>
                         <span>Payslips</span>
                     </a>
-                @endcan
-                <a class="menu__item menu__item--child {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
-                    href="{{ route('payslip.claims') }}">
-                    <span class="menu__icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                            <!-- Signature (stroke only) -->
-                            <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
-                                style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
-                            <!-- Pen at end of signature (filled, kept inside viewBox to avoid clipping) -->
-                            <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
-                                style="fill:currentColor;stroke:none" />
-                            <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
-                                style="fill:currentColor;stroke:none" />
-                        </svg>
-                    </span>
-                    <span>Claims</span>
-                </a>
-            </div>
-        </details>
+                    <a class="menu__item menu__item--child {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
+                        href="{{ route('payslip.claims') }}">
+                        <span class="menu__icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
+                                <!-- Signature (stroke only) -->
+                                <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
+                                    style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
+                                <!-- Pen at end of signature (filled, kept inside viewBox to avoid clipping) -->
+                                <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
+                                    style="fill:currentColor;stroke:none" />
+                                <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
+                                    style="fill:currentColor;stroke:none" />
+                            </svg>
+                        </span>
+                        <span>Claims</span>
+                    </a>
+                </div>
+            </details>
+        @else
+            <a class="menu__item {{ request()->routeIs('payslip.claims') ? 'is-active' : '' }}"
+                href="{{ route('payslip.claims') }}">
+                <span class="menu__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
+                        <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
+                            style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
+                        <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
+                            style="fill:currentColor;stroke:none" />
+                        <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
+                            style="fill:currentColor;stroke:none" />
+                    </svg>
+                </span>
+                <span>PAYSLIP CLAIMS</span>
+            </a>
+        @endcan
 
         @can('admin')
             <a class="menu__item {{ request()->routeIs('report') ? 'is-active' : '' }}"
