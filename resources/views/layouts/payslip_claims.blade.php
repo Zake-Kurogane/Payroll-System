@@ -182,6 +182,17 @@
                                                 detected: {{ (int) ($ps['claimed_detected'] ?? 0) }},
                                                 new: {{ (int) ($ps['claimed_new'] ?? 0) }}
                                             </div>
+                                            @if (isset($ps['shaded_rows_count']))
+                                                <div class="small muted">
+                                                    shaded boxes: {{ (int) ($ps['shaded_rows_count'] ?? 0) }}
+                                                    @if (!empty($ps['shaded_rows_unresolved']) && is_array($ps['shaded_rows_unresolved']))
+                                                        (unresolved rows: {{ implode(',', $ps['shaded_rows_unresolved']) }})
+                                                    @endif
+                                                </div>
+                                            @endif
+                                            @if (isset($ps['needs_review_detected']))
+                                                <div class="small muted">needs review: {{ (int) ($ps['needs_review_detected'] ?? 0) }}</div>
+                                            @endif
                                             @if (!empty($ps['checkbox_cutoff']))
                                                 <div class="small muted">cutoff: {{ $ps['checkbox_cutoff'] }}</div>
                                             @endif
@@ -360,8 +371,6 @@
         @endif
     </section>
 @endsection
-
-
 
 
 

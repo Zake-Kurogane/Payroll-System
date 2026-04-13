@@ -67,6 +67,16 @@ class PayslipClaimController extends Controller
         }
 
         if ($selectedRun) {
+            // Cleanup stale low-confidence auto-review rows produced by older scanner
+            // logic (e.g., no-QR shaded guesses at ~55% confidence).
+            PayslipClaim::query()
+                ->where('payroll_run_id', $selectedRun->id)
+                ->where('review_status', 'needs_review')
+                ->whereNull('claimed_at')
+                ->whereNotNull('payslip_claim_proof_id')
+                ->where('confidence', '<=', 0.56)
+                ->delete();
+
             $employees = $this->runEmployeesWithClaimStatus($selectedRun);
             $assignmentOptions = $employees
                 ->pluck('assignment_type')
@@ -428,13 +438,30 @@ class PayslipClaimController extends Controller
         }
 
         foreach (array_values($proofs) as $i => $proof) {
+            // Reprocessing the same proof should replace its prior auto results
+            // instead of accumulating stale/incorrect rows from earlier scanner logic.
+            PayslipClaim::query()
+                ->where('payslip_claim_proof_id', $proof->id)
+                ->update([
+                    'claimed_at'             => null,
+                    'claimed_by_user_id'     => null,
+                    'payslip_claim_proof_id' => null,
+                    'ink_ratio'              => null,
+                    'review_status'          => null,
+                    'confidence'             => null,
+                ]);
+
             $claimedNewTotal = 0;
             $claimedDetectedTotal = 0;
+            $needsReviewDetectedTotal = 0;
             $rowsScannedTotal = 0;
             $inkSoft = [];
             $inkStrict = [];
             $claimedRowIndexes = [];
             $claimedEmpNos = [];
+            $shadedRowIndexes = [];
+            $shadedResolvedEmpNos = [];
+            $shadedUnresolvedRows = [];
             $scanDebug = null;
             $error = null;
             $pagesProcessed = 0;
@@ -531,6 +558,7 @@ class PayslipClaimController extends Controller
                                 'tokenInPageCount' => $tokenInPageCount,
                                 'pageIndex' => $candPageIndex,
                                 'slice' => $candSlice,
+                                'rowTokens' => $rowTokens,
                                 'expectedRows' => $candExpectedRows,
                                 'scan' => $candScan,
                                 'scanDebug' => $candDebug,
@@ -544,6 +572,7 @@ class PayslipClaimController extends Controller
 
                     $pageIndex = (int) $best['pageIndex'];
                     $slice = (array) $best['slice'];
+                    $rowTokens = (array) ($best['rowTokens'] ?? []);
                     $expectedRows = (int) $best['expectedRows'];
                     $scan = (array) $best['scan'];
                     $scanDebug = (array) ($best['scanDebug'] ?? []);
@@ -576,13 +605,94 @@ class PayslipClaimController extends Controller
                     $rowsScannedTotal += $rowsScanned;
                     $pagesProcessed++;
 
+                    $tokenToSliceIndex = [];
+                    foreach ($rowTokens as $tokIdx => $tok) {
+                        $tok = strtoupper(trim((string) $tok));
+                        if ($tok !== '') $tokenToSliceIndex[$tok] = (int) $tokIdx;
+                    }
+
+                    $statusRank = ['unclaimed' => 0, 'needs_review' => 1, 'confirmed' => 2];
+                    $resolvedByEmpId = [];
+                    $remappedRows = 0;
+                    $promotedByTokenMap = 0;
+                    $scanCutoff = (float) ($scanDebug['checkbox_cutoff'] ?? 0.30);
+                    $shadeCutoff = max(0.22, $scanCutoff * 0.90);
                     for ($k = 0; $k < $rowsScanned; $k++) {
                         $inkSoft[]   = (float) ($scan[$k]['ink_ratio'] ?? 0);
                         $inkStrict[] = (float) ($scan[$k]['ink_ratio_strict'] ?? 0);
-                        if (($scan[$k]['status'] ?? '') === 'confirmed' && isset($slice[$k])) {
-                            $claimedRowIndexes[] = $k + 1;
-                            $claimedEmpNos[]     = (string) ($slice[$k]['emp_no'] ?? '');
+
+                        $res = (array) ($scan[$k] ?? []);
+                        $status = (string) ($res['status'] ?? 'unclaimed');
+                        $tokenFound = strtoupper(trim((string) ($res['token_found'] ?? '')));
+                        $mappedIdx = $k;
+                        $tokenMapped = $tokenFound !== '' && isset($tokenToSliceIndex[$tokenFound]);
+                        if ($tokenMapped) {
+                            $mappedIdx = (int) $tokenToSliceIndex[$tokenFound];
+                            if ($mappedIdx !== $k) $remappedRows++;
                         }
+
+                        $rowInkStrict = (float) ($res['ink_ratio_strict'] ?? $res['ink_ratio'] ?? 0.0);
+                        if ($rowInkStrict >= $shadeCutoff) {
+                            $shadedRowIndexes[] = $k + 1;
+                            if ($tokenMapped && isset($slice[$mappedIdx])) {
+                                $shadedResolvedEmpNos[] = (string) ($slice[$mappedIdx]['emp_no'] ?? '');
+                            } else {
+                                $shadedUnresolvedRows[] = $k + 1;
+                            }
+                        }
+
+                        // If QR token maps to a known row in this page, trust token mapping
+                        // over geometric row index (handles one-row scan drift safely).
+                        if (
+                            $tokenMapped
+                            && !empty($res['qr_found'])
+                            && $status === 'needs_review'
+                            && $rowInkStrict >= 0.30
+                        ) {
+                            $status = 'confirmed';
+                            $res['status'] = 'confirmed';
+                            $res['confidence'] = max((float) ($res['confidence'] ?? 0.0), 0.90);
+                            $res['token_match'] = true;
+                            $promotedByTokenMap++;
+                        }
+
+                        $row = $slice[$mappedIdx] ?? null;
+                        if (!$row) continue;
+
+                        $empId = (int) ($row['employee_id'] ?? 0);
+                        if (!$empId) continue;
+
+                        $candidate = [
+                            'row' => $row,
+                            'res' => $res,
+                            'status' => $status,
+                            'mapped_idx' => $mappedIdx,
+                            'confidence' => (float) ($res['confidence'] ?? 0.0),
+                        ];
+                        $prev = $resolvedByEmpId[$empId] ?? null;
+                        if (
+                            !$prev
+                            || (($statusRank[$status] ?? 0) > ($statusRank[$prev['status']] ?? 0))
+                            || ((($statusRank[$status] ?? 0) === ($statusRank[$prev['status']] ?? 0))
+                                && $candidate['confidence'] > (float) ($prev['confidence'] ?? 0.0))
+                        ) {
+                            $resolvedByEmpId[$empId] = $candidate;
+                        }
+                    }
+
+                    $scanAssignments = array_values($resolvedByEmpId);
+                    foreach ($scanAssignments as $assignment) {
+                        if (($assignment['status'] ?? 'unclaimed') === 'confirmed') {
+                            $claimedRowIndexes[] = ((int) ($assignment['mapped_idx'] ?? 0)) + 1;
+                            $claimedEmpNos[] = (string) (($assignment['row']['emp_no'] ?? ''));
+                        }
+                    }
+
+                    if ($remappedRows > 0) {
+                        $scanDebug['token_row_remap'] = $remappedRows;
+                    }
+                    if ($promotedByTokenMap > 0) {
+                        $scanDebug['token_promoted_confirmed'] = $promotedByTokenMap;
                     }
 
                     $empIds = array_values(array_filter(array_map(function ($r) {
@@ -597,23 +707,22 @@ class PayslipClaimController extends Controller
                     DB::transaction(function () use (
                         $run,
                         $proof,
-                        $slice,
-                        $scan,
+                        $scanAssignments,
                         $existing,
                         $pageTrusted,
-                        $rowsScanned,
                         &$claimedNewTotal,
-                        &$claimedDetectedTotal
+                        &$claimedDetectedTotal,
+                        &$needsReviewDetectedTotal
                     ) {
-                        for ($idx = 0; $idx < $rowsScanned; $idx++) {
-                            $row = $slice[$idx] ?? null;
-                            $res = $scan[$idx] ?? null;
-                            if (!$row || !$res) continue;
+                        foreach ($scanAssignments as $assignment) {
+                            $row = $assignment['row'] ?? null;
+                            $res = $assignment['res'] ?? null;
+                            if (!is_array($row) || !is_array($res)) continue;
 
                             $empId = (int) ($row['employee_id'] ?? 0);
                             if (!$empId) continue;
 
-                            $status     = (string) ($res['status'] ?? 'unclaimed');
+                            $status     = (string) (($assignment['status'] ?? ($res['status'] ?? 'unclaimed')));
                             $confidence = (float)  ($res['confidence'] ?? 0.0);
                             $already    = $existing->get($empId);
 
@@ -640,6 +749,7 @@ class PayslipClaimController extends Controller
                                 );
                                 $claimedNewTotal++;
                             } elseif ($status === 'needs_review') {
+                                $needsReviewDetectedTotal++;
                                 // Don't overwrite an already-confirmed claim.
                                 if ($already && $already->claimed_at) continue;
 
@@ -674,6 +784,11 @@ class PayslipClaimController extends Controller
                 'rows_scanned' => $rowsScannedTotal,
                 'claimed_detected' => $claimedDetectedTotal,
                 'claimed_new' => $claimedNewTotal,
+                'needs_review_detected' => $needsReviewDetectedTotal,
+                'shaded_rows_detected' => array_values(array_unique(array_map('intval', $shadedRowIndexes))),
+                'shaded_rows_count' => count(array_unique(array_map('intval', $shadedRowIndexes))),
+                'shaded_emp_nos_resolved' => array_values(array_filter(array_unique($shadedResolvedEmpNos), fn ($v) => $v !== '')),
+                'shaded_rows_unresolved' => array_values(array_unique(array_map('intval', $shadedUnresolvedRows))),
                 'qr_found' => $qrFoundTotal,
                 'token_matches' => $tokenMatchTotal,
                 'token_in_page' => $tokenInPageTotal,
@@ -731,9 +846,9 @@ class PayslipClaimController extends Controller
                 . ', class=' . ($imagickClassOk ? '1' : '0') . ']'
             );
         }
-        // 300 DPI is expensive for large scans and often causes request timeouts.
-        // 220 DPI keeps checkbox/QR detection quality while staying much faster.
-        $imagick->setResolution(220, 220);
+        // Higher DPI improves QR decode and small checkbox detection. 260 DPI is
+        // a practical middle ground between accuracy and processing time.
+        $imagick->setResolution(260, 260);
         $imagick->readImage($fullPath);
 
         $assets = [];
