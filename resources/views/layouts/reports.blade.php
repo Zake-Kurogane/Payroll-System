@@ -277,16 +277,6 @@
 
                 <div class="tablewrap mt12">
                     <table class="table" aria-label="Company payslips table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th class="num">Gross Pay</th>
-                                <th class="num">Deductions</th>
-                                <th class="num">Attendance Deduction</th>
-                                <th class="num">Charges</th>
-                                <th class="num">Net Pay</th>
-                            </tr>
-                        </thead>
                         <tbody id="companyPayslipsTbody"></tbody>
                     </table>
                 </div>

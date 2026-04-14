@@ -17,17 +17,29 @@
         <!-- FILTERS -->
         <section class="card cutoffbar">
             <div class="cutoffbar__left">
-                <div class="f">
+                <div class="f f--wide">
                     <label>Payroll Month</label>
                     <input id="cutoffMonth" type="month" />
                 </div>
 
-                <div class="f">
+                <div class="f f--wide">
                     <label>Cut-off</label>
                     <select id="cutoffSelect"></select>
                 </div>
 
-                <div style="display:grid;gap:8px;">
+                <div class="f f--wide">
+                    <label>Type of Deductions</label>
+                    <select id="deductionTypeSelect" aria-label="Filter by deduction type">
+                        <option value="all">All</option>
+                        <option value="loans">Loans</option>
+                        <option value="government">Government</option>
+                        <option value="attendance">Attendance</option>
+                        <option value="charges">Charges</option>
+                        <option value="cash_advance">Cash Advance</option>
+                    </select>
+                </div>
+
+                <div class="filter-assign" style="display:grid;gap:8px;">
                     <label style="font-weight:600;font-size:14px;color:var(--muted);">Assignment</label>
                     <div class="seg seg--pill" id="assignSeg" role="group" aria-label="Filter by assignment">
                         <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
@@ -52,18 +64,6 @@
                                 @endif
                             </div>
                         @endforeach
-                    </div>
-                </div>
-
-                <div style="display:grid;gap:8px;">
-                    <label style="font-weight:600;font-size:14px;color:var(--muted);">Type of Deductions</label>
-                    <div class="seg seg--pill" id="deductionTypeSeg" role="group" aria-label="Filter by deduction type">
-                        <button type="button" class="seg__btn seg__btn--emp is-active" data-deduction-type="all">All</button>
-                        <button type="button" class="seg__btn seg__btn--emp" data-deduction-type="loans">Loans</button>
-                        <button type="button" class="seg__btn seg__btn--emp" data-deduction-type="government">Government</button>
-                        <button type="button" class="seg__btn seg__btn--emp" data-deduction-type="attendance">Attendance</button>
-                        <button type="button" class="seg__btn seg__btn--emp" data-deduction-type="charges">Charges</button>
-                        <button type="button" class="seg__btn seg__btn--emp" data-deduction-type="cash_advance">Cash Advance</button>
                     </div>
                 </div>
 

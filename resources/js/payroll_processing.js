@@ -1,4 +1,4 @@
-ï»¿import { initClock } from "./shared/clock";
+import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
@@ -179,8 +179,17 @@ document.addEventListener("DOMContentLoaded", () => {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
+  function firstAndLastName(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "—";
+    const cleaned = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const parts = cleaned.split(" ").filter(Boolean);
+    if (parts.length <= 1) return cleaned;
+    return `${parts[0]} ${parts[parts.length - 1]}`;
+  }
+
   const fmtDT = (d) => {
-    if (!d) return "â€”";
+    if (!d) return "—";
     const dt = (d instanceof Date) ? d : new Date(d);
     return dt.toLocaleString();
   };
@@ -238,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function formatCutoffLabel(monthVal, cutoffVal) {
-    if (!monthVal) return cutoffVal === "11-25" ? "11â€“25" : "26â€“10";
+    if (!monthVal) return cutoffVal === "11-25" ? "11–25" : "26–10";
     const [yStr, mStr] = monthVal.split("-");
     const y = Number(yStr);
     const m = Number(mStr);
@@ -272,8 +281,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!cutoffSelect) return;
     const optA = cutoffSelect.querySelector('option[value="11-25"]');
     const optB = cutoffSelect.querySelector('option[value="26-10"]');
-    if (optA) optA.textContent = "11â€“25";
-    if (optB) optB.textContent = "26â€“10";
+    if (optA) optA.textContent = "11–25";
+    if (optB) optB.textContent = "26–10";
   }
 
   async function checkAttendanceBeforeRunCreate() {
@@ -371,8 +380,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const assignmentLabel = (e) => {
-    if (e.areaPlace) return `${e.assignType || "â€”"} (${e.areaPlace})`;
-    return e.assignType || "â€”";
+    if (e.areaPlace) return `${e.assignType || "—"} (${e.areaPlace})`;
+    return e.assignType || "—";
   };
 
   // =========================================================
@@ -495,10 +504,12 @@ document.addEventListener("DOMContentLoaded", () => {
       runPeriodEl.textContent = formatCutoffDisplay(monthVal, cutoffVal);
     }
     if (runStatusEl) runStatusEl.textContent = currentRun.status;
-    if (runCreatedByEl) runCreatedByEl.textContent = currentRun.created_by_name || currentRun.created_by || "â€”";
+    if (runCreatedByEl) {
+      runCreatedByEl.textContent = firstAndLastName(currentRun.created_by_name || currentRun.created_by || "");
+    }
     if (runCreatedAtEl) runCreatedAtEl.textContent = fmtDT(currentRun.created_at);
-    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.locked_at ? fmtDT(currentRun.locked_at) : "â€”";
-    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.released_at ? fmtDT(currentRun.released_at) : "â€”";
+    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.locked_at ? fmtDT(currentRun.locked_at) : "—";
+    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.released_at ? fmtDT(currentRun.released_at) : "—";
 
     setInputsEnabled(!isLocked());
     syncRunButtons();
@@ -616,7 +627,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sumDed) sumDed.textContent = money(s.deductions);
     if (sumNet) sumNet.textContent = money(s.net);
 
-    if (sumVariance) sumVariance.textContent = "â€”";
+    if (sumVariance) sumVariance.textContent = "—";
   }
 
   // =========================================================
@@ -754,7 +765,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const disabled = locked ? "disabled" : "";
 
       const attText = `${r.present}/${r.absent}/${r.late}`;
-      const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" â€¢ ");
+      const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" • ");
       const payoutLine = `${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}`;
 
       const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0) + Number(r.tax || 0);
@@ -792,7 +803,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <td class="num">${r.chargesDeduction > 0
           ? `<details class="dd"><summary>${money(r.chargesDeduction)}</summary><div class="dd__body"><div>This cutoff: ${money(r.chargesDeduction)}</div></div></details>`
-          : `<span class="muted">â€”</span>`
+          : `<span class="muted">—</span>`
         }</td>
         <td class="num">${loansTotal > 0
           ? `<details class="dd"><summary>${money(loansTotal)}</summary><div class="dd__body">
@@ -804,7 +815,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const status = li.status || 'scheduled';
               return `<div>${name}: ${amt} <span class=\"muted\">(sched ${sched}, ${status})</span></div>`;
             }).join('') || `<div>Loan schedules: ${money(r.loanDeduction || 0)}</div>`}</div></details>`
-          : `<span class="muted">â€”</span>`
+          : `<span class="muted">—</span>`
         }</td>
 
         <td class="num">
@@ -832,7 +843,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <td class="num netPayCell"><strong>${money(r.net)}</strong></td>
         <td class="col-actions">
-          <button class="iconbtn adjBtn" type="button" data-id="${r.empId}" ${disabled} title="Adjust">âš™</button>
+          <button class="iconbtn adjBtn" type="button" data-id="${r.empId}" ${disabled} title="Adjust">?</button>
         </td>
       `;
 
@@ -908,14 +919,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <label class="adjLabel adjLabel--amount">
             <span>Amount</span>
             <span class="moneyInput">
-              <span class="moneyPrefix">â‚±</span>
+              <span class="moneyPrefix">?</span>
               <input type="number" min="0" step="0.01"
                 value="${Number(row.amount || 0)}"
                 data-index="${index}" class="adjAmount" />
             </span>
           </label>
 
-          <button type="button" data-index="${index}" class="iconbtn delAdjBtn" aria-label="Remove adjustment">ðŸ—‘</button>
+          <button type="button" data-index="${index}" class="iconbtn delAdjBtn" aria-label="Remove adjustment">??</button>
         </div>
       `;
 
@@ -1532,7 +1543,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (places.length) {
         const chev = document.createElement("span");
         chev.className = "seg__chevron";
-        chev.textContent = "â–¾";
+        chev.textContent = "?";
         btn.appendChild(chev);
       }
       wrap.appendChild(btn);
@@ -1678,7 +1689,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const isInternal = runType === "Internal";
     const allBtn = document.getElementById("assignAllBtn");
     if (allBtn) allBtn.style.display = isInternal ? "" : "none";
-    // External runs cannot use "All" â€” reset to Tagum if needed
+    // External runs cannot use "All" — reset to Tagum if needed
     if (assignmentFilterEnabled) {
       if (!isInternal && assignmentFilter === "All") {
         const firstAssign = segBtns.find(b => (b.dataset.assign || "") !== "All");

@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const cutoffMonthInput = document.getElementById("cutoffMonth");
   const cutoffSelect = document.getElementById("cutoffSelect");
   const assignSeg = document.getElementById("assignSeg");
-  const deductionTypeSeg = document.getElementById("deductionTypeSeg");
+  const deductionTypeSelect = document.getElementById("deductionTypeSelect");
 
   const kpiEmployees = document.getElementById("kpiEmployees");
   const kpiGross = document.getElementById("kpiGross");
@@ -127,7 +127,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function getCurrentFilters() {
     const assignment = (assignSeg?.dataset.assign || "All").trim() || "All";
     const place = (assignSeg?.dataset.place || "").trim();
-    const deductionType = (deductionTypeSeg?.dataset.deductionType || "all").trim() || "all";
+    const deductionType = (deductionTypeSelect?.value || "all").trim() || "all";
     return {
       month: cutoffMonthInput?.value || "",
       cutoff: cutoffSelect?.value || "all",
@@ -597,13 +597,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function setDeductionTypeSelection(next = "all") {
-    if (!deductionTypeSeg) return;
+    if (!deductionTypeSelect) return;
     const selected = String(next || "all").toLowerCase();
-    deductionTypeSeg.dataset.deductionType = selected;
-    deductionTypeSeg.querySelectorAll(".seg__btn[data-deduction-type]").forEach((btn) => {
-      const type = String(btn.getAttribute("data-deduction-type") || "all").toLowerCase();
-      btn.classList.toggle("is-active", type === selected);
-    });
+    const hasOption = Array.from(deductionTypeSelect.options).some(
+      (opt) => String(opt.value || "").toLowerCase() === selected
+    );
+    deductionTypeSelect.value = hasOption ? selected : "all";
   }
 
   function buildFallbackAssignments() {
@@ -694,8 +693,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     assignSeg.dataset.assign = "All";
     assignSeg.dataset.place = "";
   }
-  if (deductionTypeSeg) {
-    deductionTypeSeg.dataset.deductionType = "all";
+  if (deductionTypeSelect) {
+    deductionTypeSelect.value = "all";
   }
 
   syncCutoffOptions();
@@ -706,12 +705,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const onFilterChange = () => { refreshDashboard(); };
   wireAssignButtons(onFilterChange);
-  deductionTypeSeg?.querySelectorAll(".seg__btn[data-deduction-type]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const next = btn.getAttribute("data-deduction-type") || "all";
-      setDeductionTypeSelection(next);
-      refreshDashboard();
-    });
+  deductionTypeSelect?.addEventListener("change", () => {
+    refreshDashboard();
   });
 
   cutoffMonthInput?.addEventListener("change", () => {

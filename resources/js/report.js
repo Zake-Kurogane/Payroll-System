@@ -1,4 +1,4 @@
-Ôªøimport { initClock } from "./shared/clock";
+import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { formatMoney } from "./shared/format";
@@ -26,6 +26,15 @@ document.addEventListener("DOMContentLoaded", () => {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
 
+  const firstAndLastName = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "ó";
+    const cleaned = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    const parts = cleaned.split(" ").filter(Boolean);
+    if (parts.length <= 1) return cleaned;
+    return `${parts[0]} ${parts[parts.length - 1]}`;
+  };
+
   const normalizeDateTimeInput = (value) => {
     if (!value) return "";
     let s = String(value).trim();
@@ -35,7 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const formatDateTime12h = (value) => {
-    if (!value || value === "‚Äî") return "‚Äî";
+    if (!value || value === "ó") return "ó";
     const raw = String(value).trim();
     const d = new Date(normalizeDateTimeInput(raw));
     if (Number.isNaN(d.getTime())) return raw;
@@ -247,7 +256,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function runDisplayLabel(run) {
     if (!run) return "No payroll run found for the selected filters.";
-    return `${run.runCode} ‚Ä¢ ${run.month} (${run.cutoffLabel}) ‚Ä¢ ${run.displayLabel} ‚Ä¢ ${run.status} ‚Ä¢ ${run.employees} employees`;
+    return `${run.runCode} ï ${run.month} (${run.cutoffLabel}) ï ${run.displayLabel} ï ${run.status} ï ${run.employees} employees`;
   }
 
   function setRunDisplay(run) {
@@ -258,27 +267,27 @@ document.addEventListener("DOMContentLoaded", () => {
   function mapRun(run) {
     const assignmentText = run.assignment_filter === "Field" && run.area_place_filter
       ? `Field (${run.area_place_filter})`
-      : (run.assignment_filter || "‚Äî");
+      : (run.assignment_filter || "ó");
 
     return {
       id: String(run.id),
       runCode: run.run_code || String(run.id),
       month: run.period_month,
       cutoff: normalizeCutoffValue(run.cutoff) || String(run.cutoff || ""),
-      cutoffLabel: normalizeCutoffValue(run.cutoff) || run.cutoff || "‚Äî",
+      cutoffLabel: normalizeCutoffValue(run.cutoff) || run.cutoff || "ó",
       assignment: assignmentText,
-      status: run.status || "‚Äî",
+      status: run.status || "ó",
       employees: Number(run.headcount || 0),
       totalNet: Number(run.net || 0),
-      processedAt: formatDateTime12h(run.locked_at || run.created_at || "‚Äî"),
-      processedBy: run.created_by_name || "‚Äî",
-      payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "‚Äî"),
-      releasedAt: formatDateTime12h(run.released_at || "‚Äî"),
+      processedAt: formatDateTime12h(run.locked_at || run.created_at || "ó"),
+      processedBy: firstAndLastName(run.created_by_name || ""),
+      payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "ó"),
+      releasedAt: formatDateTime12h(run.released_at || "ó"),
       createdAtRaw: run.created_at || "",
       lockedAtRaw: run.locked_at || "",
       releasedAtRaw: run.released_at || "",
       runType: run.run_type || "External",
-      displayLabel: run.display_label || `${run.run_type || "External"} ¬∑ ${assignmentText}`,
+      displayLabel: run.display_label || `${run.run_type || "External"} ∑ ${assignmentText}`,
     };
   }
 
@@ -319,7 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
       deductionsEe: Number(row.deductions_total || 0),
       employerShare: Number(row.employer_share_total || 0),
       netPay: Number(row.net_pay || 0),
-      payslipStatus: row.payslip_status || "‚Äî",
+      payslipStatus: row.payslip_status || "ó",
     };
   }
 
@@ -357,8 +366,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // PIPELINE: FILTERS
   // =========================================================
   function assignmentText(r) {
-    if (r.areaPlace) return `${r.assignmentType || "‚Äî"} (${r.areaPlace})`;
-    return r.assignmentType || "‚Äî";
+    if (r.areaPlace) return `${r.assignmentType || "ó"} (${r.areaPlace})`;
+    return r.assignmentType || "ó";
   }
 
   function runMatchesFilters(run) {
@@ -467,11 +476,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function setRunUI(run) {
     if (!run) {
       setRunDisplay(null);
-      if (runBadge) runBadge.textContent = "‚Äî";
-      if (runEmployees) runEmployees.textContent = "‚Äî";
-      if (runTotalNet) runTotalNet.textContent = "‚Äî";
-      if (runProcessedAt) runProcessedAt.textContent = "‚Äî";
-      if (runProcessedBy) runProcessedBy.textContent = "‚Äî";
+      if (runBadge) runBadge.textContent = "ó";
+      if (runEmployees) runEmployees.textContent = "ó";
+      if (runTotalNet) runTotalNet.textContent = "ó";
+      if (runProcessedAt) runProcessedAt.textContent = "ó";
+      if (runProcessedBy) runProcessedBy.textContent = "ó";
       if (reportTitle) reportTitle.textContent = "Select a run to generate a report.";
       setTopActionsEnabled(false);
       return;
@@ -485,7 +494,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (runProcessedBy) runProcessedBy.textContent = run.processedBy;
 
     if (reportTitle) {
-      reportTitle.textContent = `Payroll Reports ‚Äî ${run.runCode} ‚Äî ${run.month} (${run.cutoff}) ‚Äî ${run.assignment}`;
+      reportTitle.textContent = `Payroll Reports ó ${run.runCode} ó ${run.month} (${run.cutoff}) ó ${run.assignment}`;
     }
     setTopActionsEnabled(true);
   }
@@ -528,7 +537,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.empId)}</td>
         <td>${escapeHtml(r.empName)}</td>
         <td>${escapeHtml(assignmentText(r))}</td>
-        <td>${escapeHtml(r.department || "‚Äî")}</td>
+        <td>${escapeHtml(r.department || "ó")}</td>
         <td>${escapeHtml(`${r.presentDays}/${r.absentDays}/${r.leaveDays}`)}</td>
         <td class="num">${escapeHtml(peso(r.dailyRate))}</td>
         <td class="num">${escapeHtml(peso(r.attendancePay))}</td>
@@ -548,7 +557,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </td>
         <td class="num">${escapeHtml(peso(r.gross))}</td>
         <td class="num">${escapeHtml(peso(r.netPay))}</td>
-        <td>${escapeHtml(r.payslipStatus || "‚Äî")}</td>
+        <td>${escapeHtml(r.payslipStatus || "ó")}</td>
       `;
       regTbody.appendChild(tr);
     });
@@ -624,8 +633,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num"><strong>${escapeHtml(peso(r.totalNet))}</strong></td>
         <td>${escapeHtml(r.processedAt)}</td>
         <td>${escapeHtml(r.processedBy)}</td>
-        <td>${escapeHtml(r.payslipsGeneratedAt || "‚Äî")}</td>
-        <td>${escapeHtml(r.releasedAt || "‚Äî")}</td>
+        <td>${escapeHtml(r.payslipsGeneratedAt || "ó")}</td>
+        <td>${escapeHtml(r.releasedAt || "ó")}</td>
       `;
       auditTbody.appendChild(tr);
     });
@@ -656,7 +665,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function groupBy(list, keyFn) {
     const map = new Map();
     list.forEach((item) => {
-      const key = String(keyFn(item) ?? "‚Äî");
+      const key = String(keyFn(item) ?? "ó");
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(item);
     });
@@ -674,7 +683,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const area = String(r.areaPlace || "").trim();
     if (area) return area;
     const assign = String(r.assignmentType || "").trim();
-    return assign || "‚Äî";
+    return assign || "ó";
   }
 
   function renderExternalGross(rows) {
@@ -698,7 +707,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const groups = groupBy(list, (r) => (r.externalArea || "‚Äî").trim() || "‚Äî");
+    const groups = groupBy(list, (r) => (r.externalArea || "ó").trim() || "ó");
     Array.from(groups.keys()).sort().forEach((external) => {
       const items = groups.get(external) || [];
       appendGroupHeader(externalGrossTbody, external, 2);
@@ -745,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const groups = groupBy(list, (r) => (r.externalArea || "‚Äî").trim() || "‚Äî");
+    const groups = groupBy(list, (r) => (r.externalArea || "ó").trim() || "ó");
     Array.from(groups.keys()).sort().forEach((external) => {
       const items = groups.get(external) || [];
       appendGroupHeader(externalPayslipsTbody, external, 6);
@@ -832,6 +841,19 @@ document.addEventListener("DOMContentLoaded", () => {
     Array.from(groups.keys()).sort().forEach((company) => {
       const items = groups.get(company) || [];
       appendGroupHeader(companyPayslipsTbody, company, 6);
+      {
+        const tr = document.createElement("tr");
+        tr.className = "row-group-columns";
+        tr.innerHTML = `
+          <td>Name</td>
+          <td class="num">Gross Pay</td>
+          <td class="num">Deductions</td>
+          <td class="num">Attendance Deduction</td>
+          <td class="num">Charges</td>
+          <td class="num">Net Pay</td>
+        `;
+        companyPayslipsTbody.appendChild(tr);
+      }
 
       let totalGross = 0;
       let totalDed = 0;
@@ -893,7 +915,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!payload) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocations√¢‚Ç¨¬¶</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocations‚Ä¶</td>`;
       fieldAreasTbody.appendChild(tr);
       return;
     }
@@ -905,7 +927,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fieldAreasTbody.appendChild(tr);
     } else {
       areas.forEach((g) => {
-        appendGroupHeader(fieldAreasTbody, g.area_place || "√¢‚Ç¨‚Äù", 6);
+        appendGroupHeader(fieldAreasTbody, g.area_place || "‚Äî", 6);
 
         const head = document.createElement("tr");
         head.className = "row-group-columns";
@@ -925,11 +947,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const days = Number(r.paid_units || 0);
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${escapeHtml(r.emp_no || "√¢‚Ç¨‚Äù")}</td>
-            <td>${escapeHtml(r.name || "√¢‚Ç¨‚Äù")}</td>
+            <td>${escapeHtml(r.emp_no || "‚Äî")}</td>
+            <td>${escapeHtml(r.name || "‚Äî")}</td>
             <td>${escapeHtml(peso(r.daily_rate || 0))}</td>
             <td>${escapeHtml(String(days))}</td>
-            <td>${escapeHtml(dates || "√¢‚Ç¨‚Äù")}</td>
+            <td>${escapeHtml(dates || "‚Äî")}</td>
             <td><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
           `;
           fieldAreasTbody.appendChild(tr);
@@ -960,7 +982,7 @@ document.addEventListener("DOMContentLoaded", () => {
     totals.forEach((t) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${escapeHtml(t.area_place || "√¢‚Ç¨‚Äù")}</td>
+        <td>${escapeHtml(t.area_place || "‚Äî")}</td>
         <td class="num">${escapeHtml(String(Number(t.paid_units || 0)))}</td>
         <td class="num"><strong>${escapeHtml(peso(t.amount || 0))}</strong></td>
       `;
@@ -1112,7 +1134,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (places.length) {
         const chev = document.createElement("span");
         chev.className = "seg__chevron";
-        chev.textContent = "‚ñæ";
+        chev.textContent = "?";
         btn.appendChild(chev);
       }
       wrap.appendChild(btn);

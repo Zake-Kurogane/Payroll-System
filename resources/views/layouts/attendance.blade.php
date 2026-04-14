@@ -31,8 +31,6 @@
                 <div class="cutoffInfo">
                     <div class="muted small">Cutoff Range</div>
                     <div class="cutoffRange" id="cutoffRangeLabel">—</div>
-                    <div class="muted tiny" id="cutoffHint">Attendance dates must fall inside this range.
-                    </div>
                 </div>
             </div>
         </section>
@@ -79,14 +77,7 @@
                     <button class="btn btn--maroon" type="button" id="previewImportBtn" disabled>Import Excel</button>
                 </div>
             </div>
-
-            <div class="muted small importNote">
-                Tip: Use codes like <strong>P</strong>, <strong>L</strong>, <strong>A</strong>,
-                <strong>RNR</strong>, <strong>PL</strong>, <strong>HD</strong>,
-                <strong>OFF</strong>, <strong>HOL</strong>, <strong>LOA</strong>.
-                Codes are mapped automatically.
-            </div>
-        </section>
+</section>
 
         <!-- FILTER BAR -->
         <section class="card filterbar">

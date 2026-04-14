@@ -90,7 +90,7 @@
                                 <div class="mini__v" id="runStatus">Draft</div>
 
                                 <div class="mini__k">Created By</div>
-                                <div class="mini__v" id="runCreatedBy">ADMIN</div>
+                                <div class="mini__v" id="runCreatedBy">â€”</div>
 
                                 <div class="mini__k">Created At</div>
                                 <div class="mini__v" id="runCreatedAt">—</div>
@@ -122,9 +122,6 @@
                                     <span>Total Net</span>
                                     <strong id="sumNet">₱ 0</strong>
                                 </div>
-                            </div>
-                            <div class="muted small" style="margin-top:10px;">
-                                Tip: Lock after totals look correct. Unlock requires a reason.
                             </div>
                         </div>
                     </div>

@@ -846,9 +846,9 @@ class PayslipClaimController extends Controller
                 . ', class=' . ($imagickClassOk ? '1' : '0') . ']'
             );
         }
-        // Higher DPI improves QR decode and small checkbox detection. 260 DPI is
-        // a practical middle ground between accuracy and processing time.
-        $imagick->setResolution(260, 260);
+        // Keep rendering fast enough for web request limits; 240 DPI balances
+        // readability and avoids frequent 60s request timeouts on PHP/FPM setups.
+        $imagick->setResolution(240, 240);
         $imagick->readImage($fullPath);
 
         $assets = [];

@@ -455,7 +455,7 @@ private function makeRow(
         try {
             $iw = imagesx($img);
             $ih = imagesy($img);
-            foreach ([0, 4, 8] as $pad) {
+            foreach ([0, 4] as $pad) {
                 $sx1 = max(0, $x1 - $pad);
                 $sy1 = max(0, $y1 - $pad);
                 $sx2 = min($iw - 1, $x2 + $pad);
@@ -496,7 +496,7 @@ private function makeRow(
 
         $v1 = imagecreatetruecolor(imagesx($crop), imagesy($crop));
         imagecopy($v1, $crop, 0, 0, 0, 0, imagesx($crop), imagesy($crop));
-        imagefilter($v1, \IMG_FILTER_SHARPEN);
+        $this->applySharpenFilter($v1);
         imagefilter($v1, \IMG_FILTER_CONTRAST, -20);
         $decoded = $this->decodeQrFromGd($v1);
         imagedestroy($v1);
@@ -509,6 +509,27 @@ private function makeRow(
         $decoded = $this->decodeQrFromGd($v2);
         imagedestroy($v2);
         return $decoded;
+    }
+
+    private function applySharpenFilter($img): void
+    {
+        // GD has no IMG_FILTER_SHARPEN constant; use convolution for sharpening.
+        if (\function_exists('imageconvolution')) {
+            imageconvolution(
+                $img,
+                [
+                    [-1, -1, -1],
+                    [-1, 16, -1],
+                    [-1, -1, -1],
+                ],
+                8,
+                0
+            );
+            return;
+        }
+
+        // Fallback approximation when convolution is unavailable.
+        imagefilter($img, \IMG_FILTER_SMOOTH, -6);
     }
 
     private function decodeQrFromGd($crop): ?string
@@ -894,4 +915,3 @@ private function makeRow(
         return max(0.12, min(0.30, $cut));
     }
 }
-
