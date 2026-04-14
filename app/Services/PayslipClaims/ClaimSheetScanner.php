@@ -812,11 +812,12 @@ private function makeRow(
     {
         $bestStrict = 0.0;
         $bestSoft = 0.0;
-        // Search slightly around the nominal center because print/scans can shift
-        // the tiny checkbox within the received column cell.
-        foreach ([0.30, 0.45, 0.60, 0.75, 0.88] as $ratio) {
-            foreach ([-0.18, 0.0, 0.18] as $dxFrac) {
-                foreach ([-0.12, 0.0, 0.12] as $dyFrac) {
+        // The Rec. column is narrow (7% of table width) and contains a small 4mm box.
+        // Limit ratio to ≥0.50 and dxFrac to ±0.08 to stay inside the box and avoid
+        // sampling cell borders or the adjacent signature column, which causes false positives.
+        foreach ([0.50, 0.65, 0.80] as $ratio) {
+            foreach ([-0.08, 0.0, 0.08] as $dxFrac) {
+                foreach ([-0.10, 0.0, 0.10] as $dyFrac) {
                     [$rx1, $ry1, $rx2, $ry2] = $this->receivedBoxInnerRect($x1, $y1, $x2, $y2, $ratio, $dxFrac, $dyFrac);
                     if ($rx2 - $rx1 < 4 || $ry2 - $ry1 < 4) continue;
                     $adaptiveThreshold = $this->adaptiveInkThreshold($img, $rx1, $ry1, $rx2, $ry2);
@@ -891,7 +892,7 @@ private function makeRow(
         if (abs($c2 - $c1) < 0.04) return $default;
 
         $cut = ($c1 + $c2) / 2.0;
-        return max(0.12, min(0.30, $cut));
+        return max(0.12, min(0.45, $cut));
     }
 }
 
