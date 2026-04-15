@@ -418,11 +418,32 @@ class PayslipClaimController extends Controller
         $this->extendExecutionForProofScanning();
 
         $rowsPerPage = 25;
+        $qrRequiredRaw = env('PAYSLIP_CLAIMS_REQUIRE_QR', config('services.payslip_claims.require_qr', false));
+        $qrRequired = filter_var($qrRequiredRaw, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+        $qrRequired = $qrRequired ?? false;
+
+        $checkboxConfirmCutoff = (float) env(
+            'PAYSLIP_CLAIMS_CHECKBOX_CONFIRM_CUTOFF',
+            config('services.payslip_claims.checkbox_confirm_cutoff', 0.55)
+        );
+        $checkboxReviewCutoff = (float) env(
+            'PAYSLIP_CLAIMS_CHECKBOX_REVIEW_CUTOFF',
+            config('services.payslip_claims.checkbox_review_cutoff', 0.30)
+        );
+        $noQrReviewSigCutoff = (float) env(
+            'PAYSLIP_CLAIMS_NO_QR_REVIEW_SIG_CUTOFF',
+            config('services.payslip_claims.no_qr_review_sig_cutoff', 0.04)
+        );
+        $checkboxConfirmCutoff = max(0.10, min(0.95, $checkboxConfirmCutoff));
+        $checkboxReviewCutoff = max(0.05, min($checkboxConfirmCutoff, $checkboxReviewCutoff));
+        $noQrReviewSigCutoff = max(0.0, min(1.0, $noQrReviewSigCutoff));
         $employees = $this->runEmployeesForClaimSheet($run)->values();
         // Important: include run id so expected per-row QR tokens are generated.
         // Without this, expected tokens are empty and token_match is always false.
         $pages = $this->buildClaimSheetPages($employees, $rowsPerPage, (int) $run->id);
         $scanner = new ClaimSheetScanner();
+        $gemini  = new \App\Services\PayslipClaims\GeminiClaimScanner();
+        $useGemini = $gemini->isAvailable();
         $usedPageIndexes = [];
         $nextPageIndex = 0;
 
@@ -432,8 +453,10 @@ class PayslipClaimController extends Controller
         $tokenPageMap = [];
         foreach ($pages as $pageIdx => $page) {
             foreach (($page['rows'] ?? []) as $row) {
-                $t = (string) ($row['token'] ?? '');
-                if ($t !== '') $tokenPageMap[$t] = $pageIdx;
+                $knownTokens = $this->knownRowTokens($run, (array) $row);
+                foreach ($knownTokens as $t) {
+                    if ($t !== '') $tokenPageMap[$t] = $pageIdx;
+                }
             }
         }
 
@@ -489,12 +512,10 @@ class PayslipClaimController extends Controller
                 if ($seedPageIndex === null) {
                     break;
                 }
+                $filenameNorm = $this->normalizeForTokenMatch((string) ($proof->original_name ?? ''));
 
                 try {
-                    // Probe a few QR codes from fixed positions to identify the correct
-                    // employee slice. This handles the case where the claim sheet was
-                    // downloaded with an area filter, so the filename page number doesn't
-                    // match the all-employee page index used during scanning.
+                    // ── Page identification (QR probe, unchanged) ────────────────
                     $probeTokens    = $scanner->probeQrTokens($asset['path']);
                     $probePageIndex = null;
                     foreach ($probeTokens as $probed) {
@@ -505,10 +526,8 @@ class PayslipClaimController extends Controller
                     }
 
                     if ($probePageIndex !== null) {
-                        // A QR token matched a known employee — use that page directly.
                         $candidates = [$probePageIndex];
                     } else {
-                        // Fall back to filename hint + nearby offsets.
                         $candidates = [$seedPageIndex];
                         $hintIdx = ($suggested !== null && isset($pages[$suggested]) && !isset($usedPageIndexes[$suggested]))
                             ? $suggested : $seedPageIndex;
@@ -521,92 +540,132 @@ class PayslipClaimController extends Controller
                         $candidates = array_values(array_unique($candidates));
                     }
 
-                    $best = null;
-                    foreach ($candidates as $candPageIndex) {
-                        $page = $pages[$candPageIndex] ?? null;
-                        $candSlice = $page ? (array) ($page['rows'] ?? []) : [];
-                        $candExpectedRows = count($candSlice);
-                        if ($candExpectedRows === 0) continue;
-
-                        $rowTokens = array_map(
-                            fn ($r) => ClaimToken::generate($run->id, (int) ($r['employee_id'] ?? 0)),
-                            $candSlice
-                        );
-                        $candScan = $scanner->scanImageFile($asset['path'], $candExpectedRows, $rowTokens);
-                        $candDebug = $scanner->getLastDebug();
-
-                        $matchCount = 0;
-                        $qrFoundCount = 0;
-                        $tokenInPageCount = 0;
-                        $confirmedCount = 0;
-                        $tokenSet = array_fill_keys(array_filter($rowTokens, fn ($t) => $t !== ''), true);
-                        $rows = min($candExpectedRows, count($candScan));
-                        for ($m = 0; $m < $rows; $m++) {
-                            if (!empty($candScan[$m]['token_match'])) $matchCount++;
-                            if (!empty($candScan[$m]['qr_found'])) $qrFoundCount++;
-                            $tok = (string) ($candScan[$m]['token_found'] ?? '');
-                            if ($tok !== '' && isset($tokenSet[$tok])) $tokenInPageCount++;
-                            if (($candScan[$m]['status'] ?? '') === 'confirmed') $confirmedCount++;
-                        }
-                        $score = ($matchCount * 10) + ($tokenInPageCount * 6) + ($qrFoundCount * 2) + $confirmedCount;
-
-                        if (!$best || $score > $best['score']) {
-                            $best = [
-                                'score' => $score,
-                                'matchCount' => $matchCount,
-                                'qrFoundCount' => $qrFoundCount,
-                                'tokenInPageCount' => $tokenInPageCount,
-                                'pageIndex' => $candPageIndex,
-                                'slice' => $candSlice,
-                                'rowTokens' => $rowTokens,
-                                'expectedRows' => $candExpectedRows,
-                                'scan' => $candScan,
-                                'scanDebug' => $candDebug,
-                            ];
+                    // Pick the best candidate page (area-name match + seed distance).
+                    $pageIndex = (int) $candidates[0];
+                    if (count($candidates) > 1) {
+                        $bestCandScore = -INF;
+                        foreach ($candidates as $candPageIndex) {
+                            $page = $pages[$candPageIndex] ?? null;
+                            if (!$page) continue;
+                            $pageAreaNorm  = $this->normalizeForTokenMatch((string) ($page['area'] ?? ''));
+                            $areaBonus     = ($filenameNorm !== '' && $pageAreaNorm !== '' && str_contains($filenameNorm, $pageAreaNorm)) ? 100 : 0;
+                            $distPenalty   = abs($candPageIndex - $seedPageIndex);
+                            $candScore     = $areaBonus - $distPenalty;
+                            if ($candScore > $bestCandScore) {
+                                $bestCandScore = $candScore;
+                                $pageIndex = $candPageIndex;
+                            }
                         }
                     }
 
-                    if (!$best) {
-                        continue;
-                    }
-
-                    $pageIndex = (int) $best['pageIndex'];
-                    $slice = (array) $best['slice'];
-                    $rowTokens = (array) ($best['rowTokens'] ?? []);
-                    $expectedRows = (int) $best['expectedRows'];
-                    $scan = (array) $best['scan'];
-                    $scanDebug = (array) ($best['scanDebug'] ?? []);
-                    if ($probePageIndex !== null) {
-                        $scanDebug['probe_page_index'] = $probePageIndex;
-                    }
-                    $bestMatchCount = (int) ($best['matchCount'] ?? 0);
-                    $bestQrFoundCount = (int) ($best['qrFoundCount'] ?? 0);
-                    $bestTokenInPageCount = (int) ($best['tokenInPageCount'] ?? 0);
-                    // Trust the page when either exact row token match exists OR decoded
-                    // tokens are known to belong to this page (scan row offset tolerated).
-                    $pageTrusted = $bestMatchCount > 0 || $bestTokenInPageCount > 0;
-                    $qrFoundTotal += $bestQrFoundCount;
-                    $tokenMatchTotal += $bestMatchCount;
-                    $tokenInPageTotal += $bestTokenInPageCount;
-                    if (!$pageTrusted && !$error) {
-                        $error = 'Skipped auto-assignment for this page because no QR token matched the expected page rows.';
-                    }
+                    $page         = $pages[$pageIndex] ?? null;
+                    $slice        = $page ? (array) ($page['rows'] ?? []) : [];
+                    $expectedRows = count($slice);
+                    if ($expectedRows === 0) continue;
 
                     $usedPageIndexes[$pageIndex] = true;
                     $nextPageIndex = max($nextPageIndex, $pageIndex + 1);
                     $firstPageIndexUsed = $firstPageIndexUsed ?? $pageIndex;
 
-                    $sliceFirst = $slice[0] ?? null;
-                    $sliceLast = $slice[$expectedRows - 1] ?? null;
+                    $sliceFirst      = $slice[0] ?? null;
+                    $sliceLast       = $slice[$expectedRows - 1] ?? null;
                     $sliceFirstEmpNo = $sliceFirstEmpNo ?? (string) ($sliceFirst['emp_no'] ?? '');
-                    $sliceLastEmpNo = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
+                    $sliceLastEmpNo  = (string) ($sliceLast['emp_no'] ?? $sliceLastEmpNo);
+
+                    $scanDebug = [];
+                    if ($probePageIndex !== null) {
+                        $scanDebug['probe_page_index'] = $probePageIndex;
+                    }
+
+                    // ── Gemini vision path ───────────────────────────────────────
+                    if ($useGemini) {
+                        $geminiResults = $gemini->scanPage($asset['path'], $slice);
+                        $scanDebug['mode'] = 'gemini';
+
+                        $rowsScannedTotal += $expectedRows;
+                        $pagesProcessed++;
+
+                        // Build emp_no → employee_id map for this slice.
+                        $empNoToRow = [];
+                        foreach ($slice as $sliceRow) {
+                            $en = (string) ($sliceRow['emp_no'] ?? '');
+                            if ($en !== '') $empNoToRow[$en] = $sliceRow;
+                        }
+
+                        $empIds  = array_values(array_filter(array_map(fn ($r) => (int) ($r['employee_id'] ?? 0), $slice)));
+                        $existing = PayslipClaim::query()
+                            ->where('payroll_run_id', $run->id)
+                            ->whereIn('employee_id', $empIds)
+                            ->get()
+                            ->keyBy('employee_id');
+
+                        DB::transaction(function () use (
+                            $run, $proof, $geminiResults, $empNoToRow, $existing,
+                            &$claimedNewTotal, &$claimedDetectedTotal,
+                            &$claimedRowIndexes, &$claimedEmpNos,
+                            &$shadedResolvedEmpNos, &$shadedRowIndexes
+                        ) {
+                            foreach ($geminiResults as $idx => $gr) {
+                                $empNo     = (string) ($gr['emp_no']     ?? '');
+                                $claimed   = (bool)   ($gr['claimed']    ?? false);
+                                $confidence = (float) ($gr['confidence'] ?? 0.5);
+                                $row = $empNoToRow[$empNo] ?? null;
+                                if (!$row) continue;
+                                $empId  = (int) ($row['employee_id'] ?? 0);
+                                if (!$empId) continue;
+                                $already = $existing->get($empId);
+
+                                if ($claimed) {
+                                    $claimedDetectedTotal++;
+                                    $claimedRowIndexes[]    = $idx + 1;
+                                    $claimedEmpNos[]        = $empNo;
+                                    $shadedRowIndexes[]     = $idx + 1;
+                                    $shadedResolvedEmpNos[] = $empNo;
+
+                                    if ($already && $already->claimed_at) continue;
+                                    PayslipClaim::updateOrCreate(
+                                        ['payroll_run_id' => $run->id, 'employee_id' => $empId],
+                                        [
+                                            'claimed_at'             => now(),
+                                            'claimed_by_user_id'     => Auth::id(),
+                                            'payslip_claim_proof_id' => $proof->id,
+                                            'ink_ratio'              => 1.0,
+                                            'review_status'          => 'confirmed',
+                                            'confidence'             => $confidence,
+                                        ]
+                                    );
+                                    $claimedNewTotal++;
+                                }
+                            }
+                        });
+
+                        continue; // next asset
+                    }
+
+                    // ── Pixel scanner fallback (original logic) ──────────────────
+                    $rowTokens = array_map(
+                        fn ($r) => ClaimToken::generate($run->id, (int) ($r['employee_id'] ?? 0)),
+                        $slice
+                    );
+                    $legacyRowTokens = array_map(
+                        fn ($r) => $this->legacyRowToken($run, (array) $r),
+                        $slice
+                    );
+                    $scanTokens = $qrRequired ? $rowTokens : [];
+                    $scan       = $scanner->scanImageFile($asset['path'], $expectedRows, $scanTokens);
+                    $scanDebug  = array_merge($scanDebug, $scanner->getLastDebug());
 
                     $rowsScanned = min($expectedRows, count($scan));
                     $rowsScannedTotal += $rowsScanned;
                     $pagesProcessed++;
+                    $pageTrusted = true;
 
                     $tokenToSliceIndex = [];
                     foreach ($rowTokens as $tokIdx => $tok) {
+                        $tok = strtoupper(trim((string) $tok));
+                        if ($tok !== '') $tokenToSliceIndex[$tok] = (int) $tokIdx;
+                    }
+                    foreach ($legacyRowTokens as $tokIdx => $tok) {
                         $tok = strtoupper(trim((string) $tok));
                         if ($tok !== '') $tokenToSliceIndex[$tok] = (int) $tokIdx;
                     }
@@ -634,19 +693,17 @@ class PayslipClaimController extends Controller
                         $rowInkStrict = (float) ($res['ink_ratio_strict'] ?? $res['ink_ratio'] ?? 0.0);
                         if ($rowInkStrict >= $shadeCutoff) {
                             $shadedRowIndexes[] = $k + 1;
-                            if ($tokenMapped && isset($slice[$mappedIdx])) {
+                            if (isset($slice[$mappedIdx])) {
                                 $shadedResolvedEmpNos[] = (string) ($slice[$mappedIdx]['emp_no'] ?? '');
                             } else {
                                 $shadedUnresolvedRows[] = $k + 1;
                             }
                         }
 
-                        // If QR token maps to a known row in this page, trust token mapping
-                        // over geometric row index (handles one-row scan drift safely).
                         if (
                             $tokenMapped
                             && !empty($res['qr_found'])
-                            && $status === 'needs_review'
+                            && in_array($status, ['needs_review', 'unclaimed'], true)
                             && $rowInkStrict >= 0.30
                         ) {
                             $status = 'confirmed';
@@ -656,9 +713,28 @@ class PayslipClaimController extends Controller
                             $promotedByTokenMap++;
                         }
 
+                        if (!$qrRequired) {
+                            $qrConfirmed = !empty($res['token_match']) && $status === 'confirmed';
+                            if (!$qrConfirmed) {
+                                $effectiveConfirmCutoff = max($checkboxReviewCutoff + 0.01, $scanCutoff);
+                                $rowSigInk = (float) ($res['sig_ink'] ?? 0.0);
+                                if ($rowInkStrict >= $effectiveConfirmCutoff) {
+                                    $status = 'confirmed';
+                                    $res['status'] = 'confirmed';
+                                    $res['confidence'] = max((float) ($res['confidence'] ?? 0.0), 0.82);
+                                } elseif ($rowInkStrict >= $checkboxReviewCutoff && $rowSigInk >= $noQrReviewSigCutoff) {
+                                    $status = 'needs_review';
+                                    $res['status'] = 'needs_review';
+                                    $res['confidence'] = max((float) ($res['confidence'] ?? 0.0), 0.60);
+                                } else {
+                                    $status = 'unclaimed';
+                                    $res['status'] = 'unclaimed';
+                                }
+                            }
+                        }
+
                         $row = $slice[$mappedIdx] ?? null;
                         if (!$row) continue;
-
                         $empId = (int) ($row['employee_id'] ?? 0);
                         if (!$empId) continue;
 
@@ -688,16 +764,10 @@ class PayslipClaimController extends Controller
                         }
                     }
 
-                    if ($remappedRows > 0) {
-                        $scanDebug['token_row_remap'] = $remappedRows;
-                    }
-                    if ($promotedByTokenMap > 0) {
-                        $scanDebug['token_promoted_confirmed'] = $promotedByTokenMap;
-                    }
+                    if ($remappedRows > 0) $scanDebug['token_row_remap'] = $remappedRows;
+                    if ($promotedByTokenMap > 0) $scanDebug['token_promoted_confirmed'] = $promotedByTokenMap;
 
-                    $empIds = array_values(array_filter(array_map(function ($r) {
-                        return (int) ($r['employee_id'] ?? 0);
-                    }, $slice)));
+                    $empIds = array_values(array_filter(array_map(fn ($r) => (int) ($r['employee_id'] ?? 0), $slice)));
                     $existing = PayslipClaim::query()
                         ->where('payroll_run_id', $run->id)
                         ->whereIn('employee_id', $empIds)
@@ -705,37 +775,23 @@ class PayslipClaimController extends Controller
                         ->keyBy('employee_id');
 
                     DB::transaction(function () use (
-                        $run,
-                        $proof,
-                        $scanAssignments,
-                        $existing,
-                        $pageTrusted,
-                        &$claimedNewTotal,
-                        &$claimedDetectedTotal,
-                        &$needsReviewDetectedTotal
+                        $run, $proof, $scanAssignments, $existing, $pageTrusted,
+                        &$claimedNewTotal, &$claimedDetectedTotal, &$needsReviewDetectedTotal
                     ) {
                         foreach ($scanAssignments as $assignment) {
                             $row = $assignment['row'] ?? null;
                             $res = $assignment['res'] ?? null;
                             if (!is_array($row) || !is_array($res)) continue;
-
                             $empId = (int) ($row['employee_id'] ?? 0);
                             if (!$empId) continue;
-
-                            $status     = (string) (($assignment['status'] ?? ($res['status'] ?? 'unclaimed')));
+                            $status     = (string) ($assignment['status'] ?? ($res['status'] ?? 'unclaimed'));
                             $confidence = (float)  ($res['confidence'] ?? 0.0);
                             $already    = $existing->get($empId);
-
-                            // Hard guard against wrong-employee tagging when page-to-row mapping is uncertain.
-                            if (!$pageTrusted && $status !== 'unclaimed') {
-                                continue;
-                            }
+                            if (!$pageTrusted && $status !== 'unclaimed') continue;
 
                             if ($status === 'confirmed') {
                                 $claimedDetectedTotal++;
-                                // Don't overwrite a pre-existing confirmed claim.
                                 if ($already && $already->claimed_at) continue;
-
                                 PayslipClaim::updateOrCreate(
                                     ['payroll_run_id' => $run->id, 'employee_id' => $empId],
                                     [
@@ -750,9 +806,7 @@ class PayslipClaimController extends Controller
                                 $claimedNewTotal++;
                             } elseif ($status === 'needs_review') {
                                 $needsReviewDetectedTotal++;
-                                // Don't overwrite an already-confirmed claim.
                                 if ($already && $already->claimed_at) continue;
-
                                 PayslipClaim::updateOrCreate(
                                     ['payroll_run_id' => $run->id, 'employee_id' => $empId],
                                     [
@@ -763,7 +817,6 @@ class PayslipClaimController extends Controller
                                     ]
                                 );
                             }
-                            // unclaimed: no record created
                         }
                     });
                 } catch (\Throwable $e) {
@@ -779,6 +832,7 @@ class PayslipClaimController extends Controller
 
             $proof->processed_at = now();
             $proof->processed_summary = array_filter([
+                'mode' => $useGemini ? 'gemini' : ($qrRequired ? 'qr' : 'no_qr'),
                 'pages' => max(1, $pagesProcessed),
                 'page_index' => $firstPageIndexUsed !== null ? $firstPageIndexUsed + 1 : null,
                 'rows_scanned' => $rowsScannedTotal,
@@ -896,6 +950,14 @@ class PayslipClaimController extends Controller
         return $isAvailable($candidate) ? $candidate : null;
     }
 
+    private function normalizeForTokenMatch(string $value): string
+    {
+        $value = strtoupper(trim($value));
+        if ($value === '') return '';
+        $value = preg_replace('/[^A-Z0-9]+/', '', $value) ?? '';
+        return $value;
+    }
+
     private function inferPageIndexFromFilename(?string $name): ?int
     {
         $name = (string) ($name ?? '');
@@ -906,7 +968,31 @@ class PayslipClaimController extends Controller
             return $n > 0 ? ($n - 1) : null;
         }
 
+        // Supports names like "..._1.pdf" or "...-2.jpg" when page/pg keyword isn't present.
+        if (preg_match('/(?:^|[_\\-\\s])([0-9]{1,3})(?:\\.[a-z0-9]+)?$/i', $name, $m)) {
+            $n = (int) $m[1];
+            return $n > 0 ? ($n - 1) : null;
+        }
+
         return null;
+    }
+
+    private function knownRowTokens(PayrollRun $run, array $row): array
+    {
+        $current = ClaimToken::generate($run->id, (int) ($row['employee_id'] ?? 0));
+        $legacy = $this->legacyRowToken($run, $row);
+        return array_values(array_unique(array_filter([
+            strtoupper(trim((string) $current)),
+            strtoupper(trim((string) $legacy)),
+        ], fn ($v) => $v !== '')));
+    }
+
+    private function legacyRowToken(PayrollRun $run, array $row): string
+    {
+        $runCode = trim((string) ($run->run_code ?: ('RUN-' . $run->id)));
+        $empNo = trim((string) ($row['emp_no'] ?? ''));
+        if ($runCode === '' || $empNo === '') return '';
+        return strtoupper($runCode . ':' . $empNo);
     }
 
     private function extendExecutionForProofScanning(): void

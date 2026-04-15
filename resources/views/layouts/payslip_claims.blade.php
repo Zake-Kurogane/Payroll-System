@@ -17,7 +17,7 @@
                 <button class="btn" type="button" id="claimPrintCloseBtn">Close</button>
             </div>
         </div>
-        <div id="claimPrintLoading" class="muted small" style="padding: 12px 14px;">Loading PDFâ€¦</div>
+        <div id="claimPrintLoading" class="muted small" style="padding: 12px 14px;">Loading PDF&hellip;</div>
         <iframe class="modal__frame" id="claimPrintFrame" title="Claim Sheet Print Preview" hidden></iframe>
     </aside>
 @endsection
@@ -173,7 +173,7 @@
                                 <tr>
                                     <td>{{ $p->created_at?->format('Y-m-d H:i') }}</td>
                                     <td>{{ $p->original_name }}</td>
-                                    <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : 'â€”' }}</td>
+                                    <td>{{ $p->processed_at ? $p->processed_at->format('Y-m-d H:i') : '—' }}</td>
                                     <td>
                                         @php($ps = is_array($p->processed_summary ?? null) ? $p->processed_summary : [])
                                         @if (!empty($ps))
@@ -182,6 +182,9 @@
                                                 detected: {{ (int) ($ps['claimed_detected'] ?? 0) }},
                                                 new: {{ (int) ($ps['claimed_new'] ?? 0) }}
                                             </div>
+                                            @if (!empty($ps['mode']))
+                                                <div class="small muted">mode: {{ $ps['mode'] }}</div>
+                                            @endif
                                             @if (isset($ps['shaded_rows_count']))
                                                 <div class="small muted">
                                                     shaded boxes: {{ (int) ($ps['shaded_rows_count'] ?? 0) }}
@@ -207,6 +210,15 @@
                                             @endif
                                             @if (isset($ps['geo']['probe_page_index']))
                                                 <div class="small muted">probe→pg: {{ $ps['geo']['probe_page_index'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['geo']['row_ink_strict']))
+                                                <div class="small muted">ink/row: {{ $ps['geo']['row_ink_strict'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['geo']['checkbox_cutoff']))
+                                                <div class="small muted">scanner cutoff: {{ $ps['geo']['checkbox_cutoff'] }}</div>
+                                            @endif
+                                            @if (!empty($ps['shaded_rows_detected']) && is_array($ps['shaded_rows_detected']))
+                                                <div class="small muted">shaded rows: {{ implode(',', $ps['shaded_rows_detected']) }}</div>
                                             @endif
                                             @if (!empty($ps['geo']['first_mismatch']))
                                                 <div class="small" style="color:#b45309;">{{ $ps['geo']['first_mismatch'] }}</div>
@@ -264,7 +276,7 @@
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big" style="color:#92400e;">&#9888; Needs Review ({{ $needsReviewRows->count() }})</div>
-                        <div class="muted small">QR code could not be read or did not match â€” HR must verify these manually. Click Confirm to mark as claimed.</div>
+                        <div class=”muted small”>QR code could not be read or did not match — HR must verify these manually. Click Confirm to mark as claimed.</div>
                     </div>
                 </div>
                 <div class="tablewrap">
@@ -283,8 +295,8 @@
                                 <tr>
                                     <td>{{ $e['emp_no'] }}</td>
                                     <td>{{ $e['name'] }}</td>
-                                    <td>{{ $e['area_place'] ?: 'â€”' }}</td>
-                                    <td>{{ isset($e['confidence']) ? round((float)$e['confidence'] * 100) . '%' : 'â€”' }}</td>
+                                    <td>{{ $e['area_place'] ?: '—' }}</td>
+                                    <td>{{ isset($e['confidence']) ? round((float)$e['confidence'] * 100) . '%' : '—' }}</td>
                                     <td>
                                         <form method="POST"
                                             action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
@@ -329,8 +341,8 @@
                                 <tr>
                                     <td>{{ $e['emp_no'] }}</td>
                                     <td>{{ $e['name'] }}</td>
-                                    <td>{{ $e['assignment_type'] ?: 'â€”' }}</td>
-                                    <td>{{ $e['area_place'] ?: 'â€”' }}</td>
+                                    <td>{{ $e['assignment_type'] ?: '—' }}</td>
+                                    <td>{{ $e['area_place'] ?: '—' }}</td>
                                     <td style="text-align:center;">
                                         <form method="POST"
                                             action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
@@ -371,6 +383,5 @@
         @endif
     </section>
 @endsection
-
 
 
