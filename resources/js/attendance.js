@@ -2363,7 +2363,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const emp = getEmpByNo(empId);
     const name = emp?.name || getEmployeeName(empId) || empId;
-    const pos = emp?.position || getEmployeePos(empId) || "—";
+    const pos = emp?.position || getEmployeePos(empId) || "-";
 
     const list = records
       .filter(r => r.empId === empId)
@@ -2371,7 +2371,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
     const latest = list[0];
-    const assign = latest ? assignmentText(latest) : "—";
+    const assign = latest ? assignmentText(latest) : "-";
 
     if (empDrawerTitle) empDrawerTitle.textContent = name;
     if (empDrawerSub) {
@@ -2386,7 +2386,7 @@ document.addEventListener("DOMContentLoaded", () => {
         parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
       }
       parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
-      empDrawerSub.innerHTML = parts.join(" • ");
+      empDrawerSub.innerHTML = parts.join(" | ");
     }
 
     if (empCutoffMonthInput && !empCutoffMonthInput.value) {
@@ -2404,7 +2404,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const empLatest = empRecords
         .slice()
         .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-      const assign = empLatest ? assignmentText(empLatest) : "â€”";
+      const assign = empLatest ? assignmentText(empLatest) : "-";
 
       const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
       const isRegular = employmentType === "regular";
@@ -2417,7 +2417,7 @@ document.addEventListener("DOMContentLoaded", () => {
         parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
       }
       parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
-      empDrawerSub.innerHTML = parts.join(" â€¢ ");
+      empDrawerSub.innerHTML = parts.join(" | ");
     }
 
     if (empDrawer) {

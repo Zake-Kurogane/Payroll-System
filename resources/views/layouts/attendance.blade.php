@@ -15,7 +15,7 @@
             </div>
         </div>
 
-        <!-- ✅ CUTOFF BAR (NEW) -->
+        <!-- CUTOFF BAR -->
         <section class="card cutoffbar">
             <div class="cutoffbar__left">
                 <div class="f">
@@ -27,7 +27,6 @@
                     <label>Cutoff</label>
                     <select id="cutoffSelect"></select>
                 </div>
-
                 <div class="cutoffInfo">
                     <div class="muted small">Cutoff Range</div>
                     <div class="cutoffRange" id="cutoffRangeLabel">—</div>
@@ -448,10 +447,6 @@
                 <div class="f">
                     <label>Cut-off</label>
                     <select id="empCutoffSelect"></select>
-                </div>
-                <div class="cutoffInfo cutoffInfo--mini" id="empCutoffInfo" aria-live="polite">
-                    <div class="tiny muted">Range</div>
-                    <div class="cutoffRange" id="empCutoffRangeLabel">—</div>
                 </div>
             </div>
 

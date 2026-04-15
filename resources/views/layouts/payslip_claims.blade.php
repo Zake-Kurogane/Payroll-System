@@ -157,7 +157,7 @@
                         <div class="muted small">Stored scans for this run.</div>
                     </div>
                 </div>
-                <div class="tablewrap">
+                <div class="tablewrap tablewrap--proofUploads">
                     <table class="table table--proofUploads" aria-label="Proof uploads table">
                         <thead>
                             <tr>
@@ -383,5 +383,3 @@
         @endif
     </section>
 @endsection
-
-
