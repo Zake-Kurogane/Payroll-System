@@ -248,15 +248,25 @@ class PayslipClaimController extends Controller
         ]);
     }
 
-    public function destroyProof(Request $request, PayslipClaimProof $proof)
+    public function destroyProof(Request $request, int $proof)
     {
-        $runId = (int) ($proof->payroll_run_id ?? 0);
+        $proofRow = PayslipClaimProof::query()->find($proof);
+        if (!$proofRow) {
+            return redirect()->route('payslip.claims', [
+                'run_id' => null,
+                'month' => $this->normalizePeriodMonth($request->input('month')),
+                'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
+                'assignment' => $this->normalizeAssignment($request->input('assignment')),
+                'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
+            ])->with('success', 'Proof already deleted.');
+        }
+        $runId = (int) ($proofRow->payroll_run_id ?? 0);
 
-        DB::transaction(function () use ($proof) {
+        DB::transaction(function () use ($proofRow) {
             // If we delete the proof, the FK will null-out automatically, but the "claimed_at"
             // would still be set. Clear any auto-claims derived from this proof first.
             PayslipClaim::query()
-                ->where('payslip_claim_proof_id', $proof->id)
+                ->where('payslip_claim_proof_id', $proofRow->id)
                 ->update([
                     'claimed_at'             => null,
                     'claimed_by_user_id'     => null,
@@ -267,12 +277,12 @@ class PayslipClaimController extends Controller
                 ]);
 
             try {
-                Storage::disk('local')->delete($proof->storage_path);
+                Storage::disk('local')->delete($proofRow->storage_path);
             } catch (\Throwable $e) {
                 // Best-effort: still remove DB record even if the file is already gone.
             }
 
-            $proof->delete();
+            $proofRow->delete();
         });
 
         return redirect()->route('payslip.claims', [
@@ -494,6 +504,7 @@ class PayslipClaimController extends Controller
             $qrFoundTotal = 0;
             $tokenMatchTotal = 0;
             $tokenInPageTotal = 0;
+            $summaryMode = $useGemini ? 'gemini' : ($qrRequired ? 'qr' : 'no_qr');
 
             $assets = [];
             try {
@@ -578,7 +589,69 @@ class PayslipClaimController extends Controller
                     }
 
                     // ── Gemini vision path ───────────────────────────────────────
+                    if (!empty($manualShadedRows)) {
+                        $summaryMode = 'manual_rows_override';
+                        $scanDebug['mode'] = 'manual_rows_override';
+                        $scanDebug['manual_rows'] = implode(',', $manualShadedRows);
+
+                        $rowsScannedTotal += $expectedRows;
+                        $pagesProcessed++;
+
+                        $manualRowsInPage = array_values(array_unique(array_filter(
+                            $manualShadedRows,
+                            fn ($rowNo) => is_int($rowNo) && $rowNo >= 1 && $rowNo <= $expectedRows
+                        )));
+                        sort($manualRowsInPage);
+
+                        $empIds = array_values(array_filter(array_map(fn ($r) => (int) ($r['employee_id'] ?? 0), $slice)));
+                        $existing = PayslipClaim::query()
+                            ->where('payroll_run_id', $run->id)
+                            ->whereIn('employee_id', $empIds)
+                            ->get()
+                            ->keyBy('employee_id');
+
+                        DB::transaction(function () use (
+                            $run, $proof, $slice, $manualRowsInPage, $existing,
+                            &$claimedNewTotal, &$claimedDetectedTotal,
+                            &$claimedRowIndexes, &$claimedEmpNos,
+                            &$shadedResolvedEmpNos, &$shadedRowIndexes
+                        ) {
+                            foreach ($manualRowsInPage as $rowNo) {
+                                $idx = $rowNo - 1;
+                                $row = $slice[$idx] ?? null;
+                                if (!is_array($row)) continue;
+                                $empId = (int) ($row['employee_id'] ?? 0);
+                                if (!$empId) continue;
+
+                                $empNo = (string) ($row['emp_no'] ?? '');
+                                $claimedDetectedTotal++;
+                                $claimedRowIndexes[] = $rowNo;
+                                if ($empNo !== '') $claimedEmpNos[] = $empNo;
+                                $shadedRowIndexes[] = $rowNo;
+                                if ($empNo !== '') $shadedResolvedEmpNos[] = $empNo;
+
+                                $already = $existing->get($empId);
+                                if ($already && $already->claimed_at) continue;
+
+                                PayslipClaim::updateOrCreate(
+                                    ['payroll_run_id' => $run->id, 'employee_id' => $empId],
+                                    [
+                                        'claimed_at'             => now(),
+                                        'claimed_by_user_id'     => Auth::id(),
+                                        'payslip_claim_proof_id' => $proof->id,
+                                        'ink_ratio'              => 1.0,
+                                        'review_status'          => 'confirmed',
+                                        'confidence'             => 0.99,
+                                    ]
+                                );
+                                $claimedNewTotal++;
+                            }
+                        });
+
+                        continue; // next asset
+                    }
                     if ($useGemini) {
+                        try {
                         $geminiResults = $gemini->scanPage($asset['path'], $slice);
                         $scanDebug['mode'] = 'gemini';
 
@@ -640,6 +713,13 @@ class PayslipClaimController extends Controller
                         });
 
                         continue; // next asset
+                        } catch (\Throwable $geminiError) {
+                            // Gemini failed (e.g. 403 permission denied); continue with local scanner.
+                            $useGemini = false;
+                            $summaryMode = 'scanner_fallback';
+                            $scanDebug['mode'] = 'scanner_fallback';
+                            $scanDebug['fallback_reason'] = $this->friendlyScannerFallbackReason($geminiError->getMessage());
+                        }
                     }
 
                     // ── Pixel scanner fallback (original logic) ──────────────────
@@ -832,7 +912,7 @@ class PayslipClaimController extends Controller
 
             $proof->processed_at = now();
             $proof->processed_summary = array_filter([
-                'mode' => $useGemini ? 'gemini' : ($qrRequired ? 'qr' : 'no_qr'),
+                'mode' => $summaryMode,
                 'pages' => max(1, $pagesProcessed),
                 'page_index' => $firstPageIndexUsed !== null ? $firstPageIndexUsed + 1 : null,
                 'rows_scanned' => $rowsScannedTotal,
@@ -859,6 +939,22 @@ class PayslipClaimController extends Controller
             ], fn ($v) => $v !== null && $v !== '');
             $proof->save();
         }
+    }
+
+    private function friendlyScannerFallbackReason(string $message): string
+    {
+        $raw = trim($message);
+        $upper = strtoupper($raw);
+
+        if (str_contains($upper, 'PERMISSION_DENIED') || str_contains($upper, 'GEMINI API ERROR 403')) {
+            return 'Gemini access denied (403). Used local scanner fallback.';
+        }
+
+        if (strlen($raw) > 220) {
+            return substr($raw, 0, 220) . '...';
+        }
+
+        return $raw !== '' ? $raw : 'Gemini unavailable. Used local scanner fallback.';
     }
 
     private function scannableAssetsForProof(PayslipClaimProof $proof): array
@@ -1035,3 +1131,4 @@ class PayslipClaimController extends Controller
         return $value;
     }
 }
+

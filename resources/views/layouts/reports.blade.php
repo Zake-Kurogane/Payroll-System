@@ -23,7 +23,7 @@
 
         <!-- CONTROLS -->
         <section class="card filterbar">
-            <!-- ROW 1: Month | Cutoff | Search | Department -->
+            <!-- ROW 1: Month | Cutoff | Search -->
             <div class="filterbar__row">
                 <div class="f">
                     <label>Month</label>
@@ -43,33 +43,13 @@
                     <label>Search</label>
                     <input id="searchInput" type="search" placeholder="Search employee id or name" />
                 </div>
-
-                <div class="f">
-                    <label>Department</label>
-                    <select id="deptSelect">
-                        <option value="All" selected>All</option>
-                        <option>Operations</option>
-                        <option>Finance</option>
-                        <option>Sales</option>
-                    </select>
-                </div>
             </div>
 
-            <!-- ROW 2: Payroll Run | Status | Assignment Seg + Area Place -->
+            <!-- ROW 2: Payroll Run | Assignment Seg + Area Place -->
             <div class="filterbar__row filterbar__row--bottom">
                 <div class="f f--grow">
                     <label>Matched Payroll Run</label>
                     <div id="runDisplay">No payroll run selected.</div>
-                </div>
-
-                <div class="f">
-                    <label>Status</label>
-                    <select id="statusSelect">
-                        <option value="All" selected>All</option>
-                        <option>Draft</option>
-                        <option>Locked</option>
-                        <option>Released</option>
-                    </select>
                 </div>
 
                 <div class="filterbar__right">
@@ -147,7 +127,6 @@
                                 <th class="sortable" data-sort="empName">Employee <span class="sortIcon"
                                         aria-hidden="true"></span></th>
                                 <th>Assignment</th>
-                                <th>Department</th>
                                 <th><span class="thPrintWrap">Attendance<span class="printOnlyBr"><br></span>(P/A/L)</span></th>
                                 <th class="num sortable" data-sort="dailyRate">Daily Rate <span class="sortIcon"
                                         aria-hidden="true"></span></th>
@@ -348,6 +327,5 @@
     </section>
 
 @endsection
-
 
 

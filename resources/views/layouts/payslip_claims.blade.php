@@ -240,6 +240,7 @@
                                                 </svg>
                                             </a>
                                             <form method="POST" action="{{ route('payslip.claims.proofs.destroy', ['proof' => $p->id]) }}"
+                                                class="js-proof-delete-form"
                                                 onsubmit="return confirm('Delete this proof file? This will also undo any auto-claims detected from it.');">
                                                 @csrf
                                                 @method('DELETE')
@@ -247,7 +248,7 @@
                                                 <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                                                 <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
                                                 <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
-                                                <button class="iconbtn" type="submit" title="Delete" aria-label="Delete">
+                                                <button class="iconbtn" type="submit" title="Delete" aria-label="Delete" data-delete-proof-btn>
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                         <path d="M3 6h18"></path>
                                                         <path d="M8 6V4h8v2"></path>

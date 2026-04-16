@@ -247,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function formatCutoffLabel(monthVal, cutoffVal) {
-    if (!monthVal) return cutoffVal === "11-25" ? "11–25" : "26–10";
+    if (!monthVal) return cutoffVal === "11-25" ? "11-25" : "26-10";
     const [yStr, mStr] = monthVal.split("-");
     const y = Number(yStr);
     const m = Number(mStr);
@@ -281,8 +281,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!cutoffSelect) return;
     const optA = cutoffSelect.querySelector('option[value="11-25"]');
     const optB = cutoffSelect.querySelector('option[value="26-10"]');
-    if (optA) optA.textContent = "11–25";
-    if (optB) optB.textContent = "26–10";
+    if (optA) optA.textContent = "11-25";
+    if (optB) optB.textContent = "26-10";
   }
 
   async function checkAttendanceBeforeRunCreate() {
@@ -1543,7 +1543,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (places.length) {
         const chev = document.createElement("span");
         chev.className = "seg__chevron";
-        chev.textContent = "?";
+        chev.textContent = "\u25BE";
         btn.appendChild(chev);
       }
       wrap.appendChild(btn);
@@ -1828,3 +1828,4 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(() => renderRuns())
     .catch(err => alert(err.message || "Failed to initialize payroll processing."));
 });
+

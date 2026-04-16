@@ -27,10 +27,7 @@
                     <label>Cutoff</label>
                     <select id="cutoffSelect"></select>
                 </div>
-                <div class="cutoffInfo">
-                    <div class="muted small">Cutoff Range</div>
-                    <div class="cutoffRange" id="cutoffRangeLabel">—</div>
-                </div>
+                
             </div>
         </section>
 
@@ -484,3 +481,4 @@
 
 
 @endsection
+

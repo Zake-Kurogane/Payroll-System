@@ -10,6 +10,7 @@ use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
 use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
+use App\Models\PayslipClaim;
 use App\Models\AttendanceSummary;
 use App\Models\CashAdvance;
 use App\Models\DeductionSchedule;
@@ -62,7 +63,7 @@ class PayrollRunController extends Controller
                     'display_label' => $run->displayLabel(),
                     'status' => $run->status,
                     'created_by' => $run->created_by,
-                    'created_by_name' => $run->createdBy?->name,
+                    'created_by_name' => $this->formatCreatedByName($run->createdBy),
                     'created_at' => $run->created_at,
                     'locked_at' => $run->locked_at,
                     'released_at' => $run->released_at,
@@ -120,7 +121,7 @@ class PayrollRunController extends Controller
         if ($existing) {
             $existing->load(['createdBy']);
             $payload = $existing->toArray();
-            $payload['created_by_name'] = $existing->createdBy?->name;
+            $payload['created_by_name'] = $this->formatCreatedByName($existing->createdBy);
             $payload['reused'] = true;
             return response()->json($payload, 200);
         }
@@ -138,9 +139,26 @@ class PayrollRunController extends Controller
 
         $run->load(['createdBy']);
         $payload = $run->toArray();
-        $payload['created_by_name'] = $run->createdBy?->name;
+        $payload['created_by_name'] = $this->formatCreatedByName($run->createdBy);
         $payload['reused'] = false;
         return response()->json($payload, 201);
+    }
+
+    private function formatCreatedByName($user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+
+        $first = trim((string) ($user->first_name ?? ''));
+        $last = trim((string) ($user->last_name ?? ''));
+        $full = trim("{$first} {$last}");
+
+        if ($full !== '') {
+            return $full;
+        }
+
+        return $user->name ?: null;
     }
 
     public function attendanceCheck(Request $request, PayrollCalculator $calculator)
@@ -290,6 +308,13 @@ class PayrollRunController extends Controller
             ->get();
 
         $employeeIds = $rawRows->pluck('employee_id')->filter()->values()->all();
+        $claimStatusByEmployee = PayslipClaim::query()
+            ->where('payroll_run_id', $run->id)
+            ->whereIn('employee_id', $employeeIds)
+            ->get(['employee_id', 'claimed_at'])
+            ->keyBy('employee_id')
+            ->map(fn ($claim) => $claim->claimed_at ? 'Claimed' : 'Unclaimed');
+
         $attendanceAgg = collect();
         $lateDaysAgg = collect();
         $timekeeping = TimekeepingRule::query()->first() ?? TimekeepingRule::create([]);
@@ -334,7 +359,7 @@ class PayrollRunController extends Controller
         }
 
         $rows = $rawRows
-            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $lateDaysAgg, $timekeeping, $proration) {
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $lateDaysAgg, $timekeeping, $proration, $claimStatusByEmployee) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
@@ -393,6 +418,7 @@ class PayrollRunController extends Controller
                     'deductions_total' => (float) $r->deductions_total,
                     'net_pay' => (float) $r->net_pay,
                     'employer_share_total' => (float) $r->employer_share_total,
+                    'payslip_status' => (string) ($claimStatusByEmployee->get($r->employee_id) ?? 'Unclaimed'),
                     'charges_deduction' => (float) ($r->charges_deduction ?? 0),
                     'pay_method' => $r->pay_method,
                     'bank_account_masked' => $r->bank_account_masked,
@@ -720,7 +746,7 @@ class PayrollRunController extends Controller
         $run->save();
 
         $this->generatePayslipsForRun($run);
-        return response()->json($run);
+        return response()->json($this->runPayload($run));
     }
 
     public function unlock(Request $request, PayrollRun $run)
@@ -742,7 +768,7 @@ class PayrollRunController extends Controller
         $run->locked_at = null;
         $run->released_at = null;
         $run->save();
-        return response()->json($run);
+        return response()->json($this->runPayload($run));
     }
 
     public function release(PayrollRun $run)
@@ -756,7 +782,16 @@ class PayrollRunController extends Controller
             $run->released_at = now();
             $run->save();
         });
-        return response()->json($run->fresh());
+        return response()->json($this->runPayload($run->fresh()));
+    }
+
+    private function runPayload(PayrollRun $run): array
+    {
+        $run->loadMissing(['createdBy']);
+        $payload = $run->toArray();
+        $payload['created_by_name'] = $this->formatCreatedByName($run->createdBy);
+
+        return $payload;
     }
 
     private function postRunDeductionsAndBalances(PayrollRun $run): void

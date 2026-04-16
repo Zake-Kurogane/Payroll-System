@@ -312,4 +312,20 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  document.querySelectorAll(".js-proof-delete-form").forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (e.defaultPrevented) return;
+      if (form.dataset.submitting === "1") {
+        e.preventDefault();
+        return;
+      }
+      form.dataset.submitting = "1";
+      const btn = form.querySelector("[data-delete-proof-btn]");
+      if (btn) {
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+      }
+    });
+  });
 });

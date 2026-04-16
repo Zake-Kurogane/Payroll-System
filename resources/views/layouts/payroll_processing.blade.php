@@ -31,8 +31,8 @@
                             <div class="f">
                                 <label>Cutoff</label>
                                 <select id="cutoffSelect">
-                                    <option value="11-25">11–25</option>
-                                    <option value="26-10">26–10</option>
+                                    <option value="11-25">11-25</option>
+                                    <option value="26-10">26-10</option>
                                 </select>
                             </div>
 
@@ -81,25 +81,25 @@
                             <div class="card__title">Run Metadata</div>
                             <div class="mini" style="margin-top:12px;">
                                 <div class="mini__k">Run ID</div>
-                                <div class="mini__v" id="runId">—</div>
+                                <div class="mini__v" id="runId">-</div>
 
                                 <div class="mini__k">Period</div>
-                                <div class="mini__v" id="runPeriod">—</div>
+                                <div class="mini__v" id="runPeriod">-</div>
 
                                 <div class="mini__k">Status</div>
                                 <div class="mini__v" id="runStatus">Draft</div>
 
                                 <div class="mini__k">Created By</div>
-                                <div class="mini__v" id="runCreatedBy">â€”</div>
+                                <div class="mini__v" id="runCreatedBy">-</div>
 
                                 <div class="mini__k">Created At</div>
-                                <div class="mini__v" id="runCreatedAt">—</div>
+                                <div class="mini__v" id="runCreatedAt">-</div>
 
                                 <div class="mini__k">Locked At</div>
-                                <div class="mini__v" id="runLockedAt">—</div>
+                                <div class="mini__v" id="runLockedAt">-</div>
 
                                 <div class="mini__k">Released At</div>
-                                <div class="mini__v" id="runReleasedAt">—</div>
+                                <div class="mini__v" id="runReleasedAt">-</div>
                             </div>
                         </div>
 
@@ -345,3 +345,4 @@
         </div>
     </div>
 @endsection
+

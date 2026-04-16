@@ -697,7 +697,7 @@ tbody tr:hover {
 
 /* Proof uploads list: tighter columns and icon actions */
 .tablewrap--proofUploads {
-    max-height: 520px; /* header + roughly 2 upload rows */
+    max-height: 250px; /* header + roughly 2 upload rows */
     overflow-y: auto;
 }
 

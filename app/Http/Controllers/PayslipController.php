@@ -39,6 +39,10 @@ class PayslipController extends Controller
             ->get()
             ->map(function (PayrollRun $run) use ($stats) {
                 $rowStats = $stats->get($run->id);
+                $creatorFirst = trim((string) ($run->createdBy?->first_name ?? ''));
+                $creatorLast = trim((string) ($run->createdBy?->last_name ?? ''));
+                $creatorFull = trim($creatorFirst . ' ' . $creatorLast);
+
                 return [
                     'id' => $run->id,
                     'run_code' => $run->run_code,
@@ -46,7 +50,7 @@ class PayslipController extends Controller
                     'cutoff' => $run->cutoff,
                     'assignment_filter' => $run->assignment_filter,
                     'status' => $run->status,
-                    'created_by_name' => $run->createdBy?->name,
+                    'created_by_name' => $creatorFull !== '' ? $creatorFull : ($run->createdBy?->name ?? ''),
                     'created_at' => $run->created_at,
                     'locked_at' => $run->locked_at,
                     'released_at' => $run->released_at,

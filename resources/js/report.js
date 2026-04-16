@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const firstAndLastName = (value) => {
     const raw = String(value || "").trim();
-    if (!raw) return "—";
+    if (!raw) return "-";
     const cleaned = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
     const parts = cleaned.split(" ").filter(Boolean);
     if (parts.length <= 1) return cleaned;
@@ -44,7 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const formatDateTime12h = (value) => {
-    if (!value || value === "—") return "—";
+    if (!value || value === "-") return "-";
     const raw = String(value).trim();
     const d = new Date(normalizeDateTimeInput(raw));
     if (Number.isNaN(d.getTime())) return raw;
@@ -89,8 +89,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const cutoffSelect = $("cutoffSelect");
   const searchInput = $("searchInput");
   const runDisplay = $("runDisplay");
-  const deptSelect = $("deptSelect");
-  const statusSelect = $("statusSelect");
 
   const assignmentSeg = $("assignSeg");
   let segBtns = [];
@@ -256,7 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function runDisplayLabel(run) {
     if (!run) return "No payroll run found for the selected filters.";
-    return `${run.runCode} • ${run.month} (${run.cutoffLabel}) • ${run.displayLabel} • ${run.status} • ${run.employees} employees`;
+    return `${run.runCode} - ${run.month} (${run.cutoffLabel}) - ${run.displayLabel} - ${run.status} - ${run.employees} employees`;
   }
 
   function setRunDisplay(run) {
@@ -267,27 +265,27 @@ document.addEventListener("DOMContentLoaded", () => {
   function mapRun(run) {
     const assignmentText = run.assignment_filter === "Field" && run.area_place_filter
       ? `Field (${run.area_place_filter})`
-      : (run.assignment_filter || "—");
+      : (run.assignment_filter || "-");
 
     return {
       id: String(run.id),
       runCode: run.run_code || String(run.id),
       month: run.period_month,
       cutoff: normalizeCutoffValue(run.cutoff) || String(run.cutoff || ""),
-      cutoffLabel: normalizeCutoffValue(run.cutoff) || run.cutoff || "—",
+      cutoffLabel: normalizeCutoffValue(run.cutoff) || run.cutoff || "-",
       assignment: assignmentText,
-      status: run.status || "—",
+      status: run.status || "-",
       employees: Number(run.headcount || 0),
       totalNet: Number(run.net || 0),
-      processedAt: formatDateTime12h(run.locked_at || run.created_at || "—"),
+      processedAt: formatDateTime12h(run.locked_at || run.created_at || "-"),
       processedBy: firstAndLastName(run.created_by_name || ""),
-      payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "—"),
-      releasedAt: formatDateTime12h(run.released_at || "—"),
+      payslipsGeneratedAt: formatDateTime12h(run.payslips_generated_at || "-"),
+      releasedAt: formatDateTime12h(run.released_at || "-"),
       createdAtRaw: run.created_at || "",
       lockedAtRaw: run.locked_at || "",
       releasedAtRaw: run.released_at || "",
       runType: run.run_type || "External",
-      displayLabel: run.display_label || `${run.run_type || "External"} · ${assignmentText}`,
+      displayLabel: run.display_label || `${run.run_type || "External"} - ${assignmentText}`,
     };
   }
 
@@ -328,7 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
       deductionsEe: Number(row.deductions_total || 0),
       employerShare: Number(row.employer_share_total || 0),
       netPay: Number(row.net_pay || 0),
-      payslipStatus: row.payslip_status || "—",
+      payslipStatus: row.payslip_status || "-",
     };
   }
 
@@ -366,32 +364,28 @@ document.addEventListener("DOMContentLoaded", () => {
   // PIPELINE: FILTERS
   // =========================================================
   function assignmentText(r) {
-    if (r.areaPlace) return `${r.assignmentType || "—"} (${r.areaPlace})`;
-    return r.assignmentType || "—";
+    if (r.areaPlace) return `${r.assignmentType || "-"} (${r.areaPlace})`;
+    return r.assignmentType || "-";
   }
 
   function runMatchesFilters(run) {
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
-    const statusVal = statusSelect?.value || "All";
     const runCutoff = normalizeCutoffValue(run.cutoff) || run.cutoff;
 
     const okMonth = !monthVal || run.month === monthVal;
     const okCutoff = cutoffVal === "All" || runCutoff === cutoffVal;
-    const okStatus = statusVal === "All" || run.status === statusVal;
-    return okMonth && okCutoff && okStatus;
+    return okMonth && okCutoff;
   }
 
   function applyFilters(list) {
     const q = normalize(searchInput?.value || "");
-    const deptVal = deptSelect?.value || "All";
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
     return list
       .filter((r) => (!selectedRunId ? true : r.runId === selectedRunId))
       .filter((r) => (!monthVal ? true : getRun(r.runId)?.month === monthVal))
       .filter((r) => (cutoffVal === "All" ? true : getRun(r.runId)?.cutoff === cutoffVal))
-      .filter((r) => (deptVal === "All" ? true : (r.department || "") === deptVal))
       .filter((r) => (assignmentFilter === "All" ? true : r.assignmentType === assignmentFilter))
       .filter((r) => {
         if (!areaSubFilter) return true;
@@ -399,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .filter((r) => {
         if (!q) return true;
-        const text = normalize(`${r.empId} ${r.empName} ${r.department || ""} ${r.empType || ""} ${assignmentText(r)}`);
+        const text = normalize(`${r.empId} ${r.empName} ${r.empType || ""} ${assignmentText(r)}`);
         return text.includes(q);
       });
   }
@@ -476,11 +470,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function setRunUI(run) {
     if (!run) {
       setRunDisplay(null);
-      if (runBadge) runBadge.textContent = "—";
-      if (runEmployees) runEmployees.textContent = "—";
-      if (runTotalNet) runTotalNet.textContent = "—";
-      if (runProcessedAt) runProcessedAt.textContent = "—";
-      if (runProcessedBy) runProcessedBy.textContent = "—";
+      if (runBadge) runBadge.textContent = "-";
+      if (runEmployees) runEmployees.textContent = "-";
+      if (runTotalNet) runTotalNet.textContent = "-";
+      if (runProcessedAt) runProcessedAt.textContent = "-";
+      if (runProcessedBy) runProcessedBy.textContent = "-";
       if (reportTitle) reportTitle.textContent = "Select a run to generate a report.";
       setTopActionsEnabled(false);
       return;
@@ -494,7 +488,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (runProcessedBy) runProcessedBy.textContent = run.processedBy;
 
     if (reportTitle) {
-      reportTitle.textContent = `Payroll Reports — ${run.runCode} — ${run.month} (${run.cutoff}) — ${run.assignment}`;
+      reportTitle.textContent = `Payroll Reports - ${run.runCode} - ${run.month} (${run.cutoff}) - ${run.assignment}`;
     }
     setTopActionsEnabled(true);
   }
@@ -518,6 +512,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderRegister(rows) {
     if (!regTbody) return;
+    const renderPayslipStatusChip = (status) => {
+      const value = String(status || "Unclaimed").trim().toLowerCase() === "claimed" ? "Claimed" : "Unclaimed";
+      const modifier = value.toLowerCase();
+      return `<span class="statusChip statusChip--${modifier}">${value}</span>`;
+    };
     regTbody.innerHTML = "";
     if (resultsMeta) resultsMeta.textContent = `Showing ${rows.length} employee(s)`;
 
@@ -537,8 +536,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(r.empId)}</td>
         <td>${escapeHtml(r.empName)}</td>
         <td>${escapeHtml(assignmentText(r))}</td>
-        <td>${escapeHtml(r.department || "—")}</td>
-        <td>${escapeHtml(`${r.presentDays}/${r.absentDays}/${r.leaveDays}`)}</td>
+                <td>${escapeHtml(`${r.presentDays}/${r.absentDays}/${r.leaveDays}`)}</td>
         <td class="num">${escapeHtml(peso(r.dailyRate))}</td>
         <td class="num">${escapeHtml(peso(r.attendancePay))}</td>
         <td class="num">
@@ -557,14 +555,14 @@ document.addEventListener("DOMContentLoaded", () => {
         </td>
         <td class="num">${escapeHtml(peso(r.gross))}</td>
         <td class="num">${escapeHtml(peso(r.netPay))}</td>
-        <td>${escapeHtml(r.payslipStatus || "—")}</td>
+        <td>${renderPayslipStatusChip(r.payslipStatus)}</td>
       `;
       regTbody.appendChild(tr);
     });
 
     if (!rows.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="11" class="muted small">No rows found.</td>`;
+      tr.innerHTML = `<td colspan="10" class="muted small">No rows found.</td>`;
       regTbody.appendChild(tr);
     }
 
@@ -633,8 +631,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="num"><strong>${escapeHtml(peso(r.totalNet))}</strong></td>
         <td>${escapeHtml(r.processedAt)}</td>
         <td>${escapeHtml(r.processedBy)}</td>
-        <td>${escapeHtml(r.payslipsGeneratedAt || "—")}</td>
-        <td>${escapeHtml(r.releasedAt || "—")}</td>
+        <td>${escapeHtml(r.payslipsGeneratedAt || "-")}</td>
+        <td>${escapeHtml(r.releasedAt || "-")}</td>
       `;
       auditTbody.appendChild(tr);
     });
@@ -665,7 +663,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function groupBy(list, keyFn) {
     const map = new Map();
     list.forEach((item) => {
-      const key = String(keyFn(item) ?? "—");
+      const key = String(keyFn(item) ?? "-");
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(item);
     });
@@ -683,7 +681,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const area = String(r.areaPlace || "").trim();
     if (area) return area;
     const assign = String(r.assignmentType || "").trim();
-    return assign || "—";
+    return assign || "-";
   }
 
   function renderExternalGross(rows) {
@@ -707,7 +705,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const groups = groupBy(list, (r) => (r.externalArea || "—").trim() || "—");
+    const groups = groupBy(list, (r) => (r.externalArea || "-").trim() || "-");
     Array.from(groups.keys()).sort().forEach((external) => {
       const items = groups.get(external) || [];
       appendGroupHeader(externalGrossTbody, external, 2);
@@ -754,7 +752,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const groups = groupBy(list, (r) => (r.externalArea || "—").trim() || "—");
+    const groups = groupBy(list, (r) => (r.externalArea || "-").trim() || "-");
     Array.from(groups.keys()).sort().forEach((external) => {
       const items = groups.get(external) || [];
       appendGroupHeader(externalPayslipsTbody, external, 6);
@@ -915,7 +913,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!payload) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocationsâ€¦</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocations…</td>`;
       fieldAreasTbody.appendChild(tr);
       return;
     }
@@ -927,7 +925,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fieldAreasTbody.appendChild(tr);
     } else {
       areas.forEach((g) => {
-        appendGroupHeader(fieldAreasTbody, g.area_place || "â€”", 6);
+        appendGroupHeader(fieldAreasTbody, g.area_place || "—", 6);
 
         const head = document.createElement("tr");
         head.className = "row-group-columns";
@@ -947,11 +945,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const days = Number(r.paid_units || 0);
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${escapeHtml(r.emp_no || "â€”")}</td>
-            <td>${escapeHtml(r.name || "â€”")}</td>
+            <td>${escapeHtml(r.emp_no || "—")}</td>
+            <td>${escapeHtml(r.name || "—")}</td>
             <td>${escapeHtml(peso(r.daily_rate || 0))}</td>
             <td>${escapeHtml(String(days))}</td>
-            <td>${escapeHtml(dates || "â€”")}</td>
+            <td>${escapeHtml(dates || "—")}</td>
             <td><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
           `;
           fieldAreasTbody.appendChild(tr);
@@ -982,7 +980,7 @@ document.addEventListener("DOMContentLoaded", () => {
     totals.forEach((t) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${escapeHtml(t.area_place || "â€”")}</td>
+        <td>${escapeHtml(t.area_place || "—")}</td>
         <td class="num">${escapeHtml(String(Number(t.paid_units || 0)))}</td>
         <td class="num"><strong>${escapeHtml(peso(t.amount || 0))}</strong></td>
       `;
@@ -1100,13 +1098,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // FILTER EVENTS
   // =========================================================
-  [monthInput, cutoffSelect, statusSelect].forEach((el) => {
+  [monthInput, cutoffSelect].forEach((el) => {
     el && el.addEventListener("change", async () => {
       await syncRunFromFilters();
     });
   });
-
-  deptSelect && deptSelect.addEventListener("change", renderAll);
 
   searchInput && searchInput.addEventListener("input", renderAll);
 
@@ -1134,7 +1130,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (places.length) {
         const chev = document.createElement("span");
         chev.className = "seg__chevron";
-        chev.textContent = "?";
+        chev.textContent = "\u25BE";
         btn.appendChild(chev);
       }
       wrap.appendChild(btn);
@@ -1540,7 +1536,6 @@ document.addEventListener("DOMContentLoaded", () => {
       "Emp ID",
       "Employee",
       "Assignment",
-      "Department",
       "Present",
       "Absent",
       "Leave",
@@ -1559,7 +1554,6 @@ document.addEventListener("DOMContentLoaded", () => {
           r.empId,
           r.empName,
           assignmentText(r),
-          r.department || "",
           r.presentDays || 0,
           r.absentDays || 0,
           r.leaveDays || 0,

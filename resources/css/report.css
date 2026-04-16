@@ -429,6 +429,7 @@ h1 {
     border-radius: 999px;
     overflow: hidden;
     background: #fff;
+    flex: 0 0 auto;
 }
 .seg--pill { overflow: hidden; }
 .seg__btn {
@@ -438,6 +439,7 @@ h1 {
     font-weight: 900;
     cursor: pointer;
     color: #51627c;
+    white-space: nowrap;
 }
 .seg__btn:hover {
     background: rgba(156, 29, 60, 0.06);
@@ -980,16 +982,14 @@ th.sortable.is-desc .sortIcon {
     border-radius: 3px;
     box-shadow: 0 10px 22px rgba(0,0,0,0.12);
     z-index: 200;
-    min-width: 220px;
+    min-width: 180px;
     padding: 4px 0;
-    white-space: normal;
     display: none;
     opacity: 0;
     transform: translateY(-4px);
     transition: opacity 0.12s ease, transform 0.12s ease;
-    max-height: 300px;
+    max-height: 260px;
     overflow-y: auto;
-    overflow-x: hidden;
 }
 .seg__dropdown.is-open {
     opacity: 1;
@@ -1000,11 +1000,20 @@ th.sortable.is-desc .sortIcon {
     width: 100%;
     background: none;
     border: none;
-    padding: 9px 16px;
+    padding: 7px 12px;
     text-align: left;
     font-size: 0.875rem;
     cursor: pointer;
-    color: var(--text, #1a1a2e);
+    color: #111;
+    position: relative;
+    word-break: break-word;
+}
+.seg__dropdown-item::before {
+    content: none;
+    position: absolute;
+    left: 14px;
+    top: 7px;
+    color: var(--maroon);
 }
 .seg__dropdown-item:hover {
     background: rgba(156,29,60,0.08);
@@ -1018,4 +1027,28 @@ th.sortable.is-desc .sortIcon {
 .seg__dropdown-item:focus-visible {
     outline: 2px solid rgba(156,29,60,0.45);
     outline-offset: -2px;
+}
+
+.statusChip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px;
+    height: 28px;
+    border-radius: 999px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    border: 1px solid transparent;
+}
+.statusChip--claimed {
+    color: #0f5132;
+    background: #d1f3e1;
+    border-color: #a6e7c9;
+}
+.statusChip--unclaimed {
+    color: #7f1d1d;
+    background: #ffe2e2;
+    border-color: #ffc5c5;
 }
