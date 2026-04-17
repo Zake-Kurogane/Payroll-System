@@ -32,13 +32,15 @@
         </div>
 
         @if (session('success'))
-            <div class="card js-autoHideAlert" data-hide-ms="3000" style="margin-bottom: 12px; border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.06);">
+            <div class="card js-autoHideAlert" data-hide-ms="3000"
+                style="margin-bottom: 12px; border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.06);">
                 <div style="font-weight: 900; color: #166534;">{{ session('success') }}</div>
             </div>
         @endif
 
         @if ($errors->any())
-            <div class="card" style="margin-bottom: 12px; border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.06);">
+            <div class="card"
+                style="margin-bottom: 12px; border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.06);">
                 <div style="font-weight: 900; color: #991b1b;">{{ $errors->first() }}</div>
             </div>
         @endif
@@ -50,7 +52,8 @@
                     <div class="runRow">
                         <div class="f">
                             <label>Month</label>
-                            <input type="month" name="month" value="{{ $monthFilter ?? '' }}" onchange="this.form.submit()" />
+                            <input type="month" name="month" value="{{ $monthFilter ?? '' }}"
+                                onchange="this.form.submit()" />
                         </div>
                         <div class="f">
                             <label>Cutoff</label>
@@ -62,11 +65,14 @@
                         </div>
                         <div class="f f--grow">
                             <label>Assignment</label>
-                            <input type="hidden" name="assignment" id="assignmentInput" value="{{ $assignmentFilter ?? '' }}" />
-                            <input type="hidden" name="area_place" id="areaPlaceInput" value="{{ $areaPlaceFilter ?? '' }}" />
+                            <input type="hidden" name="assignment" id="assignmentInput"
+                                value="{{ $assignmentFilter ?? '' }}" />
+                            <input type="hidden" name="area_place" id="areaPlaceInput"
+                                value="{{ $areaPlaceFilter ?? '' }}" />
+                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                            <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                             <div class="seg seg--pill claimsAssignSeg" id="assignSeg" role="group"
-                                aria-label="Filter by assignment"
-                                data-active-assign="{{ $assignmentFilter ?? '' }}"
+                                aria-label="Filter by assignment" data-active-assign="{{ $assignmentFilter ?? '' }}"
                                 data-active-place="{{ $areaPlaceFilter ?? '' }}">
                                 <button type="button" class="seg__btn seg__btn--emp is-active" data-assign="">All</button>
                             </div>
@@ -77,7 +83,7 @@
                             <label>Matched Run</label>
                             <div class="runDisplay">
                                 @if ($selectedRun)
-                                    {{ ($selectedRun->run_code ?: ('RUN-' . $selectedRun->id)) . ' • ' . ($selectedRun->period_month ?: '-') . ' (' . ($selectedRun->cutoff ?: '-') . ') • ' . $selectedRun->displayLabel() }}
+                                    {{ ($selectedRun->run_code ?: 'RUN-' . $selectedRun->id) . ' • ' . ($selectedRun->period_month ?: '-') . ' (' . ($selectedRun->cutoff ?: '-') . ') • ' . $selectedRun->displayLabel() }}
                                 @else
                                     No released payroll run found for the selected filters.
                                 @endif
@@ -109,7 +115,8 @@
 
                 @if ($selectedRun)
                     <div class="runActions" style="gap: 10px; flex-wrap: wrap;">
-                        <a class="btn btn--soft" href="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id, 'assignment' => $assignmentFilter, 'area_place' => $areaPlaceFilter]) }}">
+                        <a class="btn btn--soft"
+                            href="{{ route('payslip.claims.sheet', ['run' => $selectedRun->id, 'assignment' => $assignmentFilter, 'area_place' => $areaPlaceFilter]) }}">
                             Download Claim Sheet (PDF)
                         </a>
                         <button class="btn btn--soft" type="button" id="printClaimSheetBtn"
@@ -126,7 +133,8 @@
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big">Upload Signed Claim Sheet</div>
-                        <div class="muted small">Upload scanned files (JPG/PNG/PDF). Filename order is used as page order.</div>
+                        <div class="muted small">Upload scanned files (JPG/PNG/PDF). Filename order is used as page order.
+                        </div>
                     </div>
                 </div>
 
@@ -137,7 +145,8 @@
                     <div class="runRow" style="align-items: end;">
                         <div class="f f--grow">
                             <label>Proof file(s)</label>
-                            <input type="file" name="proofs[]" accept=".jpg,.jpeg,.png,.pdf,application/pdf" multiple required />
+                            <input type="file" name="proofs[]" accept=".jpg,.jpeg,.png,.pdf,application/pdf" multiple
+                                required />
                         </div>
                         <div class="f" style="min-width: 180px;">
                             <button class="btn btn--maroon" type="submit">Upload + Process</button>
@@ -147,6 +156,8 @@
                     <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                     <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
                     <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
+                    <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                    <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                 </form>
             </section>
 
@@ -189,12 +200,14 @@
                                                 <div class="small muted">
                                                     shaded boxes: {{ (int) ($ps['shaded_rows_count'] ?? 0) }}
                                                     @if (!empty($ps['shaded_rows_unresolved']) && is_array($ps['shaded_rows_unresolved']))
-                                                        (unresolved rows: {{ implode(',', $ps['shaded_rows_unresolved']) }})
+                                                        (unresolved rows:
+                                                        {{ implode(',', $ps['shaded_rows_unresolved']) }})
                                                     @endif
                                                 </div>
                                             @endif
                                             @if (isset($ps['needs_review_detected']))
-                                                <div class="small muted">needs review: {{ (int) ($ps['needs_review_detected'] ?? 0) }}</div>
+                                                <div class="small muted">needs review:
+                                                    {{ (int) ($ps['needs_review_detected'] ?? 0) }}</div>
                                             @endif
                                             @if (!empty($ps['checkbox_cutoff']))
                                                 <div class="small muted">cutoff: {{ $ps['checkbox_cutoff'] }}</div>
@@ -203,28 +216,34 @@
                                                 <div class="small muted">layout: {{ $ps['geo']['layout_used'] }}</div>
                                             @endif
                                             @if (!empty($ps['geo']['fallback_reason']))
-                                                <div class="small muted">fallback: {{ $ps['geo']['fallback_reason'] }}</div>
+                                                <div class="small muted">fallback: {{ $ps['geo']['fallback_reason'] }}
+                                                </div>
                                             @endif
                                             @if (isset($ps['geo']['row_qr_found']) && $ps['geo']['row_qr_found'] !== '')
                                                 <div class="small muted">qr/row: {{ $ps['geo']['row_qr_found'] }}</div>
                                             @endif
                                             @if (isset($ps['geo']['probe_page_index']))
-                                                <div class="small muted">probe→pg: {{ $ps['geo']['probe_page_index'] }}</div>
+                                                <div class="small muted">probe→pg: {{ $ps['geo']['probe_page_index'] }}
+                                                </div>
                                             @endif
                                             @if (!empty($ps['geo']['row_ink_strict']))
                                                 <div class="small muted">ink/row: {{ $ps['geo']['row_ink_strict'] }}</div>
                                             @endif
                                             @if (!empty($ps['geo']['checkbox_cutoff']))
-                                                <div class="small muted">scanner cutoff: {{ $ps['geo']['checkbox_cutoff'] }}</div>
+                                                <div class="small muted">scanner cutoff:
+                                                    {{ $ps['geo']['checkbox_cutoff'] }}</div>
                                             @endif
                                             @if (!empty($ps['shaded_rows_detected']) && is_array($ps['shaded_rows_detected']))
-                                                <div class="small muted">shaded rows: {{ implode(',', $ps['shaded_rows_detected']) }}</div>
+                                                <div class="small muted">shaded rows:
+                                                    {{ implode(',', $ps['shaded_rows_detected']) }}</div>
                                             @endif
                                             @if (!empty($ps['geo']['first_mismatch']))
-                                                <div class="small" style="color:#b45309;">{{ $ps['geo']['first_mismatch'] }}</div>
+                                                <div class="small" style="color:#b45309;">
+                                                    {{ $ps['geo']['first_mismatch'] }}</div>
                                             @endif
                                             @if (!empty($ps['error']))
-                                                <div class="small" style="color:#b91c1c; font-weight:700;">{{ $ps['error'] }}</div>
+                                                <div class="small" style="color:#b91c1c; font-weight:700;">
+                                                    {{ $ps['error'] }}</div>
                                             @endif
                                         @else
                                             <span class="muted">No summary yet.</span>
@@ -232,23 +251,33 @@
                                     </td>
                                     <td>
                                         <div class="iconrow">
-                                            <a class="iconbtn" href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}" title="Download" aria-label="Download">
+                                            <a class="iconbtn"
+                                                href="{{ route('payslip.claims.proofs.download', ['proof' => $p->id]) }}"
+                                                title="Download" aria-label="Download">
                                                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                     <path d="M12 3v12"></path>
                                                     <path d="M7 10l5 5 5-5"></path>
                                                     <path d="M4 21h16"></path>
                                                 </svg>
                                             </a>
-                                            <form method="POST" action="{{ route('payslip.claims.proofs.destroy', ['proof' => $p->id]) }}"
+                                            <form method="POST"
+                                                action="{{ route('payslip.claims.proofs.destroy', ['proof' => $p->id]) }}"
                                                 class="js-proof-delete-form"
                                                 onsubmit="return confirm('Delete this proof file? This will also undo any auto-claims detected from it.');">
                                                 @csrf
                                                 @method('DELETE')
                                                 <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
-                                                <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
-                                                <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
-                                                <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
-                                                <button class="iconbtn" type="submit" title="Delete" aria-label="Delete" data-delete-proof-btn>
+                                                <input type="hidden" name="cutoff"
+                                                    value="{{ $cutoffFilter ?? '' }}" />
+                                                <input type="hidden" name="assignment"
+                                                    value="{{ $assignmentFilter ?? '' }}" />
+                                                <input type="hidden" name="area_place"
+                                                    value="{{ $areaPlaceFilter ?? '' }}" />
+                                                <input type="hidden" name="sort"
+                                                    value="{{ $sortKey ?? 'emp_no' }}" />
+                                                <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
+                                                <button class="iconbtn" type="submit" title="Delete"
+                                                    aria-label="Delete" data-delete-proof-btn>
                                                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                                                         <path d="M3 6h18"></path>
                                                         <path d="M8 6V4h8v2"></path>
@@ -271,70 +300,97 @@
                 </div>
             </section>
 
-            @php($needsReviewRows = $employees->filter(fn($e) => ($e['review_status'] ?? '') === 'needs_review')->values())
-            @if ($needsReviewRows->isNotEmpty())
-            <section class="card tablecard" style="border-color: rgba(180,83,9,.35); background: rgba(254,243,199,.4);">
-                <div class="tablecard__head">
-                    <div>
-                        <div class="card__title big" style="color:#92400e;">&#9888; Needs Review ({{ $needsReviewRows->count() }})</div>
-                        <div class=”muted small”>QR code could not be read or did not match — HR must verify these manually. Click Confirm to mark as claimed.</div>
+            @if (($needsReviewRows ?? collect())->isNotEmpty())
+                <section class="card tablecard"
+                    style="border-color: rgba(180,83,9,.35); background: rgba(254,243,199,.4);">
+                    <div class="tablecard__head">
+                        <div>
+                            <div class="card__title big" style="color:#92400e;">&#9888; Needs Review
+                                ({{ $needsReviewRows->count() }})</div>
+                            <div class="muted small">QR code could not be read or did not match - HR must verify these
+                                manually. Click Confirm to mark as claimed.</div>
+                        </div>
                     </div>
-                </div>
-                <div class="tablewrap">
-                    <table class="table" aria-label="Needs review table">
-                        <thead>
-                            <tr>
-                                <th>Emp ID</th>
-                                <th>Name</th>
-                                <th>Area</th>
-                                <th>Confidence</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($needsReviewRows as $e)
+                    <div class="tablewrap">
+                        <table class="table" aria-label="Needs review table">
+                            <thead>
                                 <tr>
-                                    <td>{{ $e['emp_no'] }}</td>
-                                    <td>{{ $e['name'] }}</td>
-                                    <td>{{ $e['area_place'] ?: '—' }}</td>
-                                    <td>{{ isset($e['confidence']) ? round((float)$e['confidence'] * 100) . '%' : '—' }}</td>
-                                    <td>
-                                        <form method="POST"
-                                            action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
-                                            style="display:inline;">
-                                            @csrf
-                                            <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
-                                            <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
-                                            <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
-                                            <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
-                                            <button class="btn btn--soft" type="submit" title="Mark as claimed (confirmed)">Confirm</button>
-                                        </form>
-                                    </td>
+                                    <th>Emp ID</th>
+                                    <th>Name</th>
+                                    <th>Area</th>
+                                    <th>Confidence</th>
+                                    <th>Action</th>
                                 </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+                            </thead>
+                            <tbody>
+                                @foreach ($needsReviewRows as $e)
+                                    <tr>
+                                        <td>{{ $e['emp_no'] }}</td>
+                                        <td>{{ $e['name'] }}</td>
+                                        <td>{{ $e['area_place'] ?: '—' }}</td>
+                                        <td>{{ isset($e['confidence']) ? round((float) $e['confidence'] * 100) . '%' : '—' }}
+                                        </td>
+                                        <td>
+                                            <form method="POST"
+                                                action="{{ route('payslip.claims.toggle', ['run' => $selectedRun->id, 'employeeId' => $e['employee_id']]) }}"
+                                                style="display:inline;">
+                                                @csrf
+                                                <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
+                                                <input type="hidden" name="cutoff"
+                                                    value="{{ $cutoffFilter ?? '' }}" />
+                                                <input type="hidden" name="assignment"
+                                                    value="{{ $assignmentFilter ?? '' }}" />
+                                                <input type="hidden" name="area_place"
+                                                    value="{{ $areaPlaceFilter ?? '' }}" />
+                                                <input type="hidden" name="sort"
+                                                    value="{{ $sortKey ?? 'emp_no' }}" />
+                                                <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
+                                                <button class="btn btn--soft" type="submit"
+                                                    title="Mark as claimed (confirmed)">Confirm</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             @endif
 
             <section class="card tablecard">
                 <div class="tablecard__head">
                     <div>
                         <div class="card__title big">Employees (Claim Status)</div>
-                        <div class="muted small">Auto-claimed employees are detected from uploaded claim sheets. QR codes identify each row definitively.</div>
+                        <div class="muted small">Auto-claimed employees are detected from uploaded claim sheets. QR codes
+                            identify each row definitively.</div>
                     </div>
                 </div>
                 <div class="tablewrap">
                     <table class="table" aria-label="Employees claim status table">
                         <thead>
                             <tr>
-                                <th>Emp ID</th>
-                                <th>Name</th>
-                                <th>Assignment</th>
-                                <th>Area</th>
+                                <th class="{{ $employeeSort['emp_no']['class'] ?? 'sortable' }}">
+                                    <a class="thSortLink" href="{{ $employeeSort['emp_no']['url'] ?? '#' }}">Emp ID <span
+                                            class="sortIcon" aria-hidden="true"></span></a>
+                                </th>
+                                <th class="{{ $employeeSort['name']['class'] ?? 'sortable' }}">
+                                    <a class="thSortLink" href="{{ $employeeSort['name']['url'] ?? '#' }}">Name <span
+                                            class="sortIcon" aria-hidden="true"></span></a>
+                                </th>
+                                <th class="{{ $employeeSort['assignment_type']['class'] ?? 'sortable' }}">
+                                    <a class="thSortLink"
+                                        href="{{ $employeeSort['assignment_type']['url'] ?? '#' }}">Assignment <span
+                                            class="sortIcon" aria-hidden="true"></span></a>
+                                </th>
+                                <th class="{{ $employeeSort['area_place']['class'] ?? 'sortable' }}">
+                                    <a class="thSortLink" href="{{ $employeeSort['area_place']['url'] ?? '#' }}">Area
+                                        <span class="sortIcon" aria-hidden="true"></span></a>
+                                </th>
                                 <th>Received</th>
-                                <th>Status</th>
+                                <th class="{{ $employeeSort['status']['class'] ?? 'sortable' }}">
+                                    <a class="thSortLink" href="{{ $employeeSort['status']['url'] ?? '#' }}">Status <span
+                                            class="sortIcon" aria-hidden="true"></span></a>
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -351,8 +407,12 @@
                                             @csrf
                                             <input type="hidden" name="month" value="{{ $monthFilter ?? '' }}" />
                                             <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
-                                            <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
-                                            <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
+                                            <input type="hidden" name="assignment"
+                                                value="{{ $assignmentFilter ?? '' }}" />
+                                            <input type="hidden" name="area_place"
+                                                value="{{ $areaPlaceFilter ?? '' }}" />
+                                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                                            <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                                             <button type="submit"
                                                 title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"
                                                 style="background:none;border:none;cursor:pointer;padding:0;">
@@ -366,7 +426,9 @@
                                         @if ($e['claimed_at'])
                                             <span class="badge badge--success">Claimed</span>
                                         @elseif (($e['review_status'] ?? '') === 'needs_review')
-                                            <span class="badge" style="background:rgba(180,83,9,.12);color:#92400e;border-color:rgba(180,83,9,.3);">Needs Review</span>
+                                            <span class="badge"
+                                                style="background:rgba(180,83,9,.12);color:#92400e;border-color:rgba(180,83,9,.3);">Needs
+                                                Review</span>
                                         @else
                                             <span class="badge badge--muted">Unclaimed</span>
                                         @endif

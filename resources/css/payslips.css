@@ -776,6 +776,15 @@ tbody tr:hover {
 }
 
 /* Sort icon (chevron style) */
+.thSortLink {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+}
+.thSortLink:visited {
+    color: inherit;
+}
 th.sortable {
     cursor: pointer;
     user-select: none;

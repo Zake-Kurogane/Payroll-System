@@ -23,6 +23,8 @@ class PayslipClaimController extends Controller
         $cutoffFilter = $this->normalizeCutoff($request->query('cutoff'));
         $assignmentFilter = $this->normalizeAssignment($request->query('assignment'));
         $areaPlaceFilter = $this->normalizeAreaPlace($request->query('area_place'));
+        $sortKey = $this->normalizeEmployeeSortKey($request->query('sort'));
+        $sortDir = $this->normalizeSortDirection($request->query('dir'));
 
         $runs = PayrollRun::query()
             ->whereIn('status', ['Released'])
@@ -37,6 +39,8 @@ class PayslipClaimController extends Controller
         $proofs = collect();
         $assignmentOptions = collect();
         $assignmentAreaPlaces = [];
+        $employeeSort = [];
+        $needsReviewRows = collect();
 
         if ($runId) {
             $selectedRun = $runs->firstWhere('id', (int) $runId);
@@ -107,6 +111,8 @@ class PayslipClaimController extends Controller
             }
 
             $employees = $this->filterEmployees($employees, $assignmentFilter, $areaPlaceFilter);
+            $employees = $this->sortEmployees($employees, $sortKey, $sortDir);
+            $needsReviewRows = $employees->filter(fn ($e) => (($e['review_status'] ?? '') === 'needs_review'))->values();
             $summary = $this->computeClaimSummaryFromRows($employees);
             $proofs = PayslipClaimProof::query()
                 ->where('payroll_run_id', $selectedRun->id)
@@ -126,6 +132,18 @@ class PayslipClaimController extends Controller
             'assignmentOptions' => $assignmentOptions,
             'areaPlaceFilter' => $areaPlaceFilter,
             'assignmentAreaPlaces' => $assignmentAreaPlaces,
+            'sortKey' => $sortKey,
+            'sortDir' => $sortDir,
+            'needsReviewRows' => $needsReviewRows,
+            'employeeSort' => $this->buildEmployeeSortMeta(
+                $selectedRun?->id,
+                $monthFilter,
+                $cutoffFilter,
+                $assignmentFilter,
+                $areaPlaceFilter,
+                $sortKey,
+                $sortDir
+            ),
         ]);
     }
 
@@ -204,6 +222,8 @@ class PayslipClaimController extends Controller
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
             'assignment' => $this->normalizeAssignment($request->input('assignment')),
             'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
+            'sort' => $this->normalizeEmployeeSortKey($request->input('sort')),
+            'dir' => $this->normalizeSortDirection($request->input('dir')),
         ])
             ->with('success', count($storedProofs) . ' proof file(s) uploaded and processed.');
     }
@@ -245,6 +265,8 @@ class PayslipClaimController extends Controller
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
             'assignment' => $this->normalizeAssignment($request->input('assignment')),
             'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
+            'sort' => $this->normalizeEmployeeSortKey($request->input('sort')),
+            'dir' => $this->normalizeSortDirection($request->input('dir')),
         ]);
     }
 
@@ -258,6 +280,8 @@ class PayslipClaimController extends Controller
                 'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
                 'assignment' => $this->normalizeAssignment($request->input('assignment')),
                 'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
+                'sort' => $this->normalizeEmployeeSortKey($request->input('sort')),
+                'dir' => $this->normalizeSortDirection($request->input('dir')),
             ])->with('success', 'Proof already deleted.');
         }
         $runId = (int) ($proofRow->payroll_run_id ?? 0);
@@ -291,6 +315,8 @@ class PayslipClaimController extends Controller
             'cutoff' => $this->normalizeCutoff($request->input('cutoff')),
             'assignment' => $this->normalizeAssignment($request->input('assignment')),
             'area_place' => $this->normalizeAreaPlace($request->input('area_place')),
+            'sort' => $this->normalizeEmployeeSortKey($request->input('sort')),
+            'dir' => $this->normalizeSortDirection($request->input('dir')),
         ])
             ->with('success', 'Proof deleted.');
     }
@@ -421,6 +447,59 @@ class PayslipClaimController extends Controller
             $area = trim((string) ($r['area_place'] ?? ''));
             return strcasecmp($area, $areaPlaceFilter) === 0;
         })->values();
+    }
+
+    private function sortEmployees($rows, string $sortKey, string $sortDir)
+    {
+        $items = collect($rows)->values()->all();
+        $direction = $sortDir === 'desc' ? -1 : 1;
+
+        usort($items, function ($a, $b) use ($sortKey, $direction) {
+            $a = (array) $a;
+            $b = (array) $b;
+
+            $statusRank = function (array $row): int {
+                if (!empty($row['claimed_at'])) return 2;
+                if (($row['review_status'] ?? '') === 'needs_review') return 1;
+                return 0;
+            };
+
+            $valueFor = function (array $row) use ($sortKey, $statusRank) {
+                return match ($sortKey) {
+                    'name' => trim((string) ($row['name'] ?? '')),
+                    'assignment_type' => trim((string) ($row['assignment_type'] ?? '')),
+                    'area_place' => trim((string) ($row['area_place'] ?? '')),
+                    'status' => $statusRank($row),
+                    default => trim((string) ($row['emp_no'] ?? '')),
+                };
+            };
+
+            $left = $valueFor($a);
+            $right = $valueFor($b);
+
+            if (is_int($left) && is_int($right)) {
+                $cmp = $left <=> $right;
+            } else {
+                $cmp = strnatcasecmp((string) $left, (string) $right);
+            }
+
+            if ($cmp === 0) {
+                $cmp = strnatcasecmp(
+                    trim((string) ($a['emp_no'] ?? '')),
+                    trim((string) ($b['emp_no'] ?? ''))
+                );
+            }
+            if ($cmp === 0) {
+                $cmp = strnatcasecmp(
+                    trim((string) ($a['name'] ?? '')),
+                    trim((string) ($b['name'] ?? ''))
+                );
+            }
+
+            return $cmp * $direction;
+        });
+
+        return collect($items)->values();
     }
 
     private function processUploadedProofs(PayrollRun $run, array $proofs): void
@@ -1130,5 +1209,55 @@ class PayslipClaimController extends Controller
         if ($value === '' || strcasecmp($value, 'all') === 0) return null;
         return $value;
     }
-}
 
+    private function normalizeEmployeeSortKey(?string $value): string
+    {
+        $value = trim((string) $value);
+        $allowed = ['emp_no', 'name', 'assignment_type', 'area_place', 'status'];
+        return in_array($value, $allowed, true) ? $value : 'emp_no';
+    }
+
+    private function normalizeSortDirection(?string $value): string
+    {
+        $value = strtolower(trim((string) $value));
+        return $value === 'desc' ? 'desc' : 'asc';
+    }
+
+    private function buildEmployeeSortMeta(
+        ?int $runId,
+        ?string $monthFilter,
+        ?string $cutoffFilter,
+        ?string $assignmentFilter,
+        ?string $areaPlaceFilter,
+        string $activeSort,
+        string $activeDir
+    ): array {
+        $base = array_filter([
+            'run_id' => $runId,
+            'month' => $monthFilter,
+            'cutoff' => $cutoffFilter,
+            'assignment' => $assignmentFilter,
+            'area_place' => $areaPlaceFilter,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        $make = function (string $key) use ($base, $activeSort, $activeDir): array {
+            $nextDir = ($activeSort === $key && $activeDir === 'asc') ? 'desc' : 'asc';
+            $params = array_merge($base, ['sort' => $key, 'dir' => $nextDir]);
+            $params = array_filter($params, fn ($v) => $v !== null && $v !== '');
+            return [
+                'url' => route('payslip.claims', $params),
+                'class' => $activeSort === $key
+                    ? ($activeDir === 'desc' ? 'sortable is-desc' : 'sortable is-asc')
+                    : 'sortable',
+            ];
+        };
+
+        return [
+            'emp_no' => $make('emp_no'),
+            'name' => $make('name'),
+            'assignment_type' => $make('assignment_type'),
+            'area_place' => $make('area_place'),
+            'status' => $make('status'),
+        ];
+    }
+}
