@@ -816,7 +816,7 @@
             </div>
             <div class="form">
                 <div id="historyDrawerExternal" class="muted small" style="margin-bottom:10px;display:none;"></div>
-                <div class="field" style="margin-bottom:10px;">
+                <div class="field historySearchField">
                     <input type="search" id="historySearch" class="field__control" placeholder="Search area or period…"
                         autocomplete="off" />
                 </div>
@@ -855,11 +855,20 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            justify-content: flex-start;
             padding-bottom: 0;
         }
 
-        #historyDrawer .tablewrap {
-            flex: 1;
+        #historyDrawer .historySearchField {
+            margin-bottom: 0;
+            flex: 0 0 auto;
+            min-width: 0;
+        }
+
+        #historyDrawer .tablewrap,
+        #historyDrawer .tablewrap.tablewrap--preview {
+            margin-top: 40px !important;
+            flex: 1 1 auto;
             overflow-y: auto;
         }
 

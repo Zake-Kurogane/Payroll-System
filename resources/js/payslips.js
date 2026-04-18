@@ -898,23 +898,24 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="col-actions">
           <div class="iconrow">
             <button class="iconbtn" type="button" data-action="view" data-id="${escapeHtml(p.id)}" title="View" aria-label="View payslip">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                <path d="M12 4C6.5 4 2.2 9 2 12c.2 3 4.5 8 10 8s9.8-5 10-8c-.2-3-4.5-8-10-8zm0 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" fill="currentColor"/>
-                <circle cx="12" cy="12" r="2" fill="currentColor"/>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
               </svg>
             </button>
             <button class="iconbtn" type="button" data-action="pdf" data-id="${escapeHtml(p.id)}" title="Download PDF" aria-label="Download PDF">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                <path d="M6 2h8l6 6v14H6z" fill="currentColor"/>
-                <path d="M14 2v6h6" fill="#fff"/>
-                <path d="M8 17h8" fill="#fff"/>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="8" y1="13" x2="16" y2="13"></line>
+                <line x1="8" y1="17" x2="16" y2="17"></line>
               </svg>
             </button>
             <button class="iconbtn" type="button" data-action="print" data-id="${escapeHtml(p.id)}" title="Print" aria-label="Print payslip">
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                <path d="M7 3h10v4H7z" fill="currentColor"/>
-                <path d="M6 9h12a3 3 0 0 1 3 3v5h-3v4H6v-4H3v-5a3 3 0 0 1 3-3z" fill="currentColor"/>
-                <rect x="8" y="15" width="8" height="4" fill="#fff"/>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                <rect x="6" y="14" width="12" height="8"></rect>
               </svg>
             </button>
           </div>

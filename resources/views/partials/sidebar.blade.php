@@ -124,8 +124,11 @@
                         href="{{ route('employee.cases') }}">
                         <span class="menu__icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" class="ico">
-                                <path fill="currentColor"
-                                    d="M2.75 21.25a1.25 1.25 0 0 1 1.25-1.25H12a1.25 1.25 0 1 1 0 2.5H4a1.25 1.25 0 0 1-1.25-1.25ZM4.7 14.7l6.58 6.58 2.12-2.12-6.58-6.58-2.12 2.12Zm8.7-7.41 1.41-1.41 6.6 6.6a1 1 0 0 1 0 1.41l-2.12 2.12a1 1 0 0 1-1.41 0L13.4 8.42 7.82 14l-2.12-2.12 7.7-7.7a1 1 0 0 1 1.41 0Z" />
+                                <path d="M14.2 2.6 20.4 8.8l-1.8 1.8-6.2-6.2 1.8-1.8z" />
+                                <path d="M11.4 5.4 17.6 11.6l-2.2 2.2-6.2-6.2 2.2-2.2z" />
+                                <path d="M8.8 8 15 14.2l-1.8 1.8L7 9.8 8.8 8z" />
+                                <path d="m14.9 12.7 2.1-2.1 4.7 4.7a1.5 1.5 0 0 1-2.1 2.1l-4.7-4.7z" />
+                                <path d="M2.4 18.2h8.4a1.3 1.3 0 0 1 0 2.6H2.4a1.3 1.3 0 0 1 0-2.6z" />
                             </svg>
                         </span>
                         <span>Employee Case Management</span>
@@ -147,8 +150,11 @@
                 href="{{ route('employee.cases') }}">
                 <span class="menu__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="ico">
-                        <path fill="currentColor"
-                            d="M2.75 21.25a1.25 1.25 0 0 1 1.25-1.25H12a1.25 1.25 0 1 1 0 2.5H4a1.25 1.25 0 0 1-1.25-1.25ZM4.7 14.7l6.58 6.58 2.12-2.12-6.58-6.58-2.12 2.12Zm8.7-7.41 1.41-1.41 6.6 6.6a1 1 0 0 1 0 1.41l-2.12 2.12a1 1 0 0 1-1.41 0L13.4 8.42 7.82 14l-2.12-2.12 7.7-7.7a1 1 0 0 1 1.41 0Z" />
+                        <path d="M14.2 2.6 20.4 8.8l-1.8 1.8-6.2-6.2 1.8-1.8z" />
+                        <path d="M11.4 5.4 17.6 11.6l-2.2 2.2-6.2-6.2 2.2-2.2z" />
+                        <path d="M8.8 8 15 14.2l-1.8 1.8L7 9.8 8.8 8z" />
+                        <path d="m14.9 12.7 2.1-2.1 4.7 4.7a1.5 1.5 0 0 1-2.1 2.1l-4.7-4.7z" />
+                        <path d="M2.4 18.2h8.4a1.3 1.3 0 0 1 0 2.6H2.4a1.3 1.3 0 0 1 0-2.6z" />
                     </svg>
                 </span>
                 <span>EMPLOYEE CASE<br />MANAGEMENT</span>
@@ -170,8 +176,7 @@
             href="{{ route('loans') }}">
             <span class="menu__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" class="ico">
-                    <path d="M4 7h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v8h16V9H4z" />
-                    <path d="M7 13h6v2H7v-2z" />
+                    <path d="M2 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v1h1a2 2 0 0 1 2 2v6a3 3 0 0 1-3 3H4a2 2 0 0 1-2-2V7zm16 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z" />
                 </svg>
             </span>
             <span>LOANS</span>
@@ -182,8 +187,7 @@
                 href="{{ route('payroll.processing') }}">
                 <span class="menu__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="ico">
-                        <path d="M4 4h10a2 2 0 0 1 2 2v2h4v12H6a2 2 0 0 1-2-2V4zm2 2v14h12V10h-4V6H6z" />
-                        <path d="M9 12h6v2H9v-2zm0 4h6v2H9v-2z" />
+                        <path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Zm8.79 3.16-1.35-.78c.08-.42.12-.85.12-1.28s-.04-.86-.12-1.28l1.35-.78a1 1 0 0 0 .37-1.37l-1.5-2.6a1 1 0 0 0-1.3-.4l-1.36.62a8.83 8.83 0 0 0-2.22-1.28L14.6 1.1A1 1 0 0 0 13.62.3h-3a1 1 0 0 0-.98.8l-.3 1.44a8.84 8.84 0 0 0-2.22 1.28l-1.36-.62a1 1 0 0 0-1.3.4l-1.5 2.6a1 1 0 0 0 .37 1.37l1.35.78A8.9 8.9 0 0 0 4.56 10c0 .43.04.86.12 1.28l-1.35.78a1 1 0 0 0-.37 1.37l1.5 2.6a1 1 0 0 0 1.3.4l1.36-.62c.68.54 1.43.96 2.22 1.28l.3 1.44a1 1 0 0 0 .98.8h3a1 1 0 0 0 .98-.8l.3-1.44a8.83 8.83 0 0 0 2.22-1.28l1.36.62a1 1 0 0 0 1.3-.4l1.5-2.6a1 1 0 0 0-.37-1.37Z" />
                     </svg>
                 </span>
                 <span>PAYROLL<br />PROCESSING</span>
@@ -224,14 +228,8 @@
                         href="{{ route('payslip.claims') }}">
                         <span class="menu__icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                                <!-- Signature (stroke only) -->
-                                <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
-                                    style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
-                                <!-- Pen at end of signature (filled, kept inside viewBox to avoid clipping) -->
-                                <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
-                                    style="fill:currentColor;stroke:none" />
-                                <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
-                                    style="fill:currentColor;stroke:none" />
+                                <path d="M17.4 2.6a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-9.9 9.9a2 2 0 0 1-.9.5l-3.1.9a.5.5 0 0 1-.6-.6l.9-3.1a2 2 0 0 1 .5-.9l9.9-9.9z" />
+                                <path d="M2.6 20.3c1.8-1.4 3.5-1.8 5.2-1.2 2 .7 3.8.8 5.4.2 1.4-.5 2.9-.5 4.5 0l2 .7-.6 1.8-2-.7c-1.1-.4-2.1-.4-3.1-.1-2.1.7-4.3.6-6.6-.3-1.1-.4-2.2-.1-3.3.8l-1.5-1.2z" />
                             </svg>
                         </span>
                         <span>Claims</span>
@@ -243,12 +241,8 @@
                 href="{{ route('payslip.claims') }}">
                 <span class="menu__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
-                        <path d="M3 18.5c2.2-2.1 3.6 1 5.2-.4 1.2-1.1 1.4-3.7 2.8-3.7 1.2 0 .8 2.9 2.3 2.9 1.2 0 2-1 2.9-1.9"
-                            style="fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round" />
-                        <path d="M13.8 15.2l4.2-4.2 1.8 1.8-4.2 4.2-2.7.9.9-2.7z"
-                            style="fill:currentColor;stroke:none" />
-                        <path d="M18 11l1-1c.25-.25.65-.25.9 0l1.1 1.1c.25.25.25.65 0 .9l-1 1L18 11z"
-                            style="fill:currentColor;stroke:none" />
+                        <path d="M17.4 2.6a2 2 0 0 1 2.8 0l1.2 1.2a2 2 0 0 1 0 2.8l-9.9 9.9a2 2 0 0 1-.9.5l-3.1.9a.5.5 0 0 1-.6-.6l.9-3.1a2 2 0 0 1 .5-.9l9.9-9.9z" />
+                        <path d="M2.6 20.3c1.8-1.4 3.5-1.8 5.2-1.2 2 .7 3.8.8 5.4.2 1.4-.5 2.9-.5 4.5 0l2 .7-.6 1.8-2-.7c-1.1-.4-2.1-.4-3.1-.1-2.1.7-4.3.6-6.6-.3-1.1-.4-2.2-.1-3.3.8l-1.5-1.2z" />
                     </svg>
                 </span>
                 <span>PAYSLIP CLAIMS</span>
@@ -260,8 +254,8 @@
                 href="{{ route('report') }}">
                 <span class="menu__icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" class="ico">
-                        <path d="M4 19h16v2H2V3h2v16z" />
-                        <path d="M7 17V9h3v8H7zm5 0V5h3v12h-3zm5 0v-6h3v6h-3z" />
+                        <path d="M11 3a9 9 0 1 0 9 9h-9V3z" />
+                        <path d="M13 3.4A8.6 8.6 0 0 1 20.6 11H13V3.4z" />
                     </svg>
                 </span>
                 <span>REPORT</span>

@@ -512,11 +512,35 @@ document.addEventListener("DOMContentLoaded", () => {
       const statusBadge = l.status === "active" ? "badge--ok" : l.status === "paused" ? "badge--warn" : "badge--muted";
       const perCutoff = l.per_cutoff_amount && l.per_cutoff_amount > 0 ? l.per_cutoff_amount : (l.deduction_frequency === "every_cutoff" ? (l.monthly_amortization / 2) : l.monthly_amortization);
       const actions = [
-        `<button class="iconbtn" type="button" data-action="view" data-id="${l.id}" title="View" aria-label="View">👁</button>`,
-        `<button class="iconbtn" type="button" data-action="edit" data-id="${l.id}" title="Edit" aria-label="Edit">✎</button>`,
-        l.status === "active" ? `<button class="iconbtn" type="button" data-action="pause" data-id="${l.id}" title="Pause" aria-label="Pause">⏸</button>` : "",
-        l.status === "paused" ? `<button class="iconbtn" type="button" data-action="resume" data-id="${l.id}" title="Resume" aria-label="Resume">▶</button>` : "",
-        (l.status !== "completed" && l.status !== "cancelled") ? `<button class="iconbtn" type="button" data-action="close" data-id="${l.id}" title="Close" aria-label="Close">✕</button>` : "",
+        `<button class="iconbtn" type="button" data-action="view" data-id="${l.id}" title="View" aria-label="View">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>`,
+        `<button class="iconbtn" type="button" data-action="edit" data-id="${l.id}" title="Edit" aria-label="Edit">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>
+          </svg>
+        </button>`,
+        l.status === "active" ? `<button class="iconbtn" type="button" data-action="pause" data-id="${l.id}" title="Pause" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <line x1="10" y1="6" x2="10" y2="18"></line>
+            <line x1="14" y1="6" x2="14" y2="18"></line>
+          </svg>
+        </button>` : "",
+        l.status === "paused" ? `<button class="iconbtn" type="button" data-action="resume" data-id="${l.id}" title="Resume" aria-label="Resume">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <polygon points="8,5 19,12 8,19"></polygon>
+          </svg>
+        </button>` : "",
+        (l.status !== "completed" && l.status !== "cancelled") ? `<button class="iconbtn" type="button" data-action="close" data-id="${l.id}" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>` : "",
       ].filter(Boolean).join("");
       return `
         <tr>

@@ -278,6 +278,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     tooltip.className = "trendTooltip";
     chart.appendChild(tooltip);
 
+    // Keep x-axis labels centered under SVG bar groups using the same inner insets.
+    const chartCard = chart.closest(".chart-card");
+    if (chartCard && chartLabels) {
+      const cardRect = chartCard.getBoundingClientRect();
+      const chartRect = chart.getBoundingClientRect();
+      const leftInset = Math.max(0, Math.round(chartRect.left - cardRect.left));
+      const rightInset = Math.max(0, Math.round(cardRect.right - chartRect.right));
+      chartLabels.style.marginLeft = `${leftInset}px`;
+      chartLabels.style.marginRight = `${rightInset}px`;
+      chartLabels.style.paddingLeft = `${padX}px`;
+      chartLabels.style.paddingRight = `${padX}px`;
+      chartLabels.style.boxSizing = "border-box";
+    }
+
     const groupW = usableW / labels.length;
     const gap = Math.min(10, groupW * 0.14);
     const barW = Math.max(8, Math.min(24, (groupW - gap - 10) / 2));

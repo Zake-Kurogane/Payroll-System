@@ -706,8 +706,10 @@ tbody tr.row-total:hover {
 }
 
 .dedDetails {
-    display: inline-block;
+    display: block;
     text-align: left;
+    width: 100%;
+    min-width: 0;
 }
 .dedDetails > summary {
     cursor: pointer;
@@ -716,6 +718,7 @@ tbody tr.row-total:hover {
     align-items: center;
     gap: 8px;
     font-weight: inherit;
+    width: 100%;
 }
 .dedDetails > summary::-webkit-details-marker {
     display: none;
@@ -742,13 +745,16 @@ tbody tr.row-total:hover {
     opacity: 1;
 }
 .dedDetails__body {
-    margin-top: 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: #fff;
-    min-width: 230px;
-    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.08);
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-shadow: none;
+    white-space: normal;
 }
 .dedDetails__body > div {
     display: flex;
@@ -758,7 +764,17 @@ tbody tr.row-total:hover {
     font-size: 12px;
     line-height: 1.35;
     margin-bottom: 6px;
-    font-weight: 600;
+    font-weight: 450;
+}
+.dedDetails__body > div > span:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    font-weight: 450;
+}
+.dedDetails__body > div > span:last-child {
+    font-size: 13px;
+    font-weight: 450;
 }
 .dedDetails__body > div:last-child {
     margin-bottom: 0;
