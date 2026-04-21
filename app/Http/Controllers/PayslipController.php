@@ -528,7 +528,10 @@ class PayslipController extends Controller
                 ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                 : '';
 
-            $dailyRate = $emp && $emp->basic_pay ? ((float) $emp->basic_pay / 26) : 0.0;
+            $isField = strcasecmp(trim((string) ($emp?->assignment_type ?? '')), 'Field') === 0;
+            $dailyRate = $emp && $emp->basic_pay
+                ? ($isField ? ((float) $emp->basic_pay / 30) : ((float) $emp->basic_pay / 26))
+                : 0.0;
             $att = [
                 'paid_days' => 0.0,
                 'present_days' => 0.0,
@@ -684,7 +687,7 @@ class PayslipController extends Controller
         }
 
         $ruleService = new AttendanceStatusRuleService();
-        $totals = $ruleService->summarize($workdayRows);
+        $totals = $ruleService->summarize($workdayRows, $assignmentType);
 
         return [
             'paid_days' => (float) ($totals['paid_days'] ?? 0),

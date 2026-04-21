@@ -300,23 +300,21 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     if (!Number.isFinite(amount) || amount <= 0) {
       caPerCutoffPreviewEl.value = "";
       if (caCutoffMetaEl) {
-        caCutoffMetaEl.textContent = fullDeduct
-          ? "Trainee: next cutoff will attempt to deduct the full amount."
-          : "Auto-calculated from Amount / (Term x 2 cutoffs).";
+        caCutoffMetaEl.textContent = "";
       }
       return;
     }
 
     if (fullDeduct) {
       caPerCutoffPreviewEl.value = pesoSafe(amount);
-      if (caCutoffMetaEl) caCutoffMetaEl.textContent = "Trainee: next cutoff will attempt to deduct the full amount (remainder carries forward).";
+      if (caCutoffMetaEl) caCutoffMetaEl.textContent = "";
       return;
     }
 
     const cutoffs = termMonths * 2;
     const per = amount / cutoffs;
     caPerCutoffPreviewEl.value = pesoSafe(per);
-    if (caCutoffMetaEl) caCutoffMetaEl.textContent = `Auto-calculated: ${pesoSafe(amount)} / (${termMonths} mo x 2 = ${cutoffs} cutoffs) = ${pesoSafe(per)} per cutoff.`;
+    if (caCutoffMetaEl) caCutoffMetaEl.textContent = "";
   }
 
   function updatePerCutoffPreview() {
@@ -329,23 +327,21 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     if (!Number.isFinite(amount) || amount <= 0) {
       caPerCutoffPreviewEl.value = "";
       if (caCutoffMetaEl) {
-        caCutoffMetaEl.textContent = fullDeduct
-          ? "Trainee: next cutoff will attempt to deduct the full amount."
-          : "Auto-calculated from Amount ÷ (Term × 2 cutoffs).";
+        caCutoffMetaEl.textContent = "";
       }
       return;
     }
 
     if (fullDeduct) {
       caPerCutoffPreviewEl.value = peso(amount);
-      if (caCutoffMetaEl) caCutoffMetaEl.textContent = "Trainee: next cutoff will attempt to deduct the full amount (remainder carries forward).";
+      if (caCutoffMetaEl) caCutoffMetaEl.textContent = "";
       return;
     }
 
     const cutoffs = termMonths * 2;
     const per = amount / cutoffs;
     caPerCutoffPreviewEl.value = peso(per);
-    if (caCutoffMetaEl) caCutoffMetaEl.textContent = `Auto-calculated: ${peso(amount)} ÷ (${termMonths} mo × 2 = ${cutoffs} cutoffs) = ${peso(per)} per cutoff.`;
+    if (caCutoffMetaEl) caCutoffMetaEl.textContent = "";
   }
 
   function renderCaSafe() {
@@ -603,14 +599,14 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
 
     if (fullDeduct) {
       caViewPerCutoffPreviewEl.value = pesoSafe(remaining);
-      if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "Full deduct: next cutoff will attempt to deduct the remaining balance (remainder carries forward).";
+      if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "";
       return;
     }
 
     const cutoffs = termMonths * 2;
     const per = remaining / Math.max(1, cutoffs);
     caViewPerCutoffPreviewEl.value = pesoSafe(per);
-    if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = `Auto-calculated: remaining ${pesoSafe(remaining)} / (${termMonths} mo x 2 = ${cutoffs} cutoffs) = ${pesoSafe(per)} per cutoff.`;
+    if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "";
   }
 
   function updateEditPerCutoffPreview() {
@@ -628,14 +624,14 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
 
     if (fullDeduct) {
       caViewPerCutoffPreviewEl.value = peso(remaining);
-      if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "Full deduct: next cutoff will attempt to deduct the remaining balance (remainder carries forward).";
+      if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "";
       return;
     }
 
     const cutoffs = termMonths * 2;
     const per = remaining / Math.max(1, cutoffs);
     caViewPerCutoffPreviewEl.value = peso(per);
-    if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = `Auto-calculated: remaining ${peso(remaining)} Ã· (${termMonths} mo Ã— 2 = ${cutoffs} cutoffs) = ${peso(per)} per cutoff.`;
+    if (caViewCutoffMetaEl) caViewCutoffMetaEl.textContent = "";
   }
 
   caViewAmount?.addEventListener("input", () => {

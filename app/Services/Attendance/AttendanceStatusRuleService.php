@@ -94,7 +94,7 @@ class AttendanceStatusRuleService
         return $this->cachedBuckets;
     }
 
-    public function summarize(iterable $rows): array
+    public function summarize(iterable $rows, string $assignmentType = ''): array
     {
         $buckets = $this->buckets();
         $presentSet = $this->toSet($buckets['present']);
@@ -103,6 +103,7 @@ class AttendanceStatusRuleService
         $absentSet = $this->toSet($buckets['absent']);
         $leaveSet = $this->toSet($buckets['leave']);
         $halfDaySet = $this->toSet($buckets['half_day']);
+        $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
 
         $presentDays = 0.0;
         $absentDays = 0.0;
@@ -133,21 +134,30 @@ class AttendanceStatusRuleService
 
             $key = $this->key($status);
             if ($key !== '') {
-                if (isset($lateSet[$key])) {
-                    $lateDays += 1.0;
-                } elseif (isset($presentSet[$key])) {
-                    $presentDays += isset($halfDaySet[$key]) ? 0.5 : 1.0;
-                }
-                if (isset($absentSet[$key])) {
+                // Hard business rule: RNR is always unpaid and treated as absent.
+                if ($key === 'rnr') {
                     $absentDays += 1.0;
-                }
-                if (isset($leaveSet[$key])) {
-                    $leaveDays += 1.0;
-                }
-                if (isset($halfDaySet[$key])) {
-                    $paidDays += 0.5;
-                } elseif (isset($paidSet[$key])) {
-                    $paidDays += 1.0;
+                } else {
+                    if (isset($lateSet[$key])) {
+                        $lateDays += 1.0;
+                    } elseif (isset($presentSet[$key])) {
+                        $presentDays += isset($halfDaySet[$key]) ? 0.5 : 1.0;
+                    }
+                    if (isset($absentSet[$key])) {
+                        $absentDays += 1.0;
+                    }
+                    if (isset($leaveSet[$key])) {
+                        $leaveDays += 1.0;
+                    }
+                    // Field rule: RNR/Absent/Leave statuses are always unpaid.
+                    $isUnpaidForField = $isField && (isset($absentSet[$key]) || isset($leaveSet[$key]));
+                    if (!$isUnpaidForField) {
+                        if (isset($halfDaySet[$key])) {
+                            $paidDays += 0.5;
+                        } elseif (isset($paidSet[$key])) {
+                            $paidDays += 1.0;
+                        }
+                    }
                 }
             }
 

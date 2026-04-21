@@ -9,6 +9,28 @@ document.addEventListener("DOMContentLoaded", () => {
   initUserMenuDropdown();
   initProfileDrawer();
 
+  // Safety cleanup: remove any stale "Auto-calculated..." hints from older cached templates/scripts.
+  function wipeAutoCalculatedHints() {
+    const ids = ["caCutoffMeta", "caViewCutoffMeta"];
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = "";
+      el.remove();
+    });
+    document.querySelectorAll(".hint").forEach((el) => {
+      const txt = String(el.textContent || "").toLowerCase();
+      if (txt.includes("auto-calculated")) {
+        el.textContent = "";
+        el.remove();
+      }
+    });
+  }
+  wipeAutoCalculatedHints();
+  setTimeout(wipeAutoCalculatedHints, 0);
+  setTimeout(wipeAutoCalculatedHints, 250);
+  setTimeout(wipeAutoCalculatedHints, 800);
+
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
   const money = (n) => formatMoney(n);
   const esc = (value) => String(value ?? "")
@@ -69,6 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cashAdvanceInited) return;
     cashAdvanceInited = true;
     initCashAdvanceTransactions(toast, apiFetch, cashAdvanceTxnNotice);
+    wipeAutoCalculatedHints();
   }
 
   // Elements

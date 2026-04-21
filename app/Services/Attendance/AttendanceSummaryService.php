@@ -42,7 +42,7 @@ class AttendanceSummaryService
             })
             ->values();
         $ruleService = new AttendanceStatusRuleService();
-        $totals = $ruleService->summarize($records);
+        $totals = $ruleService->summarize($records, (string) ($employee->assignment_type ?? ''));
 
         AttendanceSummary::updateOrCreate(
             [

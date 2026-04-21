@@ -83,6 +83,7 @@ class EmployeeController extends Controller
                     'philhealth',
                     'pagibig',
                     'tin',
+                    'force_statutory_premiums',
                 ]);
             })
             ->when($q !== '', function ($query) use ($q) {
@@ -177,6 +178,7 @@ class EmployeeController extends Controller
                     'philhealth',
                     'pagibig',
                     'tin',
+                    'force_statutory_premiums',
                 ]);
             })
             ->when($q !== '', function ($query) use ($q) {
@@ -567,6 +569,9 @@ class EmployeeController extends Controller
         foreach ($codeRows as $row) {
             $code = strtoupper(trim((string) ($row->code ?? '')));
             $description = trim((string) ($row->description ?? ''));
+            if ($code === 'OFF' && strcasecmp($description, 'Rest Day') === 0) {
+                $description = 'Day-off';
+            }
             if ($code !== '') {
                 $codesByCode[strtolower($code)] = $row;
             }
@@ -1055,6 +1060,7 @@ class EmployeeController extends Controller
             'philhealth' => ['nullable', 'string', 'max:50'],
             'pagibig' => ['nullable', 'string', 'max:50'],
             'tin' => ['nullable', 'string', 'max:50'],
+            'force_statutory_premiums' => ['nullable', 'boolean'],
         ];
 
         if (Schema::hasTable('positions')) {

@@ -69,7 +69,7 @@
                                 value="{{ $assignmentFilter ?? '' }}" />
                             <input type="hidden" name="area_place" id="areaPlaceInput"
                                 value="{{ $areaPlaceFilter ?? '' }}" />
-                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'area_place' }}" />
                             <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                             <div class="seg seg--pill claimsAssignSeg" id="assignSeg" role="group"
                                 aria-label="Filter by assignment" data-active-assign="{{ $assignmentFilter ?? '' }}"
@@ -156,7 +156,7 @@
                     <input type="hidden" name="cutoff" value="{{ $cutoffFilter ?? '' }}" />
                     <input type="hidden" name="assignment" value="{{ $assignmentFilter ?? '' }}" />
                     <input type="hidden" name="area_place" value="{{ $areaPlaceFilter ?? '' }}" />
-                    <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                    <input type="hidden" name="sort" value="{{ $sortKey ?? 'area_place' }}" />
                     <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                 </form>
             </section>
@@ -274,7 +274,7 @@
                                                 <input type="hidden" name="area_place"
                                                     value="{{ $areaPlaceFilter ?? '' }}" />
                                                 <input type="hidden" name="sort"
-                                                    value="{{ $sortKey ?? 'emp_no' }}" />
+                                                    value="{{ $sortKey ?? 'area_place' }}" />
                                                 <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                                                 <button class="iconbtn" type="submit" title="Delete"
                                                     aria-label="Delete" data-delete-proof-btn>
@@ -343,7 +343,7 @@
                                                 <input type="hidden" name="area_place"
                                                     value="{{ $areaPlaceFilter ?? '' }}" />
                                                 <input type="hidden" name="sort"
-                                                    value="{{ $sortKey ?? 'emp_no' }}" />
+                                                    value="{{ $sortKey ?? 'area_place' }}" />
                                                 <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                                                 <button class="btn btn--soft" type="submit"
                                                     title="Mark as claimed (confirmed)">Confirm</button>
@@ -411,7 +411,7 @@
                                                 value="{{ $assignmentFilter ?? '' }}" />
                                             <input type="hidden" name="area_place"
                                                 value="{{ $areaPlaceFilter ?? '' }}" />
-                                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'emp_no' }}" />
+                                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'area_place' }}" />
                                             <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                                             <button type="submit"
                                                 title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"

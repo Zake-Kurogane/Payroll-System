@@ -598,7 +598,7 @@
                     </div>
 
                     <div class="field" id="externalAreaWrap" style="display:none;">
-                        <label>External Area <span class="hint">(fixed deduction attribution)</span></label>
+                        <label>External Area</label>
                         <select id="f_externalArea" name="externalArea" disabled>
                             <option value="">-- Select external area --</option>
                             @foreach ($groupedAreaPlaces as $group => $places)
@@ -644,6 +644,12 @@
                         <input type="text" id="f_tin" placeholder="000-000-000-000" inputmode="numeric"
                             pattern="^[0-9]{3}-[0-9]{3}-[0-9]{3}-[0-9]{3}$" />
                     </div>
+                    <div class="field field--full">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:700;">
+                            <input type="checkbox" id="f_forceStatutoryPremiums" />
+                            <span>Allow statutory premiums</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="sectionTitle">Bank Details</div>
@@ -662,7 +668,6 @@
                         <label>Account Number</label>
                         <input type="text" id="f_accountNumber" placeholder="0000-0000-0000-0000" inputmode="numeric"
                             pattern="^[0-9]{4}(-[0-9]{4}){2,4}$" />
-                        <div class="hint">Leave blank to pay by cash.</div>
                         <small class="err" id="errAccountNumber"></small>
                     </div>
                     <div class="field field--full">
@@ -793,7 +798,10 @@
                         <label for="attendanceYearSelect">Year</label>
                         <select id="attendanceYearSelect"></select>
                     </div>
-                    <div class="attendanceYearPl" id="attendanceYearPl"></div>
+                    <div class="attendanceYearMeta">
+                        <div class="attendanceYearPl" id="attendanceYearPl"></div>
+                        <div class="attendanceYearRecords" id="attendanceYearRecords"></div>
+                    </div>
                 </div>
 
                 <div class="attendanceYearTotals" id="attendanceYearTotals"></div>
@@ -890,7 +898,15 @@
             max-width: 180px;
         }
 
-        .attendanceYearPl {
+        .attendanceYearMeta {
+            display: inline-flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .attendanceYearPl,
+        .attendanceYearRecords {
             font-size: 12px;
             font-weight: 800;
             color: var(--maroon);
@@ -901,6 +917,11 @@
             min-height: 42px;
             display: inline-flex;
             align-items: center;
+        }
+        .attendanceYearRecords {
+            color: #0f766e;
+            background: rgba(20, 184, 166, 0.10);
+            border-color: rgba(20, 184, 166, 0.26);
         }
 
         .attendanceYearTotals {
@@ -917,20 +938,105 @@
             border: 1px solid var(--line);
             background: #fff;
         }
+        .attendanceYearTotals .badge--present {
+            color: #166534;
+            background: rgba(34, 197, 94, 0.12);
+            border-color: rgba(34, 197, 94, 0.30);
+        }
+        .attendanceYearTotals .badge--late {
+            color: #92400e;
+            background: rgba(245, 158, 11, 0.14);
+            border-color: rgba(245, 158, 11, 0.34);
+        }
+        .attendanceYearTotals .badge--absent {
+            color: #991b1b;
+            background: rgba(239, 68, 68, 0.12);
+            border-color: rgba(239, 68, 68, 0.30);
+        }
+        .attendanceYearTotals .badge--paid {
+            color: #1d4ed8;
+            background: rgba(59, 130, 246, 0.12);
+            border-color: rgba(59, 130, 246, 0.30);
+        }
+        .attendanceYearTotals .badge--half {
+            color: #7c3aed;
+            background: rgba(139, 92, 246, 0.12);
+            border-color: rgba(139, 92, 246, 0.30);
+        }
+        .attendanceYearTotals .badge--rnr {
+            color: #0f172a;
+            background: rgba(148, 163, 184, 0.18);
+            border-color: rgba(100, 116, 139, 0.35);
+        }
+        .attendanceYearTotals .badge--off {
+            color: #374151;
+            background: rgba(107, 114, 128, 0.12);
+            border-color: rgba(107, 114, 128, 0.30);
+        }
 
         .attendanceYearLegend {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             flex-wrap: wrap;
+            align-items: center;
+            font-size: 11px;
+            color: var(--muted);
         }
 
         .attendanceYearLegend .legendItem {
-            border: 1px solid var(--line);
-            border-radius: 999px;
-            padding: 4px 8px;
+            border: none;
+            background: transparent;
+            padding: 0;
             font-size: 11px;
-            font-weight: 800;
-            background: #fff;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .attendanceYearLegend .legendItem::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #9ca3af;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            flex: 0 0 auto;
+        }
+        .attendanceYearLegend .legendItem--P::before {
+            color: #166534;
+            background: #22c55e;
+        }
+        .attendanceYearLegend .legendItem--L::before {
+            color: #92400e;
+            background: #f59e0b;
+        }
+        .attendanceYearLegend .legendItem--PL::before {
+            color: #1d4ed8;
+            background: #3b82f6;
+        }
+        .attendanceYearLegend .legendItem--HD::before {
+            color: #7c3aed;
+            background: #8b5cf6;
+        }
+        .attendanceYearLegend .legendItem--HOL::before {
+            color: #0f766e;
+            background: #06b6d4;
+        }
+        .attendanceYearLegend .legendItem--A::before {
+            color: #991b1b;
+            background: #ef4444;
+        }
+        .attendanceYearLegend .legendItem--OFF::before {
+            color: #374151;
+            background: #9ca3af;
+        }
+        .attendanceYearLegend .legendItem--RNR::before {
+            color: #0f172a;
+            background: #64748b;
+        }
+        .attendanceYearLegend .legendSep {
+            color: #9ca3af;
+            font-size: 10px;
         }
 
         .attendanceYearGrid {
@@ -974,7 +1080,7 @@
             align-content: center;
             justify-items: center;
             font-size: 10px;
-            font-weight: 800;
+            font-weight: 700;
             background: #fff;
         }
 
@@ -991,29 +1097,37 @@
             font-size: 10px;
             color: var(--muted);
             line-height: 1;
+            font-weight: 700;
         }
 
         .attendanceDay__code {
-            font-size: 10px;
+            font-size: 9px;
             line-height: 1;
+            font-weight: 700;
+            margin-top: 1px;
         }
 
-        .attendanceDay--P,
-        .attendanceDay--L,
-        .attendanceDay--PL,
-        .attendanceDay--HD,
-        .attendanceDay--HOL {
-            border-color: rgba(5, 150, 105, 0.35);
-            background: rgba(16, 185, 129, 0.12);
+        .attendanceDay--positive {
+            border-color: rgba(34, 197, 94, 0.30);
+            background: rgba(34, 197, 94, 0.10);
         }
 
-        .attendanceDay--A {
-            border-color: rgba(185, 28, 28, 0.35);
+        .attendanceDay--warning {
+            border-color: rgba(245, 158, 11, 0.34);
+            background: rgba(245, 158, 11, 0.12);
+        }
+
+        .attendanceDay--half {
+            border-color: rgba(139, 92, 246, 0.34);
+            background: rgba(139, 92, 246, 0.12);
+        }
+
+        .attendanceDay--negative {
+            border-color: rgba(239, 68, 68, 0.30);
             background: rgba(239, 68, 68, 0.12);
         }
 
-        .attendanceDay--OFF,
-        .attendanceDay--RNR {
+        .attendanceDay--neutral {
             border-color: rgba(107, 114, 128, 0.35);
             background: rgba(107, 114, 128, 0.12);
         }

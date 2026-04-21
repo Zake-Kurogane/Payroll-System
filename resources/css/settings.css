@@ -51,7 +51,7 @@ body {
 .side {
     background: #fff;
     border-right: 1px solid var(--line);
-    padding: 18px 14px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -63,7 +63,7 @@ body {
     gap: 8px;
     align-items: center;
     text-align: center;
-    padding: 12px 10px 16px;
+    padding: 6px 10px 12px;
     border-bottom: 1px solid var(--line);
 }
 .brand__mark {
@@ -93,7 +93,7 @@ body {
 .menu {
     display: grid;
     gap: 14px;
-    padding: 26px 10px;
+    padding: 18px 10px;
 }
 .menu__item {
     text-decoration: none;
@@ -971,3 +971,4 @@ body.drawer-open {
     cursor: pointer;
     font: inherit;
 }
+

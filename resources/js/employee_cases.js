@@ -194,10 +194,8 @@ document.addEventListener("DOMContentLoaded", () => {
     el && el.addEventListener("change", load);
   });
 
-  if (monthFilter) {
-    const now = new Date();
-    monthFilter.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  }
+  // Keep month filter empty by default so list shows all records unless user narrows it.
+  if (monthFilter) monthFilter.value = "";
   window.loadCases = load;
 
   // Populate Stage and Sanction selects from DB

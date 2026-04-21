@@ -44,7 +44,7 @@ body {
 .side {
     background: #fff;
     border-right: 1px solid var(--line);
-    padding: 18px 14px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -57,7 +57,7 @@ body {
     gap: 8px;
     align-items: center;
     text-align: center;
-    padding: 12px 10px 16px;
+    padding: 6px 10px 12px;
     border-bottom: 1px solid var(--line);
 }
 
@@ -91,7 +91,7 @@ body {
 .menu {
     display: grid;
     gap: 14px;
-    padding: 26px 10px;
+    padding: 18px 10px;
 }
 
 .menu__item {
@@ -436,6 +436,7 @@ h1 {
     display: grid;
     gap: 8px;
     grid-template-columns: 1fr;
+    align-content: start;
     min-width: 180px;
     flex: 1;
 }
@@ -1124,8 +1125,36 @@ th.sortable.is-desc .sortIcon {
     gap: 12px;
 }
 
-.field label {
+/* Employee drawer form spacing:
+   - tighter gaps inside groups
+   - clearer separation between section groups */
+.form .field {
+    gap: 6px;
+}
+.form .grid2 {
+    gap: 10px;
+}
+.form .sectionTitle {
+    margin: 18px 0 8px;
+}
+.form .sectionTitle:first-of-type {
+    margin-top: 0;
+}
+
+/* Keep drawer field values visually consistent */
+.form
+    .field
+    input:not(.field__control):not([type="checkbox"]):not([type="radio"]):not(
+        [type="hidden"]
+    ),
+.form .field select:not(.field__control),
+.form .field textarea,
+.form .ddcheck__btn {
     font-weight: 800;
+}
+
+.field label {
+    font-weight: 700;
     font-size: 12px;
     color: var(--muted);
     display: block;
@@ -1199,12 +1228,16 @@ th.sortable.is-desc .sortIcon {
 }
 
 .err {
-    display: block;
-    margin-top: 4px;
+    display: none;
+    margin-top: 2px;
     color: #991b1b;
     font-weight: 800;
     font-size: 12px;
-    min-height: 14px;
+    min-height: 0;
+}
+
+.err:not(:empty) {
+    display: block;
 }
 
 .field.is-invalid
@@ -1497,3 +1530,4 @@ th.sortable.is-desc .sortIcon {
 #empTable td.actions .iconbtn {
     display: inline-grid;
 }
+

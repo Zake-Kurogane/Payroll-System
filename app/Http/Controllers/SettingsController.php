@@ -656,7 +656,7 @@ class SettingsController extends Controller
                 ],
                 [
                     'code' => 'OFF',
-                    'description' => 'Rest Day',
+                    'description' => 'Day-off',
                     'counts_as_present' => false,
                     'counts_as_paid' => false,
                     'affects_deductions' => false,
@@ -670,6 +670,12 @@ class SettingsController extends Controller
             ->whereIn('code', ['UL', 'LWOP'])
             ->orWhere('description', 'Unpaid Leave')
             ->delete();
+
+        // Normalize legacy label: OFF should be "Day-off", not "Rest Day".
+        AttendanceCode::query()
+            ->whereRaw('UPPER(code) = ?', ['OFF'])
+            ->whereRaw('LOWER(description) = ?', ['rest day'])
+            ->update(['description' => 'Day-off']);
 
         $defaults = AttendanceCodeSetting::query()->first();
         if (!$defaults) {
@@ -741,9 +747,14 @@ class SettingsController extends Controller
         DB::transaction(function () use ($codes, $defaults) {
             AttendanceCode::query()->delete();
             $rows = array_map(function ($c) {
+                $code = strtoupper((string) ($c['code'] ?? ''));
+                $description = (string) ($c['description'] ?? '');
+                if ($code === 'OFF' && strcasecmp(trim($description), 'Rest Day') === 0) {
+                    $description = 'Day-off';
+                }
                 return [
-                    'code' => strtoupper($c['code']),
-                    'description' => $c['description'],
+                    'code' => $code,
+                    'description' => $description,
                     'counts_as_present' => $c['counts_as_present'],
                     'counts_as_paid' => $c['counts_as_paid'],
                     'affects_deductions' => $c['affects_deductions'],

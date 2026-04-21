@@ -43,7 +43,7 @@ body {
 .side {
     background: #fff;
     border-right: 1px solid var(--line);
-    padding: 18px 14px;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -55,7 +55,7 @@ body {
     gap: 8px;
     align-items: center;
     text-align: center;
-    padding: 12px 10px 16px;
+    padding: 6px 10px 12px;
     border-bottom: 1px solid var(--line);
 }
 .brand__mark {
@@ -85,7 +85,7 @@ body {
 .menu {
     display: grid;
     gap: 14px;
-    padding: 26px 10px;
+    padding: 18px 10px;
 }
 .menu__item {
     text-decoration: none;
@@ -1094,7 +1094,9 @@ tbody tr:hover {
     padding: 14px 16px;
     overflow-y: auto;
     display: grid;
-    gap: 12px;
+    gap: 8px;
+    align-content: start;
+    grid-auto-rows: max-content;
     flex: 1;
     min-height: 0;
 }
@@ -1113,12 +1115,13 @@ tbody tr:hover {
     letter-spacing: 0.5px;
     text-transform: uppercase;
     color: var(--maroon);
-    margin-top: 4px;
+    margin-top: 2px;
+    margin-bottom: 2px;
 }
 .att-hint {
     font-size: 11px;
     color: var(--muted);
-    margin: 0;
+    margin: -2px 0 0;
 }
 .iconx {
     width: 38px;
@@ -1132,10 +1135,10 @@ tbody tr:hover {
 
 .field {
     display: grid;
-    gap: 8px;
+    gap: 6px;
 }
 .field label {
-    font-weight: 800;
+    font-weight: 700;
     color: var(--muted);
     font-size: 12px;
 }
@@ -1146,13 +1149,24 @@ tbody tr:hover {
     border-radius: 14px;
     padding: 10px 12px;
     outline: none;
-    font-weight: 900;
+    font-weight: 800;
     font-family: inherit;
     background: #fff;
+    min-width: 0;
+}
+.field input[type="date"],
+.field input[type="time"] {
+    padding-right: 36px;
 }
 .field textarea {
     font-weight: 700;
     resize: vertical;
+}
+.field input:disabled,
+.field select:disabled,
+.field textarea:disabled {
+    background: rgba(17, 24, 39, 0.04);
+    color: rgba(17, 24, 39, 0.55);
 }
 .field input:focus,
 .field select:focus,
@@ -1163,13 +1177,15 @@ tbody tr:hover {
 .grid2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 10px;
+    align-items: start;
 }
 .err {
     color: #991b1b;
     font-weight: 800;
     font-size: 12px;
-    min-height: 14px;
+    min-height: 12px;
+    margin-top: -2px;
 }
 
 /* Preview drawer */
@@ -1636,3 +1652,4 @@ th.sortable.is-desc .sortIcon {
     outline: 2px solid rgba(156, 29, 60, 0.45);
     outline-offset: -2px;
 }
+

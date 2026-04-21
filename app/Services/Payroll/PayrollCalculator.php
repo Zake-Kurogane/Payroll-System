@@ -110,16 +110,24 @@ class PayrollCalculator
     public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, Collection $lateDaysByEmployee, string $runType = 'External'): array
     {
         $isFirstCutoff = $this->isFirstCutoff($cutoff);
+        $isField = strcasecmp(trim((string) ($emp->assignment_type ?? '')), 'Field') === 0;
         $employmentType = strtolower(trim((string) ($emp->employment_type ?? '')));
         $isRegular = $employmentType === 'regular';
 
         $summary = $this->summaryFromAggregate($summaries->get($emp->id));
         $lateDays = (float) ($lateDaysByEmployee->get($emp->id) ?? 0);
         $workdaysInMonth = 26;
-        $dailyRate = (float) $emp->basic_pay / $workdaysInMonth;
+        $fieldDaysInMonth = 30;
+        // Field uses a 30-day divisor; non-Field keeps 26-day divisor.
+        $dailyRate = $isField
+            ? ((float) $emp->basic_pay / $fieldDaysInMonth)
+            : ((float) $emp->basic_pay / $workdaysInMonth);
         $allowanceDaily = (float) $emp->allowance / $workdaysInMonth;
 
-        if (($proration->salary_mode ?? 'prorate_workdays') === 'fixed_50_50') {
+        if ($isField) {
+            // Field payroll is always day-based.
+            $basicCutoff = $dailyRate * $summary['paid_days'];
+        } elseif (($proration->salary_mode ?? 'prorate_workdays') === 'fixed_50_50') {
             $basicCutoff = (float) $emp->basic_pay / 2;
         } else {
             $basicCutoff = $dailyRate * $summary['paid_days'];
@@ -142,6 +150,10 @@ class PayrollCalculator
             $timekeeping,
             $proration
         );
+        if ($isField) {
+            // For Field, unpaid days are already excluded via paid_days-based salary.
+            $attendanceParts['absent'] = 0.0;
+        }
         $attendanceDeduction = ($attendanceParts['late'] ?? 0.0)
             + ($attendanceParts['undertime'] ?? 0.0)
             + ($attendanceParts['absent'] ?? 0.0);
@@ -170,7 +182,10 @@ class PayrollCalculator
         // Business rule:
         // - 1st cutoff (26-10): apply statutory premiums
         // - 2nd cutoff (11-25): do not apply statutory premiums
-        $applyPremiums = ($isRegular || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false)) && $isFirstCutoff;
+        $applyPremiumsByEmployee = $isRegular
+            || (bool) ($dedPolicy->apply_premiums_to_non_regular ?? false)
+            || (bool) ($emp->force_statutory_premiums ?? false);
+        $applyPremiums = $applyPremiumsByEmployee && $isFirstCutoff;
         $sss = ($applyPremiums && $this->hasGovId($emp->sss))
             ? $this->computeSss($statutory, (float) $emp->basic_pay, $cutoff, $this->isEcExempt($emp))
             : $zeros;
@@ -477,7 +492,7 @@ class PayrollCalculator
                     return $this->isWorkdayForAssignment($date, $workMonSat, $assignmentType);
                 })
                 ->values();
-            $totals = $ruleService->summarize($filtered);
+            $totals = $ruleService->summarize($filtered, $assignmentType);
             $lateDaysByEmployee[$empId] = (float) ($totals['late_days'] ?? 0);
             $upsertRows[] = [
                 'employee_id' => $empId,

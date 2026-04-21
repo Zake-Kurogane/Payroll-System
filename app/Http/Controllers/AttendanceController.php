@@ -361,7 +361,11 @@ class AttendanceController extends Controller
         }
 
         $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
+        $isField = strtolower(trim((string) ($employee->assignment_type ?? ''))) === 'field';
         $hasAssignment = !empty($employee->assignment_type);
+        if ($isField) {
+            abort(422, 'Paid Leave is not applicable for Field employees.');
+        }
         if (!$isRegular || !$hasAssignment) {
             abort(422, 'Paid Leave is only allowed for eligible regular employees with PL allowance.');
         }
@@ -719,7 +723,13 @@ class AttendanceController extends Controller
                     if ($status === 'Paid Leave') {
                         $fullEmp = Employee::find((int) $emp->id);
                         $isRegular = strtolower(trim((string) ($fullEmp?->employment_type ?? ''))) === 'regular';
+                        $isField = strtolower(trim((string) ($fullEmp?->assignment_type ?? ''))) === 'field';
                         $hasAssignment = !empty($fullEmp?->assignment_type);
+                        if ($isField) {
+                            $src = (string) ($row['_src'] ?? 'Row');
+                            $errors[] = "{$src}: Paid Leave is not applicable for Field employees.";
+                            continue;
+                        }
                         if (!$isRegular || !$hasAssignment) {
                             $src = (string) ($row['_src'] ?? 'Row');
                             $errors[] = "{$src}: Paid Leave is only allowed for eligible regular employees with PL allowance.";
@@ -845,6 +855,10 @@ class AttendanceController extends Controller
 
         if ($s === 'Day Off' && !$isDavaoOrTagum) {
             return 'Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.';
+        }
+
+        if ($s === 'Paid Leave' && $isField) {
+            return 'Paid Leave is not applicable for Field employees.';
         }
 
         return null;

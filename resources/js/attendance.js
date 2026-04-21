@@ -1419,6 +1419,18 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
     }
+    if (newStatus === "Paid Leave") {
+      const invalidField = updates.filter(r => String(r.assignType || "").trim().toLowerCase() === "field");
+      if (invalidField.length) {
+        alert("Paid Leave is not applicable for Field employees.");
+        return;
+      }
+      const invalidNonRegular = updates.filter(r => String(r.employmentType || "").trim().toLowerCase() !== "regular");
+      if (invalidNonRegular.length) {
+        alert("Paid Leave is only allowed for Regular employees.");
+        return;
+      }
+    }
 
     try {
       await Promise.all(updates.map(r =>
@@ -1493,7 +1505,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function syncPLBalance() {
     const emp = getEmpById(f_employee?.value);
-    if (emp && emp.employmentType.toLowerCase() === "regular" && !!(emp.assignmentType)) {
+    const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
+    if (emp && emp.employmentType.toLowerCase() === "regular" && !!(emp.assignmentType) && assignLower !== "field") {
       const year = f_date?.value ? new Date(f_date.value + "T00:00:00").getFullYear() : new Date().getFullYear();
       fetchPLBalance(emp.empNo, year);
     } else {
@@ -1515,8 +1528,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (f_status) {
         const rnrOpt = Array.from(f_status.options).find(o => o.value === "RNR");
         const dayOffOpt = Array.from(f_status.options).find(o => o.value === "Day Off");
+        const paidLeaveOpt = Array.from(f_status.options).find(o => o.value === "Paid Leave");
         if (rnrOpt) rnrOpt.disabled = true;
         if (dayOffOpt) dayOffOpt.disabled = true;
+        if (paidLeaveOpt) paidLeaveOpt.disabled = true;
       }
       return;
     }
@@ -1547,14 +1562,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const assignLower = String(emp.assignmentType || "").trim().toLowerCase();
       const rnrAllowed = assignLower === "field";
       const dayOffAllowed = assignLower === "davao" || assignLower === "tagum";
+      const paidLeaveAllowed = assignLower !== "field";
       const rnrOpt = Array.from(f_status.options).find(o => o.value === "RNR");
       const dayOffOpt = Array.from(f_status.options).find(o => o.value === "Day Off");
+      const paidLeaveOpt = Array.from(f_status.options).find(o => o.value === "Paid Leave");
       if (rnrOpt) rnrOpt.disabled = !rnrAllowed;
       if (dayOffOpt) dayOffOpt.disabled = !dayOffAllowed;
+      if (paidLeaveOpt) paidLeaveOpt.disabled = !paidLeaveAllowed;
       if (!rnrAllowed && f_status.value === "RNR") {
         f_status.value = "";
       }
       if (!dayOffAllowed && f_status.value === "Day Off") {
+        f_status.value = "";
+      }
+      if (!paidLeaveAllowed && f_status.value === "Paid Leave") {
         f_status.value = "";
       }
     }
@@ -1711,6 +1732,10 @@ document.addEventListener("DOMContentLoaded", () => {
       ok = false;
     }
     const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
+    if (status === "Paid Leave" && assignLower === "field") {
+      if (errStatus) errStatus.textContent = "Paid Leave is not applicable for Field employees.";
+      ok = false;
+    }
     if (status === "RNR" && assignLower !== "field") {
       if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.";
       ok = false;
@@ -1985,6 +2010,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const finalStatus = mapped.status || (r.status || "");
     const emp = r.empId ? getEmpByNo(r.empId) : null;
     const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
+    if (finalStatus === "Paid Leave" && assignLower === "field") {
+      issues.push(`Row ${r.rowNo}: Paid Leave is not applicable for Field employees`);
+    }
     if (finalStatus === "RNR" && assignLower !== "field") {
       issues.push(`Row ${r.rowNo}: RNR is only allowed for Field employees (use Day Off for Davao/Tagum)`);
     }

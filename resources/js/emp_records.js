@@ -109,6 +109,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ph: emp.philhealth || "",
       pagibig: emp.pagibig || "",
       tin: emp.tin || "",
+      forceStatutoryPremiums: !!emp.force_statutory_premiums,
     };
   }
 
@@ -146,6 +147,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       philhealth: data.ph || null,
       pagibig: data.pagibig || null,
       tin: data.tin || null,
+      force_statutory_premiums: !!data.forceStatutoryPremiums,
     };
     if (CAN_VIEW_COMP) {
       payload.basic_pay = data.rate || 0;
@@ -313,6 +315,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const attendanceYearGridEl = document.getElementById("attendanceYearGrid");
   const attendanceYearTraceEl = document.getElementById("attendanceYearTrace");
   const attendanceYearPlEl = document.getElementById("attendanceYearPl");
+  const attendanceYearRecordsEl = document.getElementById("attendanceYearRecords");
   let allHistoryRanges = [];
   let selectedAttendanceYearEmpId = null;
 
@@ -324,6 +327,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_ph = F("f_ph");
   const f_pagibig = F("f_pagibig");
   const f_tin = F("f_tin");
+  const f_forceStatutoryPremiums = F("f_forceStatutoryPremiums");
 
   const f_bankName = F("f_bankName");
   const f_accountName = F("f_accountName");
@@ -844,6 +848,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_ph && (f_ph.value = formatPhilHealth(emp.ph || ""));
     f_pagibig && (f_pagibig.value = formatPagibig(emp.pagibig || ""));
     f_tin && (f_tin.value = formatTIN(emp.tin || ""));
+    if (f_forceStatutoryPremiums) {
+      f_forceStatutoryPremiums.checked = !!emp.forceStatutoryPremiums;
+    }
     f_bankName && (f_bankName.value = emp.bankName || "");
     f_accountName && (f_accountName.value = emp.accountName || "");
     f_accountNumber && (f_accountNumber.value = formatAccount(emp.accountNumber || ""));
@@ -910,6 +917,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ph: onlyDigits(f_ph?.value),
       pagibig: onlyDigits(f_pagibig?.value),
       tin: onlyDigits(f_tin?.value),
+      forceStatutoryPremiums: !!f_forceStatutoryPremiums?.checked,
 
       bankName: f_bankName?.value?.trim(),
       accountName: f_accountName?.value?.trim(),
@@ -1292,27 +1300,60 @@ document.addEventListener("DOMContentLoaded", async () => {
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
+  function normalizeAttendanceCode(rawCode, rawStatus) {
+    const norm = String(rawCode || "").toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
+    const statusNorm = String(rawStatus || "").toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
+    const key = norm || statusNorm;
+    if (key === "DAYOFF") return "OFF";
+    if (key === "PAIDLEAVE") return "PL";
+    if (key === "HALFDAY") return "HD";
+    if (key === "HOLIDAY") return "HOL";
+    if (key === "ABSENT") return "A";
+    if (key === "LATE") return "L";
+    if (key === "PRESENT") return "P";
+    if (key === "RESTANDRECREATION") return "RNR";
+    if (["P", "PL", "L", "A", "HD", "HOL", "OFF", "RNR"].includes(key)) return key;
+    return "";
+  }
+
+  function attendanceCodeTone(code) {
+    if (code === "L") return "warning";
+    if (code === "HD") return "half";
+    if (code === "A") return "negative";
+    if (["OFF", "RNR"].includes(code)) return "neutral";
+    if (["P", "PL", "HOL"].includes(code)) return "positive";
+    return "";
+  }
+
   function renderAttendanceYear(data) {
     if (!attendanceYearTotalsEl || !attendanceYearLegendEl || !attendanceYearGridEl || !attendanceYearTraceEl || !attendanceYearPlEl) return;
 
     const totals = data?.totals || {};
     attendanceYearTotalsEl.innerHTML = `
-      <span class="badge">Present Eq: ${Number(totals.present_equivalent || 0).toFixed(1)}</span>
-      <span class="badge">Late: ${Number(totals.late_days || 0).toFixed(1)}</span>
-      <span class="badge">Absent: ${Number(totals.absent_days || 0).toFixed(1)}</span>
-      <span class="badge">Paid Eq: ${Number(totals.paid_equivalent || 0).toFixed(1)}</span>
-      <span class="badge">Half-day: ${Number(totals.half_days || 0).toFixed(1)}</span>
-      <span class="badge">RNR: ${Number(totals.rnr_days || 0).toFixed(1)}</span>
-      <span class="badge">Day-off: ${Number(totals.day_off_days || 0).toFixed(1)}</span>
-      <span class="badge">Records: ${Number(totals.records || 0)}</span>
+      <span class="badge badge--present">Present Days: ${Number(totals.present_equivalent || 0).toFixed(1)}</span>
+      <span class="badge badge--paid">Paid Days: ${Number(totals.paid_equivalent || 0).toFixed(1)}</span>
+      <span class="badge badge--late">Late Count: ${Number(totals.late_days || 0).toFixed(1)}</span>
+      <span class="badge badge--absent">Absences: ${Number(totals.absent_days || 0).toFixed(1)}</span>
+      <span class="badge badge--half">Half-days: ${Number(totals.half_days || 0).toFixed(1)}</span>
+      <span class="badge badge--off">Off Days: ${Number(totals.day_off_days || 0).toFixed(1)}</span>
     `;
 
     const legend = Array.isArray(data?.legend) ? data.legend : [];
-    attendanceYearLegendEl.innerHTML = legend
-      .map((item) => {
-        const code = String(item.code || "").trim() || "?";
-        const desc = String(item.description || "").trim();
-        return `<span class="legendItem" title="${escapeHtml(desc)}">${escapeHtml(code)}${desc ? ` - ${escapeHtml(desc)}` : ""}</span>`;
+    const legendByCode = new Map();
+    legend.forEach((item) => {
+      const code = normalizeAttendanceCode(item.code, item.description);
+      if (!code) return;
+      if (!legendByCode.has(code)) {
+        legendByCode.set(code, String(item.description || "").trim());
+      }
+    });
+    const orderedLegendCodes = ["P", "PL", "L", "A", "HD", "OFF", "RNR", "HOL"];
+    attendanceYearLegendEl.innerHTML = orderedLegendCodes
+      .filter((code) => legendByCode.has(code))
+      .map((code, idx, arr) => {
+        const desc = legendByCode.get(code) || code;
+        const sep = idx < arr.length - 1 ? '<span class="legendSep">·</span>' : "";
+        return `<span class="legendItem legendItem--${code}">${escapeHtml(code)} ${escapeHtml(desc)}</span>${sep}`;
       })
       .join("");
 
@@ -1326,19 +1367,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         (month.days || []).forEach((day) => {
           const record = day.record || null;
-          const codeRaw = String(record?.code || "").toUpperCase().trim();
-          const code = codeRaw || "-";
-          const normalizedCode = code.replace(/[^A-Z0-9]/g, "") || "NONE";
+          const code = normalizeAttendanceCode(record?.code, record?.status) || "-";
+          const tone = attendanceCodeTone(code);
           const classes = [
             "attendanceDay",
             day.is_weekend ? "attendanceDay--weekend" : "",
-            codeRaw ? `attendanceDay--${normalizedCode}` : "",
+            code !== "-" ? `attendanceDay--${tone}` : "",
           ].filter(Boolean).join(" ");
           const title = record
             ? `${day.date} - ${record.status}${record.area_place ? ` (${record.area_place})` : ""}`
             : `${day.date} - No record`;
           cells.push(`
-            <div class="${classes}" title="${escapeHtml(title)}">
+            <div class="${classes}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
               <span class="attendanceDay__n">${day.day}</span>
               <span class="attendanceDay__code">${escapeHtml(code)}</span>
             </div>
@@ -1358,9 +1398,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const pl = data?.paid_leave || {};
     if (pl.applicable) {
-      attendanceYearPlEl.textContent = `PL ${Number(pl.remaining || 0)}/${Number(pl.total || 0)} remaining (${Number(pl.used || 0)} used)`;
+      attendanceYearPlEl.textContent = `PL Remaining: ${Number(pl.remaining || 0)}/${Number(pl.total || 0)} (${Number(pl.used || 0)} used)`;
     } else {
       attendanceYearPlEl.textContent = "Paid Leave not applicable";
+    }
+    if (attendanceYearRecordsEl) {
+      attendanceYearRecordsEl.textContent = `Records: ${Number(totals.records || 0)}`;
     }
 
     const statusTotals = Array.isArray(data?.status_totals) ? data.status_totals : [];
@@ -1397,6 +1440,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     attendanceYearLegendEl.innerHTML = "";
     attendanceYearGridEl.innerHTML = "";
     attendanceYearTraceEl.innerHTML = "";
+    if (attendanceYearRecordsEl) attendanceYearRecordsEl.textContent = "";
 
     try {
       const data = await apiFetch(`/employees/${encodeURIComponent(empNo)}/attendance-year?year=${encodeURIComponent(year)}`);

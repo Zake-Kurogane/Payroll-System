@@ -582,7 +582,6 @@
                     <div class="field field--full">
                         <label>Per-cutoff deduction</label>
                         <input type="text" id="caPerCutoffPreview" readonly placeholder="₱0.00" />
-                        <div class="hint" id="caCutoffMeta">Auto-calculated from Amount ÷ (Term × 2 cutoffs).</div>
                     </div>
 
                     <div class="field field--full">
@@ -640,8 +639,6 @@
                     <div class="field field--full">
                         <label>Per-cutoff deduction</label>
                         <input type="text" id="caViewPerCutoffPreview" readonly placeholder="₱0.00" />
-                        <div class="hint" id="caViewCutoffMeta">Auto-calculated from remaining balance ÷ (Term × 2
-                            cutoffs).</div>
                     </div>
 
                     <div class="field field--full">

@@ -44,6 +44,7 @@ class Employee extends Model
         'philhealth',
         'pagibig',
         'tin',
+        'force_statutory_premiums',
     ];
 
     protected $casts = [
@@ -51,6 +52,7 @@ class Employee extends Model
         'allowance' => 'decimal:2',
         'birthday' => 'date:Y-m-d',
         'date_hired' => 'date:Y-m-d',
+        'force_statutory_premiums' => 'boolean',
     ];
 
     public function getAssignmentTypeAttribute($value): string

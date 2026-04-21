@@ -485,14 +485,14 @@ class PayslipClaimController extends Controller
 
             if ($cmp === 0) {
                 $cmp = strnatcasecmp(
-                    trim((string) ($a['emp_no'] ?? '')),
-                    trim((string) ($b['emp_no'] ?? ''))
+                    trim((string) ($a['name'] ?? '')),
+                    trim((string) ($b['name'] ?? ''))
                 );
             }
             if ($cmp === 0) {
                 $cmp = strnatcasecmp(
-                    trim((string) ($a['name'] ?? '')),
-                    trim((string) ($b['name'] ?? ''))
+                    trim((string) ($a['emp_no'] ?? '')),
+                    trim((string) ($b['emp_no'] ?? ''))
                 );
             }
 
@@ -1214,7 +1214,7 @@ class PayslipClaimController extends Controller
     {
         $value = trim((string) $value);
         $allowed = ['emp_no', 'name', 'assignment_type', 'area_place', 'status'];
-        return in_array($value, $allowed, true) ? $value : 'emp_no';
+        return in_array($value, $allowed, true) ? $value : 'area_place';
     }
 
     private function normalizeSortDirection(?string $value): string

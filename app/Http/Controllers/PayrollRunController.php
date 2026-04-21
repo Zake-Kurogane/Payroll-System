@@ -353,7 +353,7 @@ class PayrollRunController extends Controller
                     $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
                     return $workMonSat ? $dow <= 6 : $dow <= 5;
                 })->values();
-                $totals = $ruleSvc->summarize($filtered);
+                $totals = $ruleSvc->summarize($filtered, $assignmentType);
                 return (float) ($totals['late_days'] ?? 0);
             }));
         }
@@ -365,7 +365,10 @@ class PayrollRunController extends Controller
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                     : '';
                 $summary = $attendanceAgg->get($r->employee_id);
-                $dailyRate = round(((float) ($emp?->basic_pay ?? 0)) / 26, 2);
+                $isField = strcasecmp(trim((string) ($emp?->assignment_type ?? '')), 'Field') === 0;
+                $dailyRate = $isField
+                    ? round(((float) ($emp?->basic_pay ?? 0)) / 30, 2)
+                    : round(((float) ($emp?->basic_pay ?? 0)) / 26, 2);
                 $attendanceBreakdown = $this->attendanceDeductionBreakdownFromSummary($summary, $dailyRate, $timekeeping, $proration);
                 $ov = null;
                 $rowOverride = $overrides->get($r->employee_id);
@@ -503,7 +506,7 @@ class PayrollRunController extends Controller
             $totalUnits = 0.0;
 
             foreach ($rows as $rec) {
-                $units = $this->paidUnitsForStatus((string) ($rec->status ?? ''), $statusRuleService);
+                $units = $this->paidUnitsForStatus((string) ($rec->status ?? ''), (string) ($emp->assignment_type ?? ''), $statusRuleService);
                 if ($units <= 0) continue;
 
                 $date = $rec->date instanceof \DateTimeInterface
@@ -530,9 +533,8 @@ class PayrollRunController extends Controller
                 $areas[$area]['dates'][] = (string) $it['date'];
             }
 
-            // Keep Field allocation daily rate stable and salary-based:
-            // use employee basic pay only (exclude allowance), divided by 26 days.
-            $dailyRate = (float) ($emp->basic_pay ?? 0) / 26;
+            // Field allocation uses a 30-day divisor.
+            $dailyRate = (float) ($emp->basic_pay ?? 0) / 30;
 
             $allocs = [];
             foreach ($areas as $area => $a) {
@@ -1112,10 +1114,11 @@ class PayrollRunController extends Controller
         return $minutes;
     }
 
-    private function paidUnitsForStatus(string $status, ?AttendanceStatusRuleService $ruleService = null): float
+    private function paidUnitsForStatus(string $status, string $assignmentType = '', ?AttendanceStatusRuleService $ruleService = null): float
     {
         $s = strtolower(trim($status));
         if ($s === '') return 0.0;
+        $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
 
         static $cache = null;
         if ($cache === null) {
@@ -1134,10 +1137,29 @@ class PayrollRunController extends Controller
                 if ($key !== '') $halfDaySet[$key] = true;
             }
 
+            $absentSet = [];
+            foreach ((array) ($buckets['absent'] ?? []) as $item) {
+                $key = strtolower(trim((string) $item));
+                if ($key !== '') $absentSet[$key] = true;
+            }
+
+            $leaveSet = [];
+            foreach ((array) ($buckets['leave'] ?? []) as $item) {
+                $key = strtolower(trim((string) $item));
+                if ($key !== '') $leaveSet[$key] = true;
+            }
+
             $cache = [
                 'paid' => $paidSet,
                 'half' => $halfDaySet,
+                'absent' => $absentSet,
+                'leave' => $leaveSet,
             ];
+        }
+
+        // Field rule: RNR/Absent/Leave statuses are unpaid.
+        if ($isField && ($s === 'rnr' || isset($cache['absent'][$s]) || isset($cache['leave'][$s]))) {
+            return 0.0;
         }
 
         if (isset($cache['half'][$s])) return 0.5;
