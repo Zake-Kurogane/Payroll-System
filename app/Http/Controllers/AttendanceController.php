@@ -617,8 +617,8 @@ class AttendanceController extends Controller
                     : (string) $statusCell->getValue();
                 $rawStatus = trim($rawStatus);
 
-                $clockIn = $this->readTimeCell($sheet->getCell("F{$r}"));
-                $clockOut = $this->readTimeCell($sheet->getCell("G{$r}"));
+                $clockIn = $this->readTimeCell($sheet->getCell("F{$r}"), 'clock_in');
+                $clockOut = $this->readTimeCell($sheet->getCell("G{$r}"), 'clock_out');
 
                 $lateCell = $sheet->getCell("H{$r}");
                 $underCell = $sheet->getCell("I{$r}");
@@ -645,6 +645,9 @@ class AttendanceController extends Controller
                 $status = $this->mapStatus($rawStatus);
                 if (!$status) {
                     $errors[] = "{$sheetName} row {$r}: invalid status or code.";
+                }
+                if ($this->shouldAutoMarkHalfDay($status, $clockIn, $clockOut)) {
+                    $status = 'Half-day';
                 }
 
                 $late = $this->parseNumberCell($lateCell, $errors, "{$sheetName} row {$r}: minutes_late must be a number.");
@@ -981,7 +984,7 @@ class AttendanceController extends Controller
         return (float) $value;
     }
 
-    private function readTimeCell($cell): string
+    private function readTimeCell($cell, ?string $context = null): string
     {
         $raw = $cell->getValue();
         if (is_numeric($raw)) {
@@ -1000,7 +1003,9 @@ class AttendanceController extends Controller
             $hh = (int) $m[1];
             $mm = str_pad((string) ((int) $m[2]), 2, '0', STR_PAD_LEFT);
             $meridiem = strtoupper((string) ($m[3] ?? ''));
-            if ($meridiem === 'AM' && $hh === 12) {
+            if ($meridiem === '') {
+                $hh = $this->normalizeAmbiguousHourWithoutMeridiem($hh, $context);
+            } elseif ($meridiem === 'AM' && $hh === 12) {
                 $hh = 0;
             } elseif ($meridiem === 'PM' && $hh < 12) {
                 $hh += 12;
@@ -1009,6 +1014,46 @@ class AttendanceController extends Controller
             return str_pad((string) $hh, 2, '0', STR_PAD_LEFT) . ":{$mm}";
         }
         return '';
+    }
+
+    private function normalizeAmbiguousHourWithoutMeridiem(int $hour, ?string $context): int
+    {
+        // Excel text like "5:00" has no AM/PM. Apply import-friendly defaults:
+        // clock_out values are typically afternoon/evening; clock_in keeps morning default,
+        // except noon start half-day patterns (12:00 / 1:00).
+        if ($hour < 0 || $hour > 23) {
+            return $hour;
+        }
+
+        if ($hour === 12) {
+            return 12; // treat as noon for import shorthand
+        }
+
+        if ($context === 'clock_out' && $hour >= 1 && $hour <= 11) {
+            return $hour + 12;
+        }
+
+        if ($context === 'clock_in' && $hour === 1) {
+            return 13;
+        }
+
+        return $hour;
+    }
+
+    private function shouldAutoMarkHalfDay(?string $status, string $clockIn, string $clockOut): bool
+    {
+        if (!in_array((string) $status, self::TIME_TRACKED_STATUSES, true)) {
+            return false;
+        }
+
+        $clockInMinutes = $this->parseTimeToMinutes($clockIn);
+        $clockOutMinutes = $this->parseTimeToMinutes($clockOut);
+
+        if ($clockOutMinutes === (12 * 60)) {
+            return true; // out at 12:00 PM
+        }
+
+        return in_array($clockInMinutes, [12 * 60, 13 * 60], true); // in at 12:00 PM or 1:00 PM
     }
 
     private function computeLateMinutes(string $clockIn): ?int

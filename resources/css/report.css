@@ -510,15 +510,15 @@ h1 {
 /* Stats */
 .stats {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 14px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
 }
 .stat {
     background: var(--maroon);
     border: 1px solid var(--maroon);
     border-radius: var(--radius);
     box-shadow: var(--shadow2);
-    padding: 18px;
+    padding: 14px 10px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -527,16 +527,16 @@ h1 {
 }
 .stat__value {
     font-weight: 1000;
-    font-size: 20px;
+    font-size: 16px;
     color: #fff;
     line-height: 1.1;
 }
 .stat__label {
-    margin-top: 8px;
+    margin-top: 6px;
     font-weight: 900;
     color: rgba(255, 255, 255, 0.92);
-    font-size: 12px;
-    letter-spacing: 0.4px;
+    font-size: 11px;
+    letter-spacing: 0.2px;
 }
 
 /* Tabs */
@@ -957,7 +957,7 @@ th.sortable.is-desc .sortIcon {
 
 @media (max-width: 1220px) {
     .stats {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, 1fr);
     }
     .runStats {
         grid-template-columns: repeat(2, 1fr);

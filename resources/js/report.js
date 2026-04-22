@@ -110,18 +110,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const runProcessedAt = $("runProcessedAt");
   const runProcessedBy = $("runProcessedBy");
 
-  const kpiEmployees = $("kpiEmployees");
   const kpiGross = $("kpiGross");
   const kpiDed = $("kpiDed");
   const kpiNet = $("kpiNet");
   const kpiER = $("kpiER");
+  const kpiAtmNetGross = $("kpiAtmNetGross");
+  const kpiNonAtmNetGross = $("kpiNonAtmNetGross");
 
   const tabBtns = $$(".tabBtn");
   const regTbody = $("regTbody");
   const bdTbody = $("bdTbody");
   const remitTbody = $("remitTbody");
-  const externalGrossTbody = $("externalGrossTbody");
-  const externalPayslipsTbody = $("externalPayslipsTbody");
   const fieldAreasTbody = $("fieldAreasTbody");
   const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
@@ -326,6 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
       deductionsEe: Number(row.deductions_total || 0),
       employerShare: Number(row.employer_share_total || 0),
       netPay: Number(row.net_pay || 0),
+      payMethod: row.pay_method || row.payout_method || "",
       payslipStatus: row.payslip_status || "-",
     };
   }
@@ -497,19 +497,28 @@ document.addEventListener("DOMContentLoaded", () => {
   // KPI + TAB RENDERS
   // =========================================================
   function renderKPIs(rows) {
-    const employeesPaid = rows.filter((r) => Number(r.netPay || 0) > 0).length;
     const gross = rows.reduce((a, r) => a + Number(r.gross || 0), 0);
     const ded = rows.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
     const net = rows.reduce((a, r) => a + Number(r.netPay || 0), 0);
     const er = rows.reduce((a, r) => a + Number(r.employerShare || 0), 0);
+    const isAtm = (r) => {
+      const method = normalize(r.payMethod || "");
+      return method === "bank" || method === "atm";
+    };
+    const atmNetGross = rows
+      .filter((r) => isAtm(r))
+      .reduce((a, r) => a + Number(r.netPay || 0), 0);
+    const nonAtmNetGross = rows
+      .filter((r) => !isAtm(r))
+      .reduce((a, r) => a + Number(r.netPay || 0), 0);
 
-    if (kpiEmployees) kpiEmployees.textContent = String(employeesPaid);
     if (kpiGross) kpiGross.textContent = peso(gross);
     if (kpiDed) kpiDed.textContent = peso(ded);
     if (kpiNet) kpiNet.textContent = peso(net);
     if (kpiER) kpiER.textContent = peso(er);
+    if (kpiAtmNetGross) kpiAtmNetGross.textContent = peso(atmNetGross);
+    if (kpiNonAtmNetGross) kpiNonAtmNetGross.textContent = peso(nonAtmNetGross);
   }
-
   function renderRegister(rows) {
     if (!regTbody) return;
     const renderPayslipStatusChip = (status) => {
@@ -682,137 +691,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (area) return area;
     const assign = String(r.assignmentType || "").trim();
     return assign || "-";
-  }
-
-  function renderExternalGross(rows) {
-    if (!externalGrossTbody) return;
-
-    const list = rows
-      .filter((r) => (r.externalArea || "").trim())
-      .slice()
-      .sort((a, b) => {
-        const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
-        if (ea !== 0) return ea;
-        return String(a.empName || "").localeCompare(String(b.empName || ""));
-      });
-
-    externalGrossTbody.innerHTML = "";
-
-    if (!list.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="2" class="muted small">No rows found.</td>`;
-      externalGrossTbody.appendChild(tr);
-      return;
-    }
-
-    const groups = groupBy(list, (r) => (r.externalArea || "-").trim() || "-");
-    Array.from(groups.keys()).sort().forEach((external) => {
-      const items = groups.get(external) || [];
-      appendGroupHeader(externalGrossTbody, external, 2);
-
-      let totalGross = 0;
-      items.forEach((r) => {
-        totalGross += Number(r.gross || 0);
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${escapeHtml(r.empName)}</td>
-          <td class="num">${escapeHtml(peso(r.gross))}</td>
-        `;
-        externalGrossTbody.appendChild(tr);
-      });
-
-      const tr = document.createElement("tr");
-      tr.className = "row-total";
-      tr.innerHTML = `
-        <td><strong>Total Gross</strong></td>
-        <td class="num"><strong>${escapeHtml(peso(totalGross))}</strong></td>
-      `;
-      externalGrossTbody.appendChild(tr);
-    });
-  }
-
-  function renderExternalPayslips(rows) {
-    if (!externalPayslipsTbody) return;
-
-    const list = rows
-      .filter((r) => (r.externalArea || "").trim())
-      .slice()
-      .sort((a, b) => {
-        const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
-        if (ea !== 0) return ea;
-        return String(a.empName || "").localeCompare(String(b.empName || ""));
-      });
-
-    externalPayslipsTbody.innerHTML = "";
-
-    if (!list.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">No rows found.</td>`;
-      externalPayslipsTbody.appendChild(tr);
-      return;
-    }
-
-    const groups = groupBy(list, (r) => (r.externalArea || "-").trim() || "-");
-    Array.from(groups.keys()).sort().forEach((external) => {
-      const items = groups.get(external) || [];
-      appendGroupHeader(externalPayslipsTbody, external, 6);
-      {
-        const tr = document.createElement("tr");
-        tr.className = "row-group-columns";
-        tr.innerHTML = `
-          <td>Name</td>
-          <td>Gross Pay</td>
-          <td>Employee Share</td>
-          <td>Employer Share</td>
-          <td>Loans</td>
-          <td>Net Pay</td>
-        `;
-        externalPayslipsTbody.appendChild(tr);
-      }
-
-      let totalGross = 0;
-      let totalEe = 0;
-      let totalEr = 0;
-      let totalLoans = 0;
-      let totalNet = 0;
-
-      items.forEach((r) => {
-        const gross = Number(r.gross || 0);
-        const ee = Number(r.deductionsEe || 0);
-        const er = Number(r.employerShare || 0);
-        const loans = Number(r.loanDeduction || 0);
-        const net = Number(r.netPay || 0);
-
-        totalGross += gross;
-        totalEe += ee;
-        totalEr += er;
-        totalLoans += loans;
-        totalNet += net;
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${escapeHtml(r.empName)}</td>
-          <td>${escapeHtml(peso(gross))}</td>
-          <td>${escapeHtml(peso(ee))}</td>
-          <td>${escapeHtml(peso(er))}</td>
-          <td>${escapeHtml(peso(loans))}</td>
-          <td><strong>${escapeHtml(peso(net))}</strong></td>
-        `;
-        externalPayslipsTbody.appendChild(tr);
-      });
-
-      const tr = document.createElement("tr");
-      tr.className = "row-total";
-      tr.innerHTML = `
-        <td><strong>TOTAL</strong></td>
-        <td><strong>${escapeHtml(peso(totalGross))}</strong></td>
-        <td><strong>${escapeHtml(peso(totalEe))}</strong></td>
-        <td><strong>${escapeHtml(peso(totalEr))}</strong></td>
-        <td><strong>${escapeHtml(peso(totalLoans))}</strong></td>
-        <td><strong>${escapeHtml(peso(totalNet))}</strong></td>
-      `;
-      externalPayslipsTbody.appendChild(tr);
-    });
   }
 
   function renderCompanyPayslips(rows) {
@@ -1060,8 +938,6 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRegister(sorted);
     renderBreakdown(sorted);
     renderRemittance(sorted);
-    renderExternalGross(sorted);
-    renderExternalPayslips(sorted);
     renderFieldAreaAllocations(FIELD_AREA_ALLOC);
     renderCompanyPayslips(sorted);
     renderOverall(sorted);
@@ -1082,7 +958,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["register", "breakdown", "remit", "externalGross", "externalPayslips", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["register", "breakdown", "remit", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -1367,60 +1243,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if (activeTab === "externalGross") {
-      const list = rows
-        .filter((r) => (r.externalArea || "").trim())
-        .slice()
-        .sort((a, b) => {
-          const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
-          if (ea !== 0) return ea;
-          return String(a.empName || "").localeCompare(String(b.empName || ""));
-        });
-
-      const headers = ["External", "Name", "Gross Pay"];
-      const csv = [
-        headers.join(","),
-        ...list.map((r) =>
-          [
-            r.externalArea || "",
-            r.empName,
-            Number(r.gross || 0).toFixed(2),
-          ].map(quote).join(",")
-        ),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
-
-    if (activeTab === "externalPayslips") {
-      const list = rows
-        .filter((r) => (r.externalArea || "").trim())
-        .slice()
-        .sort((a, b) => {
-          const ea = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
-          if (ea !== 0) return ea;
-          return String(a.empName || "").localeCompare(String(b.empName || ""));
-        });
-
-      const headers = ["External", "Name", "Gross Pay", "Employee Share", "Employer Share", "Loans", "Net Pay"];
-      const csv = [
-        headers.join(","),
-        ...list.map((r) =>
-          [
-            r.externalArea || "",
-            r.empName,
-            Number(r.gross || 0).toFixed(2),
-            Number(r.deductionsEe || 0).toFixed(2),
-            Number(r.employerShare || 0).toFixed(2),
-            Number(r.loanDeduction || 0).toFixed(2),
-            Number(r.netPay || 0).toFixed(2),
-          ].map(quote).join(",")
-        ),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
-
     if (activeTab === "companyPayslips") {
       const list = rows
         .slice()
@@ -1679,3 +1501,4 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!res.ok) throw new Error("Request failed.");
     return res.json();
   }
+

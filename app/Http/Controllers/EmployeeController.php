@@ -49,42 +49,7 @@ class EmployeeController extends Controller
         $employees = Employee::query()
             ->with($with)
             ->when(!$canViewComp, function ($query) {
-                $query->select([
-                    'id',
-                    'emp_no',
-                    'first_name',
-                    'middle_name',
-                    'last_name',
-                    'status',
-                    'employment_status_id',
-                    'birthday',
-                    'mobile',
-                    'address',
-                    'address_province',
-                    'address_city',
-                    'address_barangay',
-                    'address_street',
-                    'email',
-                    'department',
-                    'based_location',
-                    'position',
-                    'employment_type',
-                    'pay_type',
-                    'date_hired',
-                    'assignment_type',
-                    'area_place',
-                    'external_area',
-                    'external_position_id',
-                    'bank_name',
-                    'bank_account_name',
-                    'bank_account_number',
-                    'payout_method',
-                    'sss',
-                    'philhealth',
-                    'pagibig',
-                    'tin',
-                    'force_statutory_premiums',
-                ]);
+                $query->select($this->hrEmployeeSelectColumns());
             })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($qq) use ($q) {
@@ -144,42 +109,7 @@ class EmployeeController extends Controller
         $employees = Employee::query()
             ->with($with)
             ->when(!$canViewComp, function ($query) {
-                $query->select([
-                    'id',
-                    'emp_no',
-                    'first_name',
-                    'middle_name',
-                    'last_name',
-                    'status',
-                    'employment_status_id',
-                    'birthday',
-                    'mobile',
-                    'address',
-                    'address_province',
-                    'address_city',
-                    'address_barangay',
-                    'address_street',
-                    'email',
-                    'department',
-                    'based_location',
-                    'position',
-                    'employment_type',
-                    'pay_type',
-                    'date_hired',
-                    'assignment_type',
-                    'area_place',
-                    'external_area',
-                    'external_position_id',
-                    'bank_name',
-                    'bank_account_name',
-                    'bank_account_number',
-                    'payout_method',
-                    'sss',
-                    'philhealth',
-                    'pagibig',
-                    'tin',
-                    'force_statutory_premiums',
-                ]);
+                $query->select($this->hrEmployeeSelectColumns());
             })
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($qq) use ($q) {
@@ -781,6 +711,9 @@ class EmployeeController extends Controller
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
         }
+        if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
+            unset($validated['force_statutory_premiums']);
+        }
 
         $employee = Employee::create($validated);
         if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
@@ -828,6 +761,9 @@ class EmployeeController extends Controller
         if (strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
+        }
+        if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
+            unset($validated['force_statutory_premiums']);
         }
 
         $employee->update($validated);
@@ -1060,8 +996,11 @@ class EmployeeController extends Controller
             'philhealth' => ['nullable', 'string', 'max:50'],
             'pagibig' => ['nullable', 'string', 'max:50'],
             'tin' => ['nullable', 'string', 'max:50'],
-            'force_statutory_premiums' => ['nullable', 'boolean'],
         ];
+
+        if (Schema::hasColumn('employees', 'force_statutory_premiums')) {
+            $rules['force_statutory_premiums'] = ['nullable', 'boolean'];
+        }
 
         if (Schema::hasTable('positions')) {
             $rules['position_ids'] = ['required', 'array', 'min:1'];
@@ -1115,5 +1054,52 @@ class EmployeeController extends Controller
             return mb_substr($display, 0, 252) . '...';
         }
         return $display;
+    }
+
+    private function hrEmployeeSelectColumns(): array
+    {
+        $columns = [
+            'id',
+            'emp_no',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'status',
+            'employment_status_id',
+            'birthday',
+            'mobile',
+            'address',
+            'address_province',
+            'address_city',
+            'address_barangay',
+            'address_street',
+            'email',
+            'department',
+            'based_location',
+            'position',
+            'employment_type',
+            'pay_type',
+            'date_hired',
+            'assignment_type',
+            'area_place',
+            'external_area',
+            'bank_name',
+            'bank_account_name',
+            'bank_account_number',
+            'payout_method',
+            'sss',
+            'philhealth',
+            'pagibig',
+            'tin',
+        ];
+
+        if (Schema::hasColumn('employees', 'external_position_id')) {
+            $columns[] = 'external_position_id';
+        }
+        if (Schema::hasColumn('employees', 'force_statutory_premiums')) {
+            $columns[] = 'force_statutory_premiums';
+        }
+
+        return $columns;
     }
 }

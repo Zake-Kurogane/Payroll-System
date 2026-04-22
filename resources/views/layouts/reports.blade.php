@@ -61,10 +61,6 @@
         <!-- KPI SUMMARY -->
         <section class="stats">
             <article class="stat">
-                <div class="stat__value" id="kpiEmployees">0</div>
-                <div class="stat__label">EMPLOYEES PAID</div>
-            </article>
-            <article class="stat">
                 <div class="stat__value" id="kpiGross">â‚± 0.00</div>
                 <div class="stat__label">TOTAL GROSS</div>
             </article>
@@ -79,6 +75,14 @@
             <article class="stat">
                 <div class="stat__value" id="kpiER">â‚± 0.00</div>
                 <div class="stat__label">TOTAL EMPLOYER SHARE (ER)</div>
+            </article>
+            <article class="stat">
+                <div class="stat__value" id="kpiAtmNetGross">â‚± 0.00</div>
+                <div class="stat__label">ATM NET GROSS</div>
+            </article>
+            <article class="stat">
+                <div class="stat__value" id="kpiNonAtmNetGross">â‚± 0.00</div>
+                <div class="stat__label">NON ATM NET GROSS</div>
             </article>
         </section>
 
@@ -96,10 +100,6 @@
                         & Contributions</button>
                     <button class="tabBtn" type="button" data-tab="remit" aria-selected="false">Gov
                         Remittance</button>
-                    <button class="tabBtn" type="button" data-tab="externalGross" aria-selected="false">External
-                        Gross</button>
-                    <button class="tabBtn" type="button" data-tab="externalPayslips" aria-selected="false">External
-                        Payslips</button>
                     <button class="tabBtn" type="button" data-tab="fieldAreas" aria-selected="false">Field
                         Areas</button>
                     <button class="tabBtn" type="button" data-tab="companyPayslips" aria-selected="false">Company
@@ -189,36 +189,6 @@
                             </tr>
                         </thead>
                         <tbody id="remitTbody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- TAB: External Gross -->
-            <div class="tabPane" id="tab-externalGross" hidden>
-                <div class="card__title big">External Gross</div>
-                <div class="muted small">Grouped by external area with total gross.</div>
-
-                <div class="tablewrap mt12">
-                    <table class="table" aria-label="External gross table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th class="num">Gross Pay</th>
-                            </tr>
-                        </thead>
-                        <tbody id="externalGrossTbody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- TAB: External Payslips -->
-            <div class="tabPane" id="tab-externalPayslips" hidden>
-                <div class="card__title big">Payslips by External</div>
-                <div class="muted small">Sorted by external area. Shows gross and key deductions.</div>
-
-                <div class="tablewrap mt12">
-                    <table class="table" aria-label="External payslips table">
-                        <tbody id="externalPayslipsTbody"></tbody>
                     </table>
                 </div>
             </div>
@@ -327,5 +297,3 @@
     </section>
 
 @endsection
-
-

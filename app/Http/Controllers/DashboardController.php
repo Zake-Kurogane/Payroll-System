@@ -77,8 +77,17 @@ class DashboardController extends Controller
             ->where('status', 'Released')
             ->orderByDesc('id')
             ->first();
+        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
 
-        $month = (string) ($validated['month'] ?? ($latestProcessedGlobal?->period_month ?? now()->format('Y-m')));
+        $defaultMonth = $latestProcessedGlobal
+            ? $this->displayMonthForRun(
+                (string) ($latestProcessedGlobal->period_month ?? ''),
+                (string) ($latestProcessedGlobal->cutoff ?? ''),
+                $calendar
+            )
+            : now()->format('Y-m');
+
+        $month = (string) ($validated['month'] ?? $defaultMonth);
         $cutoff = $this->normalizeCutoff((string) ($validated['cutoff'] ?? ($latestProcessedGlobal?->cutoff ?? 'all')));
         $assignment = trim((string) ($validated['assignment'] ?? 'All'));
         if ($assignment === '') {
@@ -90,8 +99,6 @@ class DashboardController extends Controller
             $deductionType = 'all';
         }
         $deductionExpr = $this->deductionExpression($deductionType);
-        $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
-
         $periodMonthsForDisplay = [$month];
         if ((int) ($calendar->cutoff_b_from ?? 26) > (int) ($calendar->cutoff_b_to ?? 10)) {
             $periodMonthsForDisplay[] = $this->shiftYearMonth($month, -1);
