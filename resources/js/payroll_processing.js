@@ -181,7 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function firstAndLastName(value) {
     const raw = String(value || "").trim();
-    if (!raw) return "—";
+    if (!raw) return "-";
     const cleaned = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
     const parts = cleaned.split(" ").filter(Boolean);
     if (parts.length <= 1) return cleaned;
@@ -189,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const fmtDT = (d) => {
-    if (!d) return "—";
+    if (!d) return "-";
     const dt = (d instanceof Date) ? d : new Date(d);
     return dt.toLocaleString();
   };
@@ -380,8 +380,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const assignmentLabel = (e) => {
-    if (e.areaPlace) return `${e.assignType || "—"} (${e.areaPlace})`;
-    return e.assignType || "—";
+    if (e.areaPlace) return `${e.assignType || "-"} (${e.areaPlace})`;
+    return e.assignType || "-";
   };
 
   // =========================================================
@@ -508,8 +508,8 @@ document.addEventListener("DOMContentLoaded", () => {
       runCreatedByEl.textContent = firstAndLastName(currentRun.created_by_name || currentRun.created_by || "");
     }
     if (runCreatedAtEl) runCreatedAtEl.textContent = fmtDT(currentRun.created_at);
-    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.locked_at ? fmtDT(currentRun.locked_at) : "—";
-    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.released_at ? fmtDT(currentRun.released_at) : "—";
+    if (runLockedAtEl) runLockedAtEl.textContent = currentRun.locked_at ? fmtDT(currentRun.locked_at) : "-";
+    if (runReleasedAtEl) runReleasedAtEl.textContent = currentRun.released_at ? fmtDT(currentRun.released_at) : "-";
 
     setInputsEnabled(!isLocked());
     syncRunButtons();
@@ -627,7 +627,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sumDed) sumDed.textContent = money(s.deductions);
     if (sumNet) sumNet.textContent = money(s.net);
 
-    if (sumVariance) sumVariance.textContent = "—";
+    if (sumVariance) sumVariance.textContent = "-";
   }
 
   // =========================================================
@@ -765,7 +765,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const disabled = locked ? "disabled" : "";
 
       const attText = `${r.present}/${r.absent}/${r.late}`;
-      const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" • ");
+      const deptLine = [r.dept, (r.areaPlace || r.assign)].filter(Boolean).join(" - ");
       const payoutLine = `${r.payoutMethod}${r.payoutMethod === "BANK" ? ` (${r.accountMasked})` : ""}`;
 
       const statEE = Number(r.sss || 0) + Number(r.ph || 0) + Number(r.pagibig || 0) + Number(r.tax || 0);
@@ -803,7 +803,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <td class="num">${r.chargesDeduction > 0
           ? `<details class="dd"><summary>${money(r.chargesDeduction)}</summary><div class="dd__body"><div>This cutoff: ${money(r.chargesDeduction)}</div></div></details>`
-          : `<span class="muted">—</span>`
+          : `<span class="muted">-</span>`
         }</td>
         <td class="num">${loansTotal > 0
           ? `<details class="dd"><summary>${money(loansTotal)}</summary><div class="dd__body">
@@ -815,7 +815,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const status = li.status || 'scheduled';
               return `<div>${name}: ${amt} <span class=\"muted\">(sched ${sched}, ${status})</span></div>`;
             }).join('') || `<div>Loan schedules: ${money(r.loanDeduction || 0)}</div>`}</div></details>`
-          : `<span class="muted">—</span>`
+          : `<span class="muted">-</span>`
         }</td>
 
         <td class="num">
@@ -843,7 +843,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         <td class="num netPayCell"><strong>${money(r.net)}</strong></td>
         <td class="col-actions">
-          <button class="iconbtn adjBtn" type="button" data-id="${r.empId}" ${disabled} title="Adjust">?</button>
+          <button class="iconbtn iconbtn--edit adjBtn" type="button" data-id="${r.empId}" ${disabled} title="Adjust" aria-label="Adjust">
+            <svg class="iconbtn__svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
+          </button>
         </td>
       `;
 
@@ -919,14 +924,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <label class="adjLabel adjLabel--amount">
             <span>Amount</span>
             <span class="moneyInput">
-              <span class="moneyPrefix">?</span>
+              <span class="moneyPrefix">&#8369;</span>
               <input type="number" min="0" step="0.01"
                 value="${Number(row.amount || 0)}"
                 data-index="${index}" class="adjAmount" />
             </span>
           </label>
 
-          <button type="button" data-index="${index}" class="iconbtn delAdjBtn" aria-label="Remove adjustment">??</button>
+          <button type="button" data-index="${index}" class="iconbtn delAdjBtn" aria-label="Remove adjustment">x</button>
         </div>
       `;
 
@@ -1689,7 +1694,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const isInternal = runType === "Internal";
     const allBtn = document.getElementById("assignAllBtn");
     if (allBtn) allBtn.style.display = isInternal ? "" : "none";
-    // External runs cannot use "All" — reset to Tagum if needed
+    // External runs cannot use "All" â€” reset to Tagum if needed
     if (assignmentFilterEnabled) {
       if (!isInternal && assignmentFilter === "All") {
         const firstAssign = segBtns.find(b => (b.dataset.assign || "") !== "All");

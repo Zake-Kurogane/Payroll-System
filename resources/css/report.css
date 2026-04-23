@@ -705,6 +705,21 @@ tbody tr.row-total:hover {
     background: #f3f4f6;
 }
 
+/* All tab grouping */
+tbody tr.all-emp-row td {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 900;
+    border-top: 1px dashed rgba(100, 116, 139, 0.35);
+}
+tbody tr.all-emp-row:hover {
+    background: #f8fafc;
+}
+tbody tr.all-detail-row td:first-child {
+    padding-left: 24px;
+    font-weight: 800;
+}
+
 .dedDetails {
     display: block;
     text-align: left;

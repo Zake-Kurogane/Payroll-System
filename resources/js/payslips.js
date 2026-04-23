@@ -949,7 +949,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el) el.textContent = value ?? "-";
   }
   function setMoney(id, value) {
-    set(id, peso(value));
+    const el = $(id);
+    if (!el) return;
+    const num = Number(value);
+    const safe = Number.isFinite(num) ? num : 0;
+    el.innerHTML = `&#8369; ${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   function renderAdjustmentRows(containerEl, items, mode) {

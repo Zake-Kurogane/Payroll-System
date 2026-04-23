@@ -122,7 +122,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
   function pesoSafe(n) {
     const v = Number(n);
     if (!Number.isFinite(v)) return EM_DASH;
-    return `${PHP_SIGN} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `\u20B1 ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   function formatPesoInputSafe(raw) {
@@ -134,7 +134,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     const num = Number(`${intPart}.${decPart || ""}`);
     const formattedInt = Number(intPart || 0).toLocaleString();
     const formatted = decPart.length ? `${formattedInt}.${decPart}` : formattedInt;
-    return { display: `${PHP_SIGN}${formatted}`, value: Number.isFinite(num) ? num : 0 };
+    return { display: `\u20B1${formatted}`, value: Number.isFinite(num) ? num : 0 };
   }
 
   if (caDrawer && caDrawer.parentElement !== document.body) document.body.appendChild(caDrawer);
@@ -225,8 +225,8 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
 
   function peso(n) {
     const v = Number(n);
-    if (!Number.isFinite(v)) return "—";
-    return `₱ ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (!Number.isFinite(v)) return "\u2014";
+    return `\u20B1 ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   function openViewDrawer(row, mode) {
@@ -237,7 +237,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     if (caViewId) caViewId.value = String(row.id || "");
     if (caViewEmployee) caViewEmployee.value = row.employee_name || "";
     const amt = Number(row.amount || 0);
-    if (caViewAmount) caViewAmount.value = amt > 0 ? `â‚±${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
+    if (caViewAmount) caViewAmount.value = amt > 0 ? `\u20B1${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
     if (caViewAmountValue) caViewAmountValue.value = amt > 0 ? String(amt) : "";
     if (caViewAmount) caViewAmount.value = amt > 0 ? pesoSafe(amt) : "";
     if (caViewTerm) caViewTerm.value = row.term_months || "";
@@ -267,7 +267,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
     const num = Number(`${intPart}.${decPart || ""}`);
     const formattedInt = Number(intPart || 0).toLocaleString();
     const formatted = decPart.length ? `${formattedInt}.${decPart}` : formattedInt;
-    return { display: `₱${formatted}`, value: Number.isFinite(num) ? num : 0 };
+    return { display: `\u20B1${formatted}`, value: Number.isFinite(num) ? num : 0 };
   }
 
   function syncAmountInput() {
@@ -395,7 +395,7 @@ export function initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange)
       const per = Number(row.per_cutoff_deduction ?? 0);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${esc(row.employee_name || "—")}</td>
+        <td>${esc(row.employee_name || "\u2014")}</td>
         <td>${esc(peso(row.amount))}</td>
         <td>${esc(row.term_months)} mo</td>
         <td>${esc(String(row.start_month || "").slice(0, 7))}</td>
@@ -722,3 +722,4 @@ export function initCashAdvance(toast, apiFetch, noticeEl, onChange) {
   initCashAdvancePolicy(toast, apiFetch, noticeEl, onChange);
   initCashAdvanceTransactions(toast, apiFetch, noticeEl, onChange);
 }
+

@@ -9,7 +9,7 @@
         ? '-'
         : $companySubParts->map(fn ($v) => e((string) $v))->implode(' &bull; ');
 
-    $peso = "&#8369; ";
+    $peso = "\u{20B1} ";
     $money = fn ($v) => $peso . number_format((float) $v, 2);
     $p = $payslip ?? [];
 @endphp

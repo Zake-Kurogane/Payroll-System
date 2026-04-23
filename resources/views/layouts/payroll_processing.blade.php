@@ -79,7 +79,7 @@
                     <div class="gridRow" style="grid-template-columns: 1fr 1fr;">
                         <div class="card" style="box-shadow:none; border:1px solid var(--line);">
                             <div class="card__title">Run Metadata</div>
-                            <div class="mini" style="margin-top:12px;">
+                            <div class="mini runMetaMini" style="margin-top:12px;">
                                 <div class="mini__k">Run ID</div>
                                 <div class="mini__v" id="runId">-</div>
 
@@ -105,22 +105,22 @@
 
                         <div class="card" style="box-shadow:none; border:1px solid var(--line);">
                             <div class="card__title">Run Summary + Variance</div>
-                            <div class="summaryLines" style="margin-top:12px;">
+                            <div class="summaryLines runSummaryLines" style="margin-top:12px;">
                                 <div class="summaryLine">
                                     <span>Headcount</span>
                                     <strong id="sumHeadcount">0</strong>
                                 </div>
                                 <div class="summaryLine">
                                     <span>Total Gross</span>
-                                    <strong id="sumGross">₱ 0</strong>
+                                    <strong id="sumGross">&#8369; 0.00</strong>
                                 </div>
                                 <div class="summaryLine">
                                     <span>Total Deductions</span>
-                                    <strong id="sumDed">₱ 0</strong>
+                                    <strong id="sumDed">&#8369; 0.00</strong>
                                 </div>
                                 <div class="summaryLine summaryLine--total">
                                     <span>Total Net</span>
-                                    <strong id="sumNet">₱ 0</strong>
+                                    <strong id="sumNet">&#8369; 0.00</strong>
                                 </div>
                             </div>
                         </div>
@@ -251,20 +251,20 @@
                     Override & one-time adjustments for this cutoff.
                 </div>
             </div>
-            <button class="iconx" type="button" id="closeDrawerBtn">✕</button>
+            <button class="iconx" type="button" id="closeDrawerBtn">x</button>
         </div>
 
         <div class="drawer__body">
 
             <div class="mini">
                 <div class="mini__k">Employee</div>
-                <div class="mini__v" id="adjEmpName">—</div>
+                <div class="mini__v" id="adjEmpName">-</div>
 
                 <div class="mini__k">Emp ID</div>
-                <div class="mini__v" id="adjEmpId">—</div>
+                <div class="mini__v" id="adjEmpId">-</div>
 
                 <div class="mini__k">Assignment</div>
-                <div class="mini__v" id="adjAssign">—</div>
+                <div class="mini__v" id="adjAssign">-</div>
 
                 <div class="mini__k">Status</div>
                 <div class="mini__v" id="adjStatus">Draft</div>
@@ -300,19 +300,19 @@
             <div class="summaryLines">
                 <div class="summaryLine">
                     <span>Base Pay</span>
-                    <strong id="sumBase">₱ 0</strong>
+                    <strong id="sumBase">&#8369; 0.00</strong>
                 </div>
                 <div class="summaryLine">
                     <span>Other Earnings</span>
-                    <strong id="sumOtherEarn">₱ 0</strong>
+                    <strong id="sumOtherEarn">&#8369; 0.00</strong>
                 </div>
                 <div class="summaryLine">
                     <span>Other Deductions</span>
-                    <strong id="sumOtherDed">₱ 0</strong>
+                    <strong id="sumOtherDed">&#8369; 0.00</strong>
                 </div>
                 <div class="summaryLine summaryLine--total">
                     <span>Net Pay Preview</span>
-                    <strong id="sumNetPreview">₱ 0</strong>
+                    <strong id="sumNetPreview">&#8369; 0.00</strong>
                 </div>
             </div>
 

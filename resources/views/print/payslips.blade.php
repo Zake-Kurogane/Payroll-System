@@ -6,7 +6,7 @@
         $company?->company_email,
     ])->filter()->implode(' • ');
     $companySub = $companySub ?: '-';
-    $peso = "&#8369; ";
+    $peso = "\u{20B1} ";
     $money = fn ($v) => $peso . number_format((float) $v, 2);
 @endphp
 <!doctype html>

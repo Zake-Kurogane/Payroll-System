@@ -72,6 +72,7 @@ class PayslipMail extends Mailable
         $options = new \Dompdf\Options();
         $options->set('isRemoteEnabled', true);
         $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
 
         $dompdf = new \Dompdf\Dompdf($options);
         $dompdf->setPaper('A4', 'portrait');

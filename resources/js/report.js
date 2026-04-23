@@ -118,9 +118,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const kpiNonAtmNetGross = $("kpiNonAtmNetGross");
 
   const tabBtns = $$(".tabBtn");
+  const allRegTbody = $("allRegTbody");
+  const allBdTbody = $("allBdTbody");
+  const allRemitTbody = $("allRemitTbody");
+  const allSssTbody = $("allSssTbody");
+  const allPhilhealthTbody = $("allPhilhealthTbody");
+  const allPagibigTbody = $("allPagibigTbody");
+  const allFieldAreasTbody = $("allFieldAreasTbody");
+  const allFieldAreasTotalsTbody = $("allFieldAreasTotalsTbody");
+  const allCompanyPayslipsTbody = $("allCompanyPayslipsTbody");
+  const allOverallTbody = $("allOverallTbody");
+  const allAuditTbody = $("allAuditTbody");
+  const allIssuesTbody = $("allIssuesTbody");
   const regTbody = $("regTbody");
   const bdTbody = $("bdTbody");
   const remitTbody = $("remitTbody");
+  const sssTbody = $("sssTbody");
+  const philhealthTbody = $("philhealthTbody");
+  const pagibigTbody = $("pagibigTbody");
   const fieldAreasTbody = $("fieldAreasTbody");
   const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
@@ -140,7 +155,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let assignmentFilter = "All";
   let sortKey = "empName";
   let sortDir = "asc"; // asc/desc
-  let activeTab = "register";
+  let activeTab = "all";
   let FIELD_AREA_ALLOC = null;
   let floatingRegisterScroll = null;
   let floatingRegisterInner = null;
@@ -252,7 +267,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function runDisplayLabel(run) {
-    if (!run) return "No payroll run found for the selected filters.";
+    if (!run) return "No released payroll run found for the selected filters.";
     return `${run.runCode} - ${run.month} (${run.cutoffLabel}) - ${run.displayLabel} - ${run.status} - ${run.employees} employees`;
   }
 
@@ -368,6 +383,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return r.assignmentType || "-";
   }
 
+  function isReleasedRun(run) {
+    return normalize(run?.status || "") === "released";
+  }
+
   function runMatchesFilters(run) {
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
@@ -375,7 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const okMonth = !monthVal || run.month === monthVal;
     const okCutoff = cutoffVal === "All" || runCutoff === cutoffVal;
-    return okMonth && okCutoff;
+    return okMonth && okCutoff && isReleasedRun(run);
   }
 
   function applyFilters(list) {
@@ -602,27 +621,45 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!remitTbody) return;
 
     remitTbody.innerHTML = "";
-    rows.forEach((r) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(r.empId)}</td>
-        <td>${escapeHtml(r.empName)}</td>
-        <td class="num">${escapeHtml(peso(r.sssEe))}</td>
-        <td class="num">${escapeHtml(peso(r.sssEr))}</td>
-        <td class="num">${escapeHtml(peso(r.philhealthEe))}</td>
-        <td class="num">${escapeHtml(peso(r.philhealthEr))}</td>
-        <td class="num">${escapeHtml(peso(r.pagibigEe))}</td>
-        <td class="num">${escapeHtml(peso(r.pagibigEr))}</td>
-        <td class="num">${escapeHtml(peso(r.tax))}</td>
-      `;
-      remitTbody.appendChild(tr);
-    });
 
-    if (!rows.length) {
+    const externalRows = rows
+      .filter((r) => String(r.externalArea || "").trim() !== "")
+      .slice()
+      .sort((a, b) => {
+        const companyCmp = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
+        if (companyCmp !== 0) return companyCmp;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+
+    if (!externalRows.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="9" class="muted small">No rows found.</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">No external company rows found.</td>`;
       remitTbody.appendChild(tr);
+      return;
     }
+
+    const byCompany = groupBy(externalRows, (r) => String(r.externalArea || "").trim());
+    Array.from(byCompany.keys()).sort((a, b) => a.localeCompare(b)).forEach((company) => {
+      appendGroupHeader(remitTbody, `External Company: ${company}`, 6);
+      const items = byCompany.get(company) || [];
+      items.forEach((r) => {
+        const sssEe = Number(r.sssEe || 0);
+        const philhealthEe = Number(r.philhealthEe || 0);
+        const pagibigEe = Number(r.pagibigEe || 0);
+        const totalEe = Number(r.deductionsEe || 0);
+        const totalEr = Number(r.employerShare || 0);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.empName)}</td>
+          <td class="num">${escapeHtml(peso(sssEe))}</td>
+          <td class="num">${escapeHtml(peso(philhealthEe))}</td>
+          <td class="num">${escapeHtml(peso(pagibigEe))}</td>
+          <td class="num"><strong>${escapeHtml(peso(totalEe))}</strong></td>
+          <td class="num"><strong>${escapeHtml(peso(totalEr))}</strong></td>
+        `;
+        remitTbody.appendChild(tr);
+      });
+    });
   }
 
   function renderAudit() {
@@ -693,6 +730,142 @@ document.addEventListener("DOMContentLoaded", () => {
     return assign || "-";
   }
 
+  function externalCompanyLabel(r) {
+    const external = String(r.externalArea || "").trim();
+    if (external) return external;
+    return companyLabel(r);
+  }
+
+  const PREMIUM_CONFIG = {
+    sss: { label: "SSS", eeKey: "sssEe", erKey: "sssEr" },
+    philhealth: { label: "PhilHealth", eeKey: "philhealthEe", erKey: "philhealthEr" },
+    pagibig: { label: "Pag-IBIG", eeKey: "pagibigEe", erKey: "pagibigEr" },
+  };
+
+  function buildPremiumRows(rows, kind) {
+    const cfg = PREMIUM_CONFIG[kind];
+    if (!cfg) return [];
+    return rows
+      .map((r) => ({
+        company: externalCompanyLabel(r),
+        empId: r.empId,
+        empName: r.empName,
+        ee: Number(r[cfg.eeKey] || 0),
+        er: Number(r[cfg.erKey] || 0),
+      }))
+      .filter((r) => r.ee !== 0 || r.er !== 0)
+      .map((r) => ({ ...r, total: r.ee + r.er }))
+      .sort((a, b) => {
+        const c = a.company.localeCompare(b.company);
+        if (c !== 0) return c;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+  }
+
+  function buildAllRows(rows) {
+    const out = [];
+    rows.forEach((r) => {
+      out.push({
+        reportType: "Payroll Register",
+        company: externalCompanyLabel(r),
+        empId: r.empId,
+        empName: r.empName,
+        ee: Number(r.deductionsEe || 0),
+        er: Number(r.employerShare || 0),
+        gross: Number(r.gross || 0),
+        net: Number(r.netPay || 0),
+      });
+
+      ["sss", "philhealth", "pagibig"].forEach((kind) => {
+        const cfg = PREMIUM_CONFIG[kind];
+        const ee = Number(r[cfg.eeKey] || 0);
+        const er = Number(r[cfg.erKey] || 0);
+        if (ee === 0 && er === 0) return;
+        out.push({
+          reportType: cfg.label,
+          company: externalCompanyLabel(r),
+          empId: r.empId,
+          empName: r.empName,
+          ee,
+          er,
+          gross: 0,
+          net: 0,
+        });
+      });
+    });
+
+    const order = new Map([
+      ["Payroll Register", 0],
+      ["SSS", 1],
+      ["PhilHealth", 2],
+      ["Pag-IBIG", 3],
+    ]);
+
+    return out.sort((a, b) => {
+      const c = a.company.localeCompare(b.company);
+      if (c !== 0) return c;
+      const n = String(a.empName || "").localeCompare(String(b.empName || ""));
+      if (n !== 0) return n;
+      return (order.get(a.reportType) ?? 99) - (order.get(b.reportType) ?? 99);
+    });
+  }
+
+  function renderAllCombined() {
+    const copyRows = (src, dst) => {
+      if (!src || !dst) return;
+      dst.innerHTML = src.innerHTML;
+    };
+
+    copyRows(regTbody, allRegTbody);
+    copyRows(bdTbody, allBdTbody);
+    copyRows(remitTbody, allRemitTbody);
+    copyRows(sssTbody, allSssTbody);
+    copyRows(philhealthTbody, allPhilhealthTbody);
+    copyRows(pagibigTbody, allPagibigTbody);
+    copyRows(fieldAreasTbody, allFieldAreasTbody);
+    copyRows(fieldAreasTotalsTbody, allFieldAreasTotalsTbody);
+    copyRows(companyPayslipsTbody, allCompanyPayslipsTbody);
+    copyRows(overallTbody, allOverallTbody);
+    copyRows(auditTbody, allAuditTbody);
+    copyRows(issuesTbody, allIssuesTbody);
+  }
+
+  function renderPremiumTable(tbody, rows, kind) {
+    if (!tbody) return;
+    const cfg = PREMIUM_CONFIG[kind];
+    const list = buildPremiumRows(rows, kind);
+    tbody.innerHTML = "";
+
+    list.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(r.company)}</td>
+        <td>${escapeHtml(r.empName)}</td>
+        <td class="num">${escapeHtml(peso(r.ee))}</td>
+        <td class="num">${escapeHtml(peso(r.er))}</td>
+        <td class="num"><strong>${escapeHtml(peso(r.total))}</strong></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (!list.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" class="muted small">No ${escapeHtml(cfg.label)} rows found.</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderSss(rows) {
+    renderPremiumTable(sssTbody, rows, "sss");
+  }
+
+  function renderPhilHealth(rows) {
+    renderPremiumTable(philhealthTbody, rows, "philhealth");
+  }
+
+  function renderPagibig(rows) {
+    renderPremiumTable(pagibigTbody, rows, "pagibig");
+  }
   function renderCompanyPayslips(rows) {
     if (!companyPayslipsTbody) return;
 
@@ -791,7 +964,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!payload) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocations…</td>`;
+      tr.innerHTML = `<td colspan="6" class="muted small">Loading allocations...</td>`;
       fieldAreasTbody.appendChild(tr);
       return;
     }
@@ -803,7 +976,7 @@ document.addEventListener("DOMContentLoaded", () => {
       fieldAreasTbody.appendChild(tr);
     } else {
       areas.forEach((g) => {
-        appendGroupHeader(fieldAreasTbody, g.area_place || "—", 6);
+        appendGroupHeader(fieldAreasTbody, g.area_place || "-", 6);
 
         const head = document.createElement("tr");
         head.className = "row-group-columns";
@@ -823,11 +996,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const days = Number(r.paid_units || 0);
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${escapeHtml(r.emp_no || "—")}</td>
-            <td>${escapeHtml(r.name || "—")}</td>
+            <td>${escapeHtml(r.emp_no || "-")}</td>
+            <td>${escapeHtml(r.name || "-")}</td>
             <td>${escapeHtml(peso(r.daily_rate || 0))}</td>
             <td>${escapeHtml(String(days))}</td>
-            <td>${escapeHtml(dates || "—")}</td>
+            <td>${escapeHtml(dates || "-")}</td>
             <td><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
           `;
           fieldAreasTbody.appendChild(tr);
@@ -858,7 +1031,7 @@ document.addEventListener("DOMContentLoaded", () => {
     totals.forEach((t) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${escapeHtml(t.area_place || "—")}</td>
+        <td>${escapeHtml(t.area_place || "-")}</td>
         <td class="num">${escapeHtml(String(Number(t.paid_units || 0)))}</td>
         <td class="num"><strong>${escapeHtml(peso(t.amount || 0))}</strong></td>
       `;
@@ -938,11 +1111,15 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRegister(sorted);
     renderBreakdown(sorted);
     renderRemittance(sorted);
+    renderSss(sorted);
+    renderPhilHealth(sorted);
+    renderPagibig(sorted);
     renderFieldAreaAllocations(FIELD_AREA_ALLOC);
     renderCompanyPayslips(sorted);
     renderOverall(sorted);
     renderAudit();
     renderIssues(sorted);
+    renderAllCombined();
     refreshFloatingRegisterScrollbar();
   }
 
@@ -958,7 +1135,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["register", "breakdown", "remit", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["all", "register", "breakdown", "remit", "sss", "philhealth", "pagibig", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -968,7 +1145,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   tabBtns.forEach((b) => {
-    b.addEventListener("click", () => setActiveTab(b.dataset.tab || "register"));
+    b.addEventListener("click", () => setActiveTab(b.dataset.tab || "all"));
   });
 
   // =========================================================
@@ -1189,8 +1366,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!run && fallbackOnEmpty) {
-        const fallbackId = pickDefaultRunId(RUNS);
-        const fallback = RUNS.find((r) => r.id === fallbackId) || null;
+        const releasedRuns = RUNS.filter(isReleasedRun);
+        const fallbackId = pickDefaultRunId(releasedRuns);
+        const fallback = releasedRuns.find((r) => r.id === fallbackId) || null;
         if (fallback) {
           if (monthInput) monthInput.value = fallback.month || monthInput.value;
           if (cutoffSelect) cutoffSelect.value = fallback.cutoff || cutoffSelect.value || "All";
@@ -1218,72 +1396,77 @@ document.addEventListener("DOMContentLoaded", () => {
   // TOP ACTIONS
   // =========================================================
   function exportCsv(rows, filename) {
-    const quote = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
-
-    if (activeTab === "audit") {
-      const list = RUNS.filter(runMatchesFilters);
-      const headers = ["Run ID", "Period", "Status", "Employees", "Total Net", "Processed At", "Processed By", "Payslips Generated", "Released At"];
-      const csv = [
-        headers.join(","),
-        ...list.map((r) =>
-          [
-            r.id,
-            `${r.month} (${r.cutoffLabel})`,
-            r.status,
-            r.employees,
-            Number(r.totalNet || 0).toFixed(2),
-            r.processedAt,
-            r.processedBy,
-            r.payslipsGeneratedAt || "",
-            r.releasedAt || "",
-          ].map(quote).join(",")
-        ),
-      ].join("\n");
-      downloadCsv(csv, filename);
+    const xlsx = window.XLSX;
+    if (!xlsx) {
+      alert("XLSX library not loaded. Please refresh the page.");
       return;
     }
 
-    if (activeTab === "companyPayslips") {
-      const list = rows
-        .slice()
-        .sort((a, b) => {
-          const ca = companyLabel(a).localeCompare(companyLabel(b));
-          if (ca !== 0) return ca;
-          return String(a.empName || "").localeCompare(String(b.empName || ""));
-        });
+    const aoaForRegister = (list) => {
+      const headers = [
+        "Emp ID", "Employee", "Assignment", "Present", "Absent", "Leave", "Daily Rate", "Attendance Pay", "Total Deductions", "Gross", "Net", "Payslip Status",
+      ];
+      const body = list.map((r) => [
+        r.empId,
+        r.empName,
+        assignmentText(r),
+        r.presentDays || 0,
+        r.absentDays || 0,
+        r.leaveDays || 0,
+        Number(r.dailyRate || 0),
+        Number(r.attendancePay || 0),
+        Number(r.deductionsEe || 0),
+        Number(r.gross || 0),
+        Number(r.netPay || 0),
+        r.payslipStatus || "",
+      ]);
+      return [headers, ...body];
+    };
 
-      const headers = ["Company", "Name", "Gross Pay", "Deductions", "Attendance Deduction", "Charges", "Net Pay"];
-      const csv = [
-        headers.join(","),
-        ...list.map((r) =>
-          [
-            companyLabel(r),
-            r.empName,
-            Number(r.gross || 0).toFixed(2),
-            Number(r.deductionsEe || 0).toFixed(2),
-            Number(r.attendanceDeduction || 0).toFixed(2),
-            Number(r.chargesDeduction || 0).toFixed(2),
-            Number(r.netPay || 0).toFixed(2),
-          ].map(quote).join(",")
-        ),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
-
-    if (activeTab === "overall") {
-      const gross = rows.reduce((a, r) => a + Number(r.gross || 0), 0);
-      const deductions = rows.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
-      const net = rows.reduce((a, r) => a + Number(r.netPay || 0), 0);
-      const tax = rows.reduce((a, r) => a + Number(r.tax || 0), 0);
-      const statutory = rows.reduce(
-        (a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0),
-        0
-      );
-      const charges = rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
-    const attendanceDeduction = rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
-
+    const aoaForBreakdown = (list) => {
       const totals = [
+        ["Attendance Deductions", list.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+        ["Other Deductions", list.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
+        ["SSS (EE)", list.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
+        ["PhilHealth (EE)", list.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
+        ["Pag-IBIG (EE)", list.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
+        ["Withholding Tax", list.reduce((a, r) => a + Number(r.tax || 0), 0)],
+        ["SSS (ER)", list.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
+        ["PhilHealth (ER)", list.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
+        ["Pag-IBIG (ER)", list.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
+      ];
+      return [["Item", "Amount"], ...totals];
+    };
+
+    const aoaForRemit = (list) => {
+      const headers = ["Employee", "SSS", "PhilHealth", "Pag-IBIG", "Total EE", "Total ER"];
+      const body = list.map((r) => [
+        r.empName,
+        Number(r.sssEe || 0),
+        Number(r.philhealthEe || 0),
+        Number(r.pagibigEe || 0),
+        Number(r.deductionsEe || 0),
+        Number(r.employerShare || 0),
+      ]);
+      return [headers, ...body];
+    };
+
+    const aoaForPremium = (list, kind) => {
+      const rowsPremium = buildPremiumRows(list, kind);
+      const headers = ["External Company", "Employee", "EE", "ER", "Total"];
+      const body = rowsPremium.map((r) => [r.company, r.empName, r.ee, r.er, r.total]);
+      return [headers, ...body];
+    };
+
+    const aoaForOverall = (list) => {
+      const gross = list.reduce((a, r) => a + Number(r.gross || 0), 0);
+      const deductions = list.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
+      const net = list.reduce((a, r) => a + Number(r.netPay || 0), 0);
+      const tax = list.reduce((a, r) => a + Number(r.tax || 0), 0);
+      const statutory = list.reduce((a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0), 0);
+      const charges = list.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0);
+      const attendanceDeduction = list.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0);
+      return [["Metric", "Amount"],
         ["Total Gross", gross],
         ["Total Deductions (EE)", deductions],
         ["Total Net Pay", net],
@@ -1292,122 +1475,142 @@ document.addEventListener("DOMContentLoaded", () => {
         ["Charges", charges],
         ["Attendance Deduction", attendanceDeduction],
       ];
-      const csv = [
-        ["Metric", "Amount"].join(","),
-        ...totals.map(([k, v]) => [k, Number(v || 0).toFixed(2)].map(quote).join(",")),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
+    };
 
-    if (activeTab === "breakdown") {
-      const totals = [
-        ["Attendance Deductions", rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
-        ["Other Deductions", rows.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
-        ["SSS (EE)", rows.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
-        ["PhilHealth (EE)", rows.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
-        ["Pag-IBIG (EE)", rows.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
-        ["Withholding Tax", rows.reduce((a, r) => a + Number(r.tax || 0), 0)],
-        ["SSS (ER)", rows.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
-        ["PhilHealth (ER)", rows.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
-        ["Pag-IBIG (ER)", rows.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
-      ];
-      const csv = [
-        ["Item", "Amount"].join(","),
-        ...totals.map(([k, v]) => [k, Number(v || 0).toFixed(2)].map(quote).join(",")),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
+    const aoaForIssues = (list) => {
+      const issues = computeIssues(list);
+      return [["Emp ID", "Employee", "Issue", "Severity"], ...issues.map((r) => [r.empId, r.empName, r.issue, r.severity])];
+    };
 
-    if (activeTab === "remit") {
-      const headers = ["Emp ID", "Employee", "SSS (EE)", "SSS (ER)", "PhilHealth (EE)", "PhilHealth (ER)", "Pag-IBIG (EE)", "Pag-IBIG (ER)", "Tax"];
-      const csv = [
-        headers.join(","),
-        ...rows.map((r) =>
-          [
-            r.empId,
-            r.empName,
-            Number(r.sssEe || 0).toFixed(2),
-            Number(r.sssEr || 0).toFixed(2),
-            Number(r.philhealthEe || 0).toFixed(2),
-            Number(r.philhealthEr || 0).toFixed(2),
-            Number(r.pagibigEe || 0).toFixed(2),
-            Number(r.pagibigEr || 0).toFixed(2),
-            Number(r.tax || 0).toFixed(2),
-          ].map(quote).join(",")
-        ),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
-
-    if (activeTab === "issues") {
-      const list = computeIssues(rows);
-      const headers = ["Emp ID", "Employee", "Issue", "Severity"];
-      const csv = [
-        headers.join(","),
-        ...list.map((r) => [r.empId, r.empName, r.issue, r.severity].map(quote).join(",")),
-      ].join("\n");
-      downloadCsv(csv, filename);
-      return;
-    }
-
-    // Default: register export
-    const headers = [
-      "Emp ID",
-      "Employee",
-      "Assignment",
-      "Present",
-      "Absent",
-      "Leave",
-      "Daily Rate",
-      "Attendance Pay",
-      "Total Deductions",
-      "Gross",
-      "Net",
-      "Payslip Status",
-    ];
-
-    const csv = [
-      headers.join(","),
-      ...rows.map((r) =>
-        [
-          r.empId,
+    const aoaForCompanyPayslips = (list) => {
+      const headers = ["Company", "Name", "Gross Pay", "Deductions", "Attendance Deduction", "Charges", "Net Pay"];
+      const body = list
+        .slice()
+        .sort((a, b) => {
+          const ca = companyLabel(a).localeCompare(companyLabel(b));
+          if (ca !== 0) return ca;
+          return String(a.empName || "").localeCompare(String(b.empName || ""));
+        })
+        .map((r) => [
+          companyLabel(r),
           r.empName,
-          assignmentText(r),
-          r.presentDays || 0,
-          r.absentDays || 0,
-          r.leaveDays || 0,
-          Number(r.dailyRate || 0).toFixed(2),
-          Number(r.attendancePay || 0).toFixed(2),
-          Number(r.deductionsEe || 0).toFixed(2),
-          Number(r.gross || 0).toFixed(2),
-          Number(r.netPay || 0).toFixed(2),
-          r.payslipStatus || "",
-        ].map(quote).join(",")
-      ),
-    ].join("\n");
+          Number(r.gross || 0),
+          Number(r.deductionsEe || 0),
+          Number(r.attendanceDeduction || 0),
+          Number(r.chargesDeduction || 0),
+          Number(r.netPay || 0),
+        ]);
+      return [headers, ...body];
+    };
 
-    downloadCsv(csv, filename);
+    const aoaForAudit = () => {
+      const list = RUNS.filter(runMatchesFilters);
+      const headers = ["Run ID", "Period", "Status", "Employees", "Total Net", "Processed At", "Processed By", "Payslips Generated", "Released At"];
+      const body = list.map((r) => [
+        r.id,
+        `${r.month} (${r.cutoffLabel})`,
+        r.status,
+        r.employees,
+        Number(r.totalNet || 0),
+        r.processedAt,
+        r.processedBy,
+        r.payslipsGeneratedAt || "",
+        r.releasedAt || "",
+      ]);
+      return [headers, ...body];
+    };
+
+    const aoaForAll = (list) => {
+      const sorted = list.slice().sort((a, b) => {
+        const n = String(a.empName || "").localeCompare(String(b.empName || ""));
+        if (n !== 0) return n;
+        return String(a.empId || "").localeCompare(String(b.empId || ""));
+      });
+
+      const payrollHeader = ["Emp ID", "Employee", "Gross", "EE", "Net"];
+      const payrollBody = sorted.map((r) => [
+        r.empId,
+        r.empName,
+        Number(r.gross || 0),
+        Number(r.deductionsEe || 0),
+        Number(r.netPay || 0),
+      ]);
+
+      const premiumHeader = ["Employee", "SSS", "PhilHealth", "Pag-IBIG", "Total EE", "Total ER"];
+      const premiumBody = sorted.map((r) => [
+        r.empName,
+        Number(r.sssEe || 0),
+        Number(r.philhealthEe || 0),
+        Number(r.pagibigEe || 0),
+        Number(r.deductionsEe || 0),
+        Number(r.employerShare || 0),
+      ]);
+
+      return [
+        ["Tab 1: Payroll Register"],
+        payrollHeader,
+        ...payrollBody,
+        [],
+        ["Tab 2: Government Premiums"],
+        premiumHeader,
+        ...premiumBody,
+      ];
+    };
+
+    const appendSheet = (wb, name, aoa) => {
+      const sheetName = String(name || "Sheet").slice(0, 31);
+      const ws = xlsx.utils.aoa_to_sheet(aoa);
+      xlsx.utils.book_append_sheet(wb, ws, sheetName);
+    };
+
+    const wb = xlsx.utils.book_new();
+
+    if (activeTab === "all") {
+      appendSheet(wb, "All", aoaForAll(rows));
+      appendSheet(wb, "Payroll Register", aoaForRegister(rows));
+      appendSheet(wb, "Deductions", aoaForBreakdown(rows));
+      appendSheet(wb, "Government Premiums", aoaForRemit(rows));
+      appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
+      appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
+      appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
+      appendSheet(wb, "Company Payslips", aoaForCompanyPayslips(rows));
+      appendSheet(wb, "Overall", aoaForOverall(rows));
+      appendSheet(wb, "Issues", aoaForIssues(rows));
+      appendSheet(wb, "Audit", aoaForAudit());
+    } else if (activeTab === "audit") {
+      appendSheet(wb, "Audit", aoaForAudit());
+    } else if (activeTab === "companyPayslips") {
+      appendSheet(wb, "Company Payslips", aoaForCompanyPayslips(rows));
+    } else if (activeTab === "overall") {
+      appendSheet(wb, "Overall", aoaForOverall(rows));
+    } else if (activeTab === "breakdown") {
+      appendSheet(wb, "Deductions", aoaForBreakdown(rows));
+    } else if (activeTab === "remit") {
+      appendSheet(wb, "Government Premiums", aoaForRemit(rows));
+    } else if (activeTab === "sss") {
+      appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
+    } else if (activeTab === "philhealth") {
+      appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
+    } else if (activeTab === "pagibig") {
+      appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
+    } else if (activeTab === "issues") {
+      appendSheet(wb, "Issues", aoaForIssues(rows));
+    } else {
+      appendSheet(wb, "Payroll Register", aoaForRegister(rows));
+    }
+
+    const outName = String(filename || "report.xlsx").replace(/\.csv$/i, ".xlsx");
+    xlsx.writeFile(wb, outName, { bookType: "xlsx" });
   }
 
   function downloadCsv(csv, filename) {
+    // Backward-compatible shim. Current implementation writes XLSX directly.
     const xlsx = window.XLSX;
     if (!xlsx) {
       alert("XLSX library not loaded. Please refresh the page.");
       return;
     }
-
     const wb = xlsx.read(csv, { type: "string" });
-    const firstSheet = wb.SheetNames[0];
-    const safeSheetName = String(activeTab || "Report").slice(0, 31);
-    if (firstSheet && firstSheet !== safeSheetName) {
-      wb.Sheets[safeSheetName] = wb.Sheets[firstSheet];
-      delete wb.Sheets[firstSheet];
-      wb.SheetNames[0] = safeSheetName;
-    }
-
     const outName = String(filename || "report.xlsx").replace(/\.csv$/i, ".xlsx");
     xlsx.writeFile(wb, outName, { bookType: "xlsx" });
   }
@@ -1478,7 +1681,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
   contentScroller && contentScroller.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
   setRunUI(null);
-  setActiveTab("register");
+  setActiveTab("all");
   loadFilterOptions()
     .finally(() => loadRuns())
     .finally(renderAll);
