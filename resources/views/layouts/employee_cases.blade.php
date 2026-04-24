@@ -458,10 +458,12 @@
                 <label>Witnesses <span class="nc-opt">(optional)</span></label>
                 <small class="nc-hint">People who saw the incident.</small>
                 <div id="nc_witnessWrap" class="nc-tagWrap"></div>
-                <div class="nc-addRow">
+                <div class="nc-addRow nc-search">
                     <input type="text" id="nc_witnessInput" placeholder="Type a name and press Enter or +" autocomplete="off" />
+                    <input type="hidden" id="nc_witnessId" />
                     <button class="btn btn--soft nc-addBtn" type="button" id="nc_addWitnessBtn">+</button>
                 </div>
+                <ul class="nc-suggestions" id="nc_witnessSugg" hidden></ul>
             </div>
 
             {{-- 3. Incident Details --}}

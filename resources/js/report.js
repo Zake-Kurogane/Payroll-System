@@ -120,10 +120,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const tabBtns = $$(".tabBtn");
   const allRegTbody = $("allRegTbody");
   const allBdTbody = $("allBdTbody");
-  const allRemitTbody = $("allRemitTbody");
-  const allSssTbody = $("allSssTbody");
-  const allPhilhealthTbody = $("allPhilhealthTbody");
-  const allPagibigTbody = $("allPagibigTbody");
+  const allSssCompanyTables = $("allSssCompanyTables");
+  const allPhilhealthCompanyTables = $("allPhilhealthCompanyTables");
+  const allPagibigCompanyTables = $("allPagibigCompanyTables");
   const allFieldAreasTbody = $("allFieldAreasTbody");
   const allFieldAreasTotalsTbody = $("allFieldAreasTotalsTbody");
   const allCompanyPayslipsTbody = $("allCompanyPayslipsTbody");
@@ -132,10 +131,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const allIssuesTbody = $("allIssuesTbody");
   const regTbody = $("regTbody");
   const bdTbody = $("bdTbody");
-  const remitTbody = $("remitTbody");
-  const sssTbody = $("sssTbody");
-  const philhealthTbody = $("philhealthTbody");
-  const pagibigTbody = $("pagibigTbody");
+  const sssCompanyTables = $("sssCompanyTables");
+  const philhealthCompanyTables = $("philhealthCompanyTables");
+  const pagibigCompanyTables = $("pagibigCompanyTables");
   const fieldAreasTbody = $("fieldAreasTbody");
   const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
@@ -146,6 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const resultsMeta = $("resultsMeta");
   const registerPane = $("tab-register");
   const registerTableWrap = registerPane?.querySelector(".tablewrap") || null;
+  const allRegTableWrap = $("allRegTableWrap");
   const contentScroller = document.querySelector(".content");
 
   // =========================================================
@@ -159,7 +158,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let FIELD_AREA_ALLOC = null;
   let floatingRegisterScroll = null;
   let floatingRegisterInner = null;
+  let floatingAllRegScroll = null;
+  let floatingAllRegInner = null;
   let syncingRegisterScroll = false;
+  let syncingAllRegScroll = false;
   let initialAssignmentApplied = false;
   let filterLoadingCount = 0;
 
@@ -217,6 +219,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function initFloatingAllRegisterScrollbar() {
+    if (!allRegTableWrap || floatingAllRegScroll) return;
+
+    const bar = document.createElement("div");
+    bar.className = "table-scroll-float";
+    bar.setAttribute("aria-hidden", "true");
+    const inner = document.createElement("div");
+    inner.className = "table-scroll-float__inner";
+    bar.appendChild(inner);
+    document.body.appendChild(bar);
+
+    floatingAllRegScroll = bar;
+    floatingAllRegInner = inner;
+
+    allRegTableWrap.addEventListener("scroll", () => {
+      if (!floatingAllRegScroll || syncingAllRegScroll) return;
+      syncingAllRegScroll = true;
+      floatingAllRegScroll.scrollLeft = allRegTableWrap.scrollLeft;
+      syncingAllRegScroll = false;
+    });
+
+    floatingAllRegScroll.addEventListener("scroll", () => {
+      if (!allRegTableWrap || syncingAllRegScroll) return;
+      syncingAllRegScroll = true;
+      allRegTableWrap.scrollLeft = floatingAllRegScroll.scrollLeft;
+      syncingAllRegScroll = false;
+    });
+  }
+
   function refreshFloatingRegisterScrollbar() {
     if (!registerTableWrap || !floatingRegisterScroll || !floatingRegisterInner) return;
 
@@ -237,6 +268,28 @@ document.addEventListener("DOMContentLoaded", () => {
     floatingRegisterScroll.style.width = `${Math.max(120, rect.width)}px`;
     floatingRegisterInner.style.width = `${registerTableWrap.scrollWidth}px`;
     floatingRegisterScroll.scrollLeft = registerTableWrap.scrollLeft;
+  }
+
+  function refreshFloatingAllRegisterScrollbar() {
+    if (!allRegTableWrap || !floatingAllRegScroll || !floatingAllRegInner) return;
+
+    const rect = allRegTableWrap.getBoundingClientRect();
+    const viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    const hasOverflow = allRegTableWrap.scrollWidth > allRegTableWrap.clientWidth + 1;
+    const isVisible = rect.top < viewportH && rect.bottom > 0;
+    const nativeScrollbarVisible = rect.bottom <= (viewportH - 4);
+    const shouldShow = activeTab === "all" && hasOverflow && isVisible && !nativeScrollbarVisible;
+
+    if (!shouldShow) {
+      floatingAllRegScroll.style.display = "none";
+      return;
+    }
+
+    floatingAllRegScroll.style.display = "block";
+    floatingAllRegScroll.style.left = `${Math.max(8, rect.left)}px`;
+    floatingAllRegScroll.style.width = `${Math.max(120, rect.width)}px`;
+    floatingAllRegInner.style.width = `${allRegTableWrap.scrollWidth}px`;
+    floatingAllRegScroll.scrollLeft = allRegTableWrap.scrollLeft;
   }
 
   // =========================================================
@@ -617,51 +670,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .join("");
   }
 
-  function renderRemittance(rows) {
-    if (!remitTbody) return;
-
-    remitTbody.innerHTML = "";
-
-    const externalRows = rows
-      .filter((r) => String(r.externalArea || "").trim() !== "")
-      .slice()
-      .sort((a, b) => {
-        const companyCmp = String(a.externalArea || "").localeCompare(String(b.externalArea || ""));
-        if (companyCmp !== 0) return companyCmp;
-        return String(a.empName || "").localeCompare(String(b.empName || ""));
-      });
-
-    if (!externalRows.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="6" class="muted small">No external company rows found.</td>`;
-      remitTbody.appendChild(tr);
-      return;
-    }
-
-    const byCompany = groupBy(externalRows, (r) => String(r.externalArea || "").trim());
-    Array.from(byCompany.keys()).sort((a, b) => a.localeCompare(b)).forEach((company) => {
-      appendGroupHeader(remitTbody, `External Company: ${company}`, 6);
-      const items = byCompany.get(company) || [];
-      items.forEach((r) => {
-        const sssEe = Number(r.sssEe || 0);
-        const philhealthEe = Number(r.philhealthEe || 0);
-        const pagibigEe = Number(r.pagibigEe || 0);
-        const totalEe = Number(r.deductionsEe || 0);
-        const totalEr = Number(r.employerShare || 0);
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${escapeHtml(r.empName)}</td>
-          <td class="num">${escapeHtml(peso(sssEe))}</td>
-          <td class="num">${escapeHtml(peso(philhealthEe))}</td>
-          <td class="num">${escapeHtml(peso(pagibigEe))}</td>
-          <td class="num"><strong>${escapeHtml(peso(totalEe))}</strong></td>
-          <td class="num"><strong>${escapeHtml(peso(totalEr))}</strong></td>
-        `;
-        remitTbody.appendChild(tr);
-      });
-    });
-  }
-
   function renderAudit() {
     if (!auditTbody) return;
     const list = RUNS.filter(runMatchesFilters);
@@ -810,7 +818,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function renderAllCombined() {
+  function renderAllCombined(rows) {
     const copyRows = (src, dst) => {
       if (!src || !dst) return;
       dst.innerHTML = src.innerHTML;
@@ -818,10 +826,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     copyRows(regTbody, allRegTbody);
     copyRows(bdTbody, allBdTbody);
-    copyRows(remitTbody, allRemitTbody);
-    copyRows(sssTbody, allSssTbody);
-    copyRows(philhealthTbody, allPhilhealthTbody);
-    copyRows(pagibigTbody, allPagibigTbody);
+    renderPremiumCompanyTables(allSssCompanyTables, rows, "sss");
+    renderPremiumCompanyTables(allPhilhealthCompanyTables, rows, "philhealth");
+    renderPremiumCompanyTables(allPagibigCompanyTables, rows, "pagibig");
     copyRows(fieldAreasTbody, allFieldAreasTbody);
     copyRows(fieldAreasTotalsTbody, allFieldAreasTotalsTbody);
     copyRows(companyPayslipsTbody, allCompanyPayslipsTbody);
@@ -830,41 +837,99 @@ document.addEventListener("DOMContentLoaded", () => {
     copyRows(issuesTbody, allIssuesTbody);
   }
 
-  function renderPremiumTable(tbody, rows, kind) {
-    if (!tbody) return;
+  function renderPremiumCompanyTables(container, rows, kind) {
+    if (!container) return;
     const cfg = PREMIUM_CONFIG[kind];
     const list = buildPremiumRows(rows, kind);
-    tbody.innerHTML = "";
-
-    list.forEach((r) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(r.company)}</td>
-        <td>${escapeHtml(r.empName)}</td>
-        <td class="num">${escapeHtml(peso(r.ee))}</td>
-        <td class="num">${escapeHtml(peso(r.er))}</td>
-        <td class="num"><strong>${escapeHtml(peso(r.total))}</strong></td>
-      `;
-      tbody.appendChild(tr);
-    });
+    container.innerHTML = "";
 
     if (!list.length) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="5" class="muted small">No ${escapeHtml(cfg.label)} rows found.</td>`;
-      tbody.appendChild(tr);
+      const wrap = document.createElement("div");
+      wrap.className = "tablewrap";
+      wrap.innerHTML = `
+        <table class="table" aria-label="${escapeHtml(cfg.label)} report table">
+          <tbody>
+            <tr><td colspan="4" class="muted small">No ${escapeHtml(cfg.label)} rows found.</td></tr>
+          </tbody>
+        </table>
+      `;
+      container.appendChild(wrap);
+      return;
     }
+
+    const groups = groupBy(list, (r) => r.company || "-");
+    Array.from(groups.keys()).sort((a, b) => a.localeCompare(b)).forEach((company) => {
+      const block = document.createElement("section");
+      block.className = "premiumCompanyBlock";
+
+      const title = document.createElement("div");
+      title.className = "premiumCompanyHeading";
+      title.textContent = company;
+      block.appendChild(title);
+
+      const wrap = document.createElement("div");
+      wrap.className = "tablewrap mt12";
+      wrap.innerHTML = `
+        <table class="table" aria-label="${escapeHtml(cfg.label)} report table for ${escapeHtml(company)}">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th class="num">EE Share</th>
+              <th class="num">ER Share</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      `;
+
+      const tbody = wrap.querySelector("tbody");
+      const items = groups.get(company) || [];
+
+      let totalEe = 0;
+      let totalEr = 0;
+      let totalAmount = 0;
+
+      items.forEach((r) => {
+        totalEe += Number(r.ee || 0);
+        totalEr += Number(r.er || 0);
+        totalAmount += Number(r.total || 0);
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(r.empName)}</td>
+          <td class="num">${escapeHtml(peso(r.ee))}</td>
+          <td class="num">${escapeHtml(peso(r.er))}</td>
+          <td class="num"><strong>${escapeHtml(peso(r.total))}</strong></td>
+        `;
+        tbody && tbody.appendChild(tr);
+      });
+
+      const totalTr = document.createElement("tr");
+      totalTr.className = "row-total";
+      totalTr.innerHTML = `
+        <td><strong>TOTAL</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalEe))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalEr))}</strong></td>
+        <td class="num"><strong>${escapeHtml(peso(totalAmount))}</strong></td>
+      `;
+      tbody && tbody.appendChild(totalTr);
+
+      block.appendChild(wrap);
+      container.appendChild(block);
+    });
   }
 
   function renderSss(rows) {
-    renderPremiumTable(sssTbody, rows, "sss");
+    renderPremiumCompanyTables(sssCompanyTables, rows, "sss");
   }
 
   function renderPhilHealth(rows) {
-    renderPremiumTable(philhealthTbody, rows, "philhealth");
+    renderPremiumCompanyTables(philhealthCompanyTables, rows, "philhealth");
   }
 
   function renderPagibig(rows) {
-    renderPremiumTable(pagibigTbody, rows, "pagibig");
+    renderPremiumCompanyTables(pagibigCompanyTables, rows, "pagibig");
   }
   function renderCompanyPayslips(rows) {
     if (!companyPayslipsTbody) return;
@@ -983,10 +1048,10 @@ document.addEventListener("DOMContentLoaded", () => {
         head.innerHTML = `
           <td>ID</td>
           <td>Name</td>
-          <td>Daily Rate</td>
-          <td>No. of Days</td>
+          <td class="num">Daily Rate</td>
+          <td class="center">No. of Days</td>
           <td>Dates</td>
-          <td>Allocated Amount</td>
+          <td class="num">Allocated Amount</td>
         `;
         fieldAreasTbody.appendChild(head);
 
@@ -998,10 +1063,10 @@ document.addEventListener("DOMContentLoaded", () => {
           tr.innerHTML = `
             <td>${escapeHtml(r.emp_no || "-")}</td>
             <td>${escapeHtml(r.name || "-")}</td>
-            <td>${escapeHtml(peso(r.daily_rate || 0))}</td>
-            <td>${escapeHtml(String(days))}</td>
+            <td class="num">${escapeHtml(peso(r.daily_rate || 0))}</td>
+            <td class="center">${escapeHtml(String(days))}</td>
             <td>${escapeHtml(dates || "-")}</td>
-            <td><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
+            <td class="num"><strong>${escapeHtml(peso(r.allocated_amount || 0))}</strong></td>
           `;
           fieldAreasTbody.appendChild(tr);
         });
@@ -1014,7 +1079,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <td></td>
           <td></td>
           <td></td>
-          <td><strong>${escapeHtml(peso(g.total_allocated_amount || 0))}</strong></td>
+          <td class="num"><strong>${escapeHtml(peso(g.total_allocated_amount || 0))}</strong></td>
         `;
         fieldAreasTbody.appendChild(tr);
       });
@@ -1110,7 +1175,6 @@ document.addEventListener("DOMContentLoaded", () => {
     renderKPIs(sorted);
     renderRegister(sorted);
     renderBreakdown(sorted);
-    renderRemittance(sorted);
     renderSss(sorted);
     renderPhilHealth(sorted);
     renderPagibig(sorted);
@@ -1119,8 +1183,9 @@ document.addEventListener("DOMContentLoaded", () => {
     renderOverall(sorted);
     renderAudit();
     renderIssues(sorted);
-    renderAllCombined();
+    renderAllCombined(sorted);
     refreshFloatingRegisterScrollbar();
+    refreshFloatingAllRegisterScrollbar();
   }
 
   // =========================================================
@@ -1135,13 +1200,14 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["all", "register", "breakdown", "remit", "sss", "philhealth", "pagibig", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["all", "register", "breakdown", "sss", "philhealth", "pagibig", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
     });
 
     refreshFloatingRegisterScrollbar();
+    refreshFloatingAllRegisterScrollbar();
   }
 
   tabBtns.forEach((b) => {
@@ -1438,19 +1504,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return [["Item", "Amount"], ...totals];
     };
 
-    const aoaForRemit = (list) => {
-      const headers = ["Employee", "SSS", "PhilHealth", "Pag-IBIG", "Total EE", "Total ER"];
-      const body = list.map((r) => [
-        r.empName,
-        Number(r.sssEe || 0),
-        Number(r.philhealthEe || 0),
-        Number(r.pagibigEe || 0),
-        Number(r.deductionsEe || 0),
-        Number(r.employerShare || 0),
-      ]);
-      return [headers, ...body];
-    };
-
     const aoaForPremium = (list, kind) => {
       const rowsPremium = buildPremiumRows(list, kind);
       const headers = ["External Company", "Employee", "EE", "ER", "Total"];
@@ -1536,24 +1589,10 @@ document.addEventListener("DOMContentLoaded", () => {
         Number(r.netPay || 0),
       ]);
 
-      const premiumHeader = ["Employee", "SSS", "PhilHealth", "Pag-IBIG", "Total EE", "Total ER"];
-      const premiumBody = sorted.map((r) => [
-        r.empName,
-        Number(r.sssEe || 0),
-        Number(r.philhealthEe || 0),
-        Number(r.pagibigEe || 0),
-        Number(r.deductionsEe || 0),
-        Number(r.employerShare || 0),
-      ]);
-
       return [
         ["Tab 1: Payroll Register"],
         payrollHeader,
         ...payrollBody,
-        [],
-        ["Tab 2: Government Premiums"],
-        premiumHeader,
-        ...premiumBody,
       ];
     };
 
@@ -1569,7 +1608,6 @@ document.addEventListener("DOMContentLoaded", () => {
       appendSheet(wb, "All", aoaForAll(rows));
       appendSheet(wb, "Payroll Register", aoaForRegister(rows));
       appendSheet(wb, "Deductions", aoaForBreakdown(rows));
-      appendSheet(wb, "Government Premiums", aoaForRemit(rows));
       appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
       appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
       appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
@@ -1585,8 +1623,6 @@ document.addEventListener("DOMContentLoaded", () => {
       appendSheet(wb, "Overall", aoaForOverall(rows));
     } else if (activeTab === "breakdown") {
       appendSheet(wb, "Deductions", aoaForBreakdown(rows));
-    } else if (activeTab === "remit") {
-      appendSheet(wb, "Government Premiums", aoaForRemit(rows));
     } else if (activeTab === "sss") {
       appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
     } else if (activeTab === "philhealth") {
@@ -1677,9 +1713,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // First render (no run selected)
   // =========================================================
   initFloatingRegisterScrollbar();
+  initFloatingAllRegisterScrollbar();
   window.addEventListener("resize", refreshFloatingRegisterScrollbar);
+  window.addEventListener("resize", refreshFloatingAllRegisterScrollbar);
   window.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
+  window.addEventListener("scroll", refreshFloatingAllRegisterScrollbar, { passive: true });
   contentScroller && contentScroller.addEventListener("scroll", refreshFloatingRegisterScrollbar, { passive: true });
+  contentScroller && contentScroller.addEventListener("scroll", refreshFloatingAllRegisterScrollbar, { passive: true });
   setRunUI(null);
   setActiveTab("all");
   loadFilterOptions()

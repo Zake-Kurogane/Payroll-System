@@ -179,7 +179,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       hour12: true,
     });
   }
-
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
   function renderRecentActivity(list) {
     if (!recentActivityList) return;
     const items = Array.isArray(list) ? list : [];
@@ -196,16 +203,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       const when = formatActivityDate(a?.occurred_at);
       const actor = `${a?.actor_name || "Unknown"}${a?.actor_role ? ` (${a.actor_role})` : ""}`;
       const desc = a?.description || "";
-      return `
-        <div class="todo__item">
-          <div class="todo__name">${a?.title || "Activity"}</div>
-          <div class="todo__meta">${actor}${when ? ` • ${when}` : ""}</div>
-          ${desc ? `<div class="todo__sub">${desc}</div>` : ""}
-        </div>
+      const title = escapeHtml(a?.title || "Activity");
+      const actorMeta = `${escapeHtml(actor)}${when ? ` • ${escapeHtml(when)}` : ""}`;
+      const descHtml = desc ? `<div class="todo__sub">${escapeHtml(desc)}</div>` : "";
+      const targetUrl = String(a?.target_url || "").trim();
+      const content = `
+        <div class="todo__name">${title}</div>
+        <div class="todo__meta">${actorMeta}</div>
+        ${descHtml}
       `;
+      if (!targetUrl) return `<div class="todo__item">${content}</div>`;
+      return `<a class="todo__item todo__item--link" href="${escapeHtml(targetUrl)}" aria-label="${title}">${content}</a>`;
     }).join("");
   }
-
   function renderTrend(trend) {
     if (!chart || !chartLabels) return;
 

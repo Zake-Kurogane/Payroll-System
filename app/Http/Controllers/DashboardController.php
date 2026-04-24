@@ -534,6 +534,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($r->created_at)?->toIso8601String(),
                 'ts' => optional($r->created_at)?->timestamp ?? 0,
+                'target_url' => url('/payroll-processing'),
             ]);
         }
 
@@ -552,6 +553,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($p->created_at)?->toIso8601String(),
                 'ts' => optional($p->created_at)?->timestamp ?? 0,
+                'target_url' => $p->payroll_run_id ? (url('/payslip-claims') . '?run_id=' . $p->payroll_run_id) : url('/payslip-claims'),
             ]);
         }
 
@@ -560,7 +562,7 @@ class DashboardController extends Controller
             ->whereNotNull('claimed_at')
             ->orderByDesc('claimed_at')
             ->limit(40)
-            ->get(['id', 'claimed_by_user_id', 'employee_id', 'claimed_at']);
+            ->get(['id', 'payroll_run_id', 'claimed_by_user_id', 'employee_id', 'claimed_at']);
         foreach ($claims as $c) {
             $u = $roleUsers->get((int) $c->claimed_by_user_id);
             $items->push([
@@ -571,6 +573,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($c->claimed_at)?->toIso8601String(),
                 'ts' => optional($c->claimed_at)?->timestamp ?? 0,
+                'target_url' => $c->payroll_run_id ? (url('/payslip-claims') . '?run_id=' . $c->payroll_run_id) : url('/payslip-claims'),
             ]);
         }
 
@@ -589,6 +592,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($c->created_at)?->toIso8601String(),
                 'ts' => optional($c->created_at)?->timestamp ?? 0,
+                'target_url' => url('/employee-cases') . '?view_case=' . $c->id,
             ]);
         }
 
@@ -607,6 +611,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($a->created_at)?->toIso8601String(),
                 'ts' => optional($a->created_at)?->timestamp ?? 0,
+                'target_url' => url('/employee-records'),
             ]);
         }
 
@@ -620,6 +625,7 @@ class DashboardController extends Controller
                 'actor_name' => $x['actor_name'],
                 'actor_role' => $x['actor_role'],
                 'occurred_at' => $x['occurred_at'],
+                'target_url' => $x['target_url'] ?? null,
             ])
             ->values()
             ->all();

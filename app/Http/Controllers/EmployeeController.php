@@ -16,6 +16,7 @@ use App\Models\ExternalPosition;
 use App\Models\Position;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
@@ -1020,6 +1021,10 @@ class EmployeeController extends Controller
         }
 
         $validated = $request->validate($rules);
+        $validated['first_name'] = $this->normalizeNamePart($validated['first_name'] ?? null);
+        $validated['middle_name'] = $this->normalizeNamePart($validated['middle_name'] ?? null);
+        $validated['last_name'] = $this->normalizeNamePart($validated['last_name'] ?? null);
+        $this->assertUniqueEmployeeName($validated, $ignoreId);
         $validated['area_place'] = trim((string) ($validated['area_place'] ?? '')) !== '' ? $validated['area_place'] : null;
         if (!count($areaPlaceLabelsForAssignment)) {
             $validated['area_place'] = null;
@@ -1054,6 +1059,51 @@ class EmployeeController extends Controller
             return mb_substr($display, 0, 252) . '...';
         }
         return $display;
+    }
+
+    private function normalizeNamePart(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $normalized = preg_replace('/\s+/u', ' ', trim((string) $value)) ?? '';
+        return $normalized === '' ? null : $normalized;
+    }
+
+    private function assertUniqueEmployeeName(array $validated, ?int $ignoreId = null): void
+    {
+        $first = mb_strtolower((string) ($validated['first_name'] ?? ''));
+        $last = mb_strtolower((string) ($validated['last_name'] ?? ''));
+        $middle = mb_strtolower((string) ($validated['middle_name'] ?? ''));
+
+        if ($first === '' || $last === '') {
+            return;
+        }
+
+        $query = Employee::query()
+            ->when($ignoreId !== null, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->whereRaw('LOWER(TRIM(first_name)) = ?', [$first])
+            ->whereRaw('LOWER(TRIM(last_name)) = ?', [$last]);
+
+        if ($middle === '') {
+            $query->where(function ($q) {
+                $q->whereNull('middle_name')
+                    ->orWhereRaw("TRIM(COALESCE(middle_name, '')) = ''");
+            });
+        } else {
+            $query->whereRaw('LOWER(TRIM(middle_name)) = ?', [$middle]);
+        }
+
+        if ($query->exists()) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'Employee name already exists.',
+                'errors' => [
+                    'first_name' => ['Employee name already exists.'],
+                    'middle_name' => ['Employee name already exists.'],
+                    'last_name' => ['Employee name already exists.'],
+                ],
+            ], 422));
+        }
     }
 
     private function hrEmployeeSelectColumns(): array

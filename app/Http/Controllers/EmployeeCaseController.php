@@ -134,6 +134,8 @@ class EmployeeCaseController extends Controller
             'respondent_ids.*' => ['integer', 'exists:employees,id'],
             'complainant_ids'  => ['nullable', 'array'],
             'complainant_ids.*'=> ['integer', 'exists:employees,id'],
+            'witness_ids'      => ['nullable', 'array'],
+            'witness_ids.*'    => ['integer', 'exists:employees,id'],
         ]);
 
         // Auto-generate title from respondent name(s)
@@ -172,6 +174,13 @@ class EmployeeCaseController extends Controller
                     'case_id' => $case->id,
                     'employee_id' => $empId,
                     'role' => 'complainant',
+                ]);
+            }
+            foreach (array_values(array_unique($v['witness_ids'] ?? [])) as $empId) {
+                EmployeeCaseParty::create([
+                    'case_id' => $case->id,
+                    'employee_id' => $empId,
+                    'role' => 'witness',
                 ]);
             }
         });

@@ -133,6 +133,24 @@
     padding: 6px 2px;
 }
 
+#recentActivityList .todo__item--link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 10px;
+    padding: 8px 8px;
+    margin: 0 -6px;
+}
+
+#recentActivityList .todo__item--link:hover {
+    background: rgba(156, 29, 60, 0.06);
+}
+
+#recentActivityList .todo__item--link:focus-visible {
+    outline: 2px solid rgba(156, 29, 60, 0.45);
+    outline-offset: 2px;
+}
+
 #recentActivityList .todo__name {
     font-size: 12px;
     font-weight: 700;

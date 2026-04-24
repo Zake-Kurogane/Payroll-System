@@ -4,6 +4,20 @@ import { initProfileDrawer } from "./shared/profileDrawer";
 import { initSettingsSync } from "./shared/settingsSync";
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Header sorting is intentionally temporary for this page: after a sorted
+  // response renders, remove sort params so browser refresh falls back to the
+  // default order (Area A-Z, then Name A-Z).
+  try {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has("sort") || currentUrl.searchParams.has("dir")) {
+      currentUrl.searchParams.delete("sort");
+      currentUrl.searchParams.delete("dir");
+      window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
+  } catch (_) {
+    // Ignore URL parsing failures and keep page behavior unchanged.
+  }
+
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();

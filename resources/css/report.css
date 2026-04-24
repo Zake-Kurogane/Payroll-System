@@ -601,12 +601,51 @@ h1 {
 .card__title.big {
     font-size: 18px;
 }
+.allReportsSectionTitle {
+    margin-top: 14px;
+}
+
+.allReportsPill {
+    margin-top: 8px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: #fff;
+}
+
+.allReportsPill > .tablewrap,
+.allReportsPill > .premiumCompanyTables {
+    margin-top: 0;
+}
+
+#tab-all .allReportsPill--compact .tablewrap {
+    overflow: hidden;
+}
+
+#tab-all .allReportsPill--compact .table {
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+}
+
+#tab-all .allReportsPill--compact .premiumCompanyBlock .table {
+    min-width: 0;
+}
+
+#tab-all .allReportsPill--compact thead th,
+#tab-all .allReportsPill--compact tbody td {
+    white-space: normal;
+    word-break: break-word;
+}
 
 .mt12 {
     margin-top: 12px;
 }
 .num {
     text-align: right;
+}
+.center {
+    text-align: center;
 }
 
 #tab-register .num {
@@ -629,6 +668,21 @@ h1 {
     border-spacing: 0;
     min-width: 1200px;
     background: #fff;
+}
+
+.premiumCompanyTables {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.premiumCompanyHeading {
+    font-weight: 1000;
+    color: var(--maroon);
+}
+
+.premiumCompanyBlock .table {
+    min-width: 760px;
 }
 
 .table-scroll-float {

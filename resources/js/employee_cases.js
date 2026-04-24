@@ -1,9 +1,12 @@
-import { initClock } from "./shared/clock";
+﻿import { initClock } from "./shared/clock";
 import { initUserMenuDropdown } from "./shared/userMenu";
 import { initProfileDrawer } from "./shared/profileDrawer";
 import { initSettingsSync } from "./shared/settingsSync";
 
 document.addEventListener("DOMContentLoaded", () => {
+  const pageQuery = new URLSearchParams(window.location.search);
+  const initialViewCaseId = (pageQuery.get("view_case") || "").trim();
+
   initClock();
   initUserMenuDropdown();
   initProfileDrawer();
@@ -250,7 +253,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  loadFilters().then(() => load());
+  loadFilters()
+    .then(() => load())
+    .then(() => {
+      if (/^\d+$/.test(initialViewCaseId)) {
+        openCaseDrawer(initialViewCaseId);
+      }
+    });
 
   // --- View Case Drawer ---
   function fmtDateShort(d) {
@@ -808,34 +817,53 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setupEmpSearch("nc_respondentText", "nc_respondentId", "nc_respondentSugg");
   setupEmpSearch("nc_complainantText", "nc_complainantId", "nc_complainantSugg");
+  setupEmpSearch("nc_witnessInput", "nc_witnessId", "nc_witnessSugg");
 
   // --- Witness tag input ---
   const witnessWrap = document.getElementById("nc_witnessWrap");
   const witnessInput = document.getElementById("nc_witnessInput");
+  const witnessIdInput = document.getElementById("nc_witnessId");
   const addWitnessBtn = document.getElementById("nc_addWitnessBtn");
 
-  function addWitnessTag(name) {
-    const val = name.trim();
-    if (!val || !witnessWrap) return;
+  function addWitnessTag(employeeId, name) {
+    const id = Number(employeeId);
+    const val = String(name || "").trim();
+    if (!Number.isFinite(id) || id <= 0 || !val || !witnessWrap) return;
+    if (witnessWrap.querySelector(`[data-emp-id="${id}"]`)) {
+      if (witnessInput) witnessInput.value = "";
+      if (witnessIdInput) witnessIdInput.value = "";
+      return;
+    }
     const tag = document.createElement("span");
     tag.className = "nc-tag";
+    tag.setAttribute("data-emp-id", String(id));
     tag.innerHTML = `${val}<button class="nc-tag__remove" type="button" aria-label="Remove">×</button>`;
     tag.querySelector(".nc-tag__remove").addEventListener("click", () => tag.remove());
     witnessWrap.appendChild(tag);
     if (witnessInput) witnessInput.value = "";
+    if (witnessIdInput) witnessIdInput.value = "";
+  }
+
+  function addSelectedWitness() {
+    const witnessId = Number(witnessIdInput?.value || 0);
+    const witnessName = witnessInput?.value?.trim() || "";
+    if (!witnessId || !witnessName) {
+      showToast("Please select a witness from suggestions first.");
+      return;
+    }
+    addWitnessTag(witnessId, witnessName);
   }
 
   addWitnessBtn &&
-    addWitnessBtn.addEventListener("click", () => addWitnessTag(witnessInput?.value || ""));
+    addWitnessBtn.addEventListener("click", () => addSelectedWitness());
 
   witnessInput &&
     witnessInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        addWitnessTag(witnessInput.value);
+        addSelectedWitness();
       }
     });
-
   // --- Dropzone file selector ---
   const dropzone = document.getElementById("nc_dropzone");
   const fileInput = document.getElementById("nc_files");
@@ -922,6 +950,9 @@ document.addEventListener("DOMContentLoaded", () => {
         remarks:         document.getElementById("nc_remarks")?.value?.trim() || null,
         respondent_ids:  [parseInt(respondentId, 10)],
         complainant_ids: complainantId ? [parseInt(complainantId, 10)] : [],
+        witness_ids: Array.from(document.querySelectorAll("#nc_witnessWrap .nc-tag[data-emp-id]"))
+          .map((el) => parseInt(el.getAttribute("data-emp-id") || "", 10))
+          .filter((id) => Number.isFinite(id) && id > 0),
       };
 
       createCaseBtn.disabled = true;
@@ -949,6 +980,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("newCaseForm")?.reset();
         document.getElementById("nc_respondentId") && (document.getElementById("nc_respondentId").value = "");
         document.getElementById("nc_complainantId") && (document.getElementById("nc_complainantId").value = "");
+        document.getElementById("nc_witnessId") && (document.getElementById("nc_witnessId").value = "");
         document.getElementById("nc_witnessWrap") && (document.getElementById("nc_witnessWrap").innerHTML = "");
         document.getElementById("nc_fileList") && (document.getElementById("nc_fileList").innerHTML = "");
         selectedFiles = [];
@@ -964,3 +996,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 });
+
+
+
+
+
