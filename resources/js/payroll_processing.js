@@ -1249,6 +1249,49 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function loadRunFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const runId = Number(params.get("run_id") || 0);
+    if (!Number.isFinite(runId) || runId <= 0) return false;
+
+    const runs = await apiFetch("/payroll-runs");
+    const run = (runs || []).find((r) => Number(r.id) === runId);
+    if (!run) {
+      if (stickyHint) stickyHint.textContent = `Payroll run #${runId} was not found. Showing current draft selection.`;
+      return false;
+    }
+
+    currentRun = run;
+    previewRows = [];
+    overrides = {};
+    selectedEmpIds.clear();
+
+    if (monthInput) monthInput.value = currentRun.period_month || "";
+    if (cutoffSelect) cutoffSelect.value = currentRun.cutoff || "11-25";
+    updateCutoffOptions();
+
+    if (runTypeEnabled) {
+      runType = currentRun.run_type || "Internal";
+    }
+    if (assignmentFilterEnabled) {
+      assignmentFilter = currentRun.assignment_filter || "All";
+      areaPlaceFilter = currentRun.area_place_filter || null;
+    }
+    syncRunTypeUI();
+
+    applyRunUi();
+    if (currentRun.status === "Draft") {
+      if (stickyHint) stickyHint.textContent = "Draft run loaded from activity.";
+      await computePreview();
+    } else {
+      if (stickyHint) stickyHint.textContent = "Payroll run loaded from activity.";
+      await loadRowsForCurrent();
+    }
+    renderTable();
+    renderRunSummary();
+    return true;
+  }
+
   async function lockRun() {
     if (!currentRun) {
       await createNewRun();
@@ -1829,7 +1872,10 @@ document.addEventListener("DOMContentLoaded", () => {
     .then(() => loadPayrollCalendarSettings())
     .then(() => loadFilterOptions())
     .then(() => updateCutoffOptions())
-    .then(() => loadLatestDraftForSelection())
+    .then(async () => {
+      const loadedFromQuery = await loadRunFromQuery();
+      if (!loadedFromQuery) await loadLatestDraftForSelection();
+    })
     .then(() => renderRuns())
     .catch(err => alert(err.message || "Failed to initialize payroll processing."));
 });

@@ -324,7 +324,7 @@
                             </thead>
                             <tbody>
                                 @foreach ($needsReviewRows as $e)
-                                    <tr>
+                                    <tr data-employee-id="{{ (int) ($e['employee_id'] ?? 0) }}">
                                         <td>{{ $e['emp_no'] }}</td>
                                         <td>{{ $e['name'] }}</td>
                                         <td>{{ $e['area_place'] ?: '—' }}</td>
@@ -395,7 +395,7 @@
                         </thead>
                         <tbody>
                             @forelse($employees as $e)
-                                <tr>
+                                <tr data-employee-id="{{ (int) ($e['employee_id'] ?? 0) }}">
                                     <td>{{ $e['emp_no'] }}</td>
                                     <td>{{ $e['name'] }}</td>
                                     <td>{{ $e['assignment_type'] ?: '—' }}</td>

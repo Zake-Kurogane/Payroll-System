@@ -23,6 +23,33 @@ document.addEventListener("DOMContentLoaded", () => {
   initProfileDrawer();
   initSettingsSync();
 
+  const focusEmployeeFromQuery = () => {
+    let employeeId = 0;
+    try {
+      const url = new URL(window.location.href);
+      employeeId = Number(url.searchParams.get("employee_id") || 0);
+    } catch {
+      employeeId = 0;
+    }
+    if (!Number.isFinite(employeeId) || employeeId <= 0) return;
+
+    const primaryRow = document.querySelector(
+      `.table[aria-label="Employees claim status table"] tbody tr[data-employee-id="${employeeId}"]`
+    );
+    const fallbackRow = document.querySelector(`tr[data-employee-id="${employeeId}"]`);
+    const targetRow = primaryRow || fallbackRow;
+    if (!targetRow) return;
+
+    targetRow.classList.add("claimRow--focus");
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    targetRow.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+    window.setTimeout(() => targetRow.classList.remove("claimRow--focus"), 4000);
+  };
+
   const assignSeg = document.getElementById("assignSeg");
   const assignInput = document.getElementById("assignmentInput");
   const areaPlaceInput = document.getElementById("areaPlaceInput");
@@ -252,6 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("resize", refreshOpenDropdownPosition);
     contentScroller?.addEventListener("scroll", refreshOpenDropdownPosition, { passive: true });
   }
+
+  window.setTimeout(focusEmployeeFromQuery, 80);
 
   const printBtn = document.getElementById("printClaimSheetBtn");
   if (printBtn) {

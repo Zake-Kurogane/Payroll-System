@@ -534,7 +534,7 @@ class DashboardController extends Controller
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($r->created_at)?->toIso8601String(),
                 'ts' => optional($r->created_at)?->timestamp ?? 0,
-                'target_url' => url('/payroll-processing'),
+                'target_url' => url('/payroll-processing') . '?run_id=' . $r->id,
             ]);
         }
 
@@ -558,22 +558,38 @@ class DashboardController extends Controller
         }
 
         $claims = PayslipClaim::query()
+            ->leftJoin('employees as e', 'e.id', '=', 'payslip_claims.employee_id')
             ->whereIn('claimed_by_user_id', $roleUserIds)
             ->whereNotNull('claimed_at')
-            ->orderByDesc('claimed_at')
+            ->orderByDesc('payslip_claims.claimed_at')
             ->limit(40)
-            ->get(['id', 'payroll_run_id', 'claimed_by_user_id', 'employee_id', 'claimed_at']);
+            ->get([
+                'payslip_claims.id',
+                'payslip_claims.payroll_run_id',
+                'payslip_claims.claimed_by_user_id',
+                'payslip_claims.employee_id',
+                'payslip_claims.claimed_at',
+                'e.emp_no as employee_emp_no',
+            ]);
         foreach ($claims as $c) {
             $u = $roleUsers->get((int) $c->claimed_by_user_id);
+            $claimTargetParams = [];
+            if ($c->payroll_run_id) {
+                $claimTargetParams['run_id'] = (int) $c->payroll_run_id;
+            }
+            if ($c->employee_id) {
+                $claimTargetParams['employee_id'] = (int) $c->employee_id;
+            }
             $items->push([
                 'type' => 'payslip_claim_confirmed',
                 'title' => 'Confirmed payslip claim',
-                'description' => 'Employee ID: ' . (string) ($c->employee_id ?: '-'),
+                'description' => 'Employee ID: ' . (string) ($c->employee_emp_no ?: $c->employee_id ?: '-'),
                 'actor_name' => $u?->name ?: 'Unknown',
                 'actor_role' => strtoupper((string) ($u?->role ?: '')),
                 'occurred_at' => optional($c->claimed_at)?->toIso8601String(),
                 'ts' => optional($c->claimed_at)?->timestamp ?? 0,
-                'target_url' => $c->payroll_run_id ? (url('/payslip-claims') . '?run_id=' . $c->payroll_run_id) : url('/payslip-claims'),
+                'target_url' => url('/payslip-claims')
+                    . (!empty($claimTargetParams) ? ('?' . http_build_query($claimTargetParams)) : ''),
             ]);
         }
 
