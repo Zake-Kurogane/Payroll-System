@@ -124,22 +124,28 @@
 #recentActivityList {
     max-height: 268px;
     overflow-y: auto;
+    overflow-x: hidden;
     padding-right: 4px;
 }
 
 #recentActivityList .todo__item {
+    display: block;
+    min-width: 0;
     align-items: flex-start;
-    gap: 6px;
-    padding: 6px 2px;
+    gap: 4px;
+    padding: 4px 0;
 }
 
 #recentActivityList .todo__item--link {
     display: block;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
     text-decoration: none;
     color: inherit;
     border-radius: 10px;
-    padding: 8px 8px;
-    margin: 0 -6px;
+    padding: 6px 6px;
+    margin: 0;
 }
 
 #recentActivityList .todo__item--link:hover {
@@ -152,6 +158,19 @@
 }
 
 #recentActivityList .todo__name {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+#recentActivityList .todo__meta,
+#recentActivityList .todo__sub {
+    font-size: 11px;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }

@@ -123,6 +123,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const allSssCompanyTables = $("allSssCompanyTables");
   const allPhilhealthCompanyTables = $("allPhilhealthCompanyTables");
   const allPagibigCompanyTables = $("allPagibigCompanyTables");
+  const allStatutorySections = $("allStatutorySections");
+  const allLoansTypeTables = $("allLoansTypeTables");
+  const allLoansSection = $("allLoansSection");
   const allFieldAreasTbody = $("allFieldAreasTbody");
   const allFieldAreasTotalsTbody = $("allFieldAreasTotalsTbody");
   const allCompanyPayslipsTbody = $("allCompanyPayslipsTbody");
@@ -134,6 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sssCompanyTables = $("sssCompanyTables");
   const philhealthCompanyTables = $("philhealthCompanyTables");
   const pagibigCompanyTables = $("pagibigCompanyTables");
+  const loansTypeTables = $("loansTypeTables");
   const fieldAreasTbody = $("fieldAreasTbody");
   const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
@@ -155,6 +159,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let sortKey = "empName";
   let sortDir = "asc"; // asc/desc
   let activeTab = "all";
+  let showStatutoryReports = true;
+  let showLoanReports = true;
   let FIELD_AREA_ALLOC = null;
   let floatingRegisterScroll = null;
   let floatingRegisterInner = null;
@@ -395,6 +401,12 @@ document.addEventListener("DOMContentLoaded", () => {
       netPay: Number(row.net_pay || 0),
       payMethod: row.pay_method || row.payout_method || "",
       payslipStatus: row.payslip_status || "-",
+      loanItems: Array.isArray(row.loan_items)
+        ? row.loan_items.map((item) => ({
+          loanType: String(item?.loan_type || "Loan"),
+          deductedAmount: Number(item?.deducted_amount || 0),
+        }))
+        : [],
     };
   }
 
@@ -653,17 +665,43 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderBreakdown(rows) {
     if (!bdTbody) return;
 
-    const totals = [
-      ["Attendance Deductions", rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
-      ["Other Deductions", rows.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
-      ["SSS (EE)", rows.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
-      ["PhilHealth (EE)", rows.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
-      ["Pag-IBIG (EE)", rows.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
-      ["Withholding Tax", rows.reduce((a, r) => a + Number(r.tax || 0), 0)],
-      ["SSS (ER)", rows.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
-      ["PhilHealth (ER)", rows.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
-      ["Pag-IBIG (ER)", rows.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
-    ];
+    const selectedRun = getRun(selectedRunId);
+    const runCutoff = normalizeCutoffValue(selectedRun?.cutoff || "");
+    const isFirstCutoff = runCutoff === "26-10";
+    const isSecondCutoff = runCutoff === "11-25";
+    const statutoryTotal = rows.reduce(
+      (a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0),
+      0
+    );
+    const loanTotal = rows.reduce((a, r) => a + Number(r.loanDeduction || 0) + Number(r.cashAdvanceDeduction || 0), 0);
+    const hasStatutory = statutoryTotal > 0;
+    const hasLoans = loanTotal > 0;
+
+    let mode = "statutory";
+    if (hasLoans && !hasStatutory) mode = "loan";
+    else if (hasStatutory && !hasLoans) mode = "statutory";
+    else if (isSecondCutoff) mode = "loan";
+    else if (isFirstCutoff) mode = "statutory";
+    else if (hasLoans) mode = "loan";
+
+    const totals = mode === "loan"
+      ? [
+        ["Attendance Deductions", rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+        ["Loans", rows.reduce((a, r) => a + Number(r.loanDeduction || 0), 0)],
+        ["Cash Advance", rows.reduce((a, r) => a + Number(r.cashAdvanceDeduction || 0), 0)],
+        ["Charges", rows.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0)],
+        ["Other Deductions", rows.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
+      ]
+      : [
+        ["Attendance Deductions", rows.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+        ["SSS (EE)", rows.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
+        ["PhilHealth (EE)", rows.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
+        ["Pag-IBIG (EE)", rows.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
+        ["Withholding Tax", rows.reduce((a, r) => a + Number(r.tax || 0), 0)],
+        ["SSS (ER)", rows.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
+        ["PhilHealth (ER)", rows.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
+        ["Pag-IBIG (ER)", rows.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
+      ];
 
     bdTbody.innerHTML = totals
       .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td class="num"><strong>${escapeHtml(peso(v))}</strong></td></tr>`)
@@ -770,6 +808,145 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
+  function loanCategoryFromType(loanType) {
+    const t = normalize(loanType);
+    if (t.includes("sss")) return { group: "SSS Loans", type: "SSS" };
+    if (t.includes("pag-ibig") || t.includes("pagibig") || t.includes("hdmf")) {
+      return { group: "Pag-IBIG Loans", type: "Pag-IBIG" };
+    }
+    return { group: "Other Loans", type: "Other" };
+  }
+
+  function buildLoanRows(rows) {
+    const out = [];
+    rows.forEach((r) => {
+      const items = Array.isArray(r.loanItems) ? r.loanItems : [];
+      items.forEach((item) => {
+        const amount = Number(item.deductedAmount || 0);
+        if (amount <= 0) return;
+        const loanName = String(item.loanType || "Loan").trim() || "Loan";
+        const meta = loanCategoryFromType(loanName);
+        out.push({
+          group: meta.group,
+          type: meta.type,
+          loanName,
+          empName: r.empName || "-",
+          amount,
+        });
+      });
+    });
+
+    const groupOrder = new Map([
+      ["SSS Loans", 0],
+      ["Pag-IBIG Loans", 1],
+      ["Other Loans", 2],
+    ]);
+
+    return out.sort((a, b) => {
+      const g = (groupOrder.get(a.group) ?? 99) - (groupOrder.get(b.group) ?? 99);
+      if (g !== 0) return g;
+      const t = a.loanName.localeCompare(b.loanName);
+      if (t !== 0) return t;
+      return String(a.empName || "").localeCompare(String(b.empName || ""));
+    });
+  }
+
+  function renderLoanTables(container, rows) {
+    if (!container) return;
+    container.innerHTML = "";
+
+    const list = buildLoanRows(rows);
+    if (!list.length) {
+      const wrap = document.createElement("div");
+      wrap.className = "tablewrap";
+      wrap.innerHTML = `
+        <table class="table" aria-label="Loans report table">
+          <tbody>
+            <tr><td colspan="4" class="muted small">No loan rows found.</td></tr>
+          </tbody>
+        </table>
+      `;
+      container.appendChild(wrap);
+      return;
+    }
+
+    const groups = groupBy(list, (r) => r.group || "Other Loans");
+    const groupOrder = new Map([
+      ["SSS Loans", 0],
+      ["Pag-IBIG Loans", 1],
+      ["Other Loans", 2],
+    ]);
+    Array.from(groups.keys())
+      .sort((a, b) => (groupOrder.get(a) ?? 99) - (groupOrder.get(b) ?? 99))
+      .forEach((groupName) => {
+        const groupSection = document.createElement("section");
+        groupSection.className = "premiumCompanyBlock";
+
+        const groupTitle = document.createElement("div");
+        groupTitle.className = "premiumCompanyHeading";
+        groupTitle.textContent = groupName;
+        groupSection.appendChild(groupTitle);
+
+        const byLoanType = groupBy(groups.get(groupName) || [], (r) => r.loanName || "Loan");
+        Array.from(byLoanType.keys())
+          .sort((a, b) => a.localeCompare(b))
+          .forEach((loanTypeName) => {
+            const typeItems = byLoanType.get(loanTypeName) || [];
+            if (!typeItems.length) return;
+
+            const typeTitle = document.createElement("div");
+            typeTitle.className = "muted small";
+            typeTitle.style.marginTop = "12px";
+            typeTitle.textContent = loanTypeName;
+            groupSection.appendChild(typeTitle);
+
+            const wrap = document.createElement("div");
+            wrap.className = "tablewrap mt12";
+            wrap.innerHTML = `
+              <table class="table" aria-label="${escapeHtml(loanTypeName)} loans report table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Loan Name</th>
+                    <th>Type</th>
+                    <th class="num">Contribution Amount</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            `;
+
+            const tbody = wrap.querySelector("tbody");
+            let total = 0;
+            typeItems.forEach((item) => {
+              total += Number(item.amount || 0);
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td>${escapeHtml(item.empName)}</td>
+                <td>${escapeHtml(item.loanName)}</td>
+                <td>${escapeHtml(item.type)}</td>
+                <td class="num">${escapeHtml(peso(item.amount))}</td>
+              `;
+              tbody && tbody.appendChild(tr);
+            });
+
+            const totalTr = document.createElement("tr");
+            totalTr.className = "row-total";
+            totalTr.innerHTML = `
+              <td><strong>TOTAL</strong></td>
+              <td></td>
+              <td></td>
+              <td class="num"><strong>${escapeHtml(peso(total))}</strong></td>
+            `;
+            tbody && tbody.appendChild(totalTr);
+
+            groupSection.appendChild(wrap);
+          });
+
+        container.appendChild(groupSection);
+      });
+  }
+
   function buildAllRows(rows) {
     const out = [];
     rows.forEach((r) => {
@@ -829,6 +1006,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderPremiumCompanyTables(allSssCompanyTables, rows, "sss");
     renderPremiumCompanyTables(allPhilhealthCompanyTables, rows, "philhealth");
     renderPremiumCompanyTables(allPagibigCompanyTables, rows, "pagibig");
+    renderLoanTables(allLoansTypeTables, rows);
     copyRows(fieldAreasTbody, allFieldAreasTbody);
     copyRows(fieldAreasTotalsTbody, allFieldAreasTotalsTbody);
     copyRows(companyPayslipsTbody, allCompanyPayslipsTbody);
@@ -930,6 +1108,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderPagibig(rows) {
     renderPremiumCompanyTables(pagibigCompanyTables, rows, "pagibig");
+  }
+  function renderLoans(rows) {
+    renderLoanTables(loansTypeTables, rows);
   }
   function renderCompanyPayslips(rows) {
     if (!companyPayslipsTbody) return;
@@ -1168,6 +1349,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // MAIN RENDER
   // =========================================================
   function renderAll() {
+    syncCutoffReportVisibility();
+
     // If no run selected, show empty based on filters (but KPIs can still show)
     const filtered = applyFilters(REGISTER);
     const sorted = applySorting(filtered);
@@ -1178,6 +1361,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSss(sorted);
     renderPhilHealth(sorted);
     renderPagibig(sorted);
+    renderLoans(sorted);
     renderFieldAreaAllocations(FIELD_AREA_ALLOC);
     renderCompanyPayslips(sorted);
     renderOverall(sorted);
@@ -1192,6 +1376,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // TABS
   // =========================================================
   function setActiveTab(tab) {
+    if (["sss", "philhealth", "pagibig"].includes(tab) && !showStatutoryReports) tab = "all";
+    if (tab === "loans" && !showLoanReports) tab = "all";
+
     activeTab = tab;
 
     tabBtns.forEach((b) => {
@@ -1200,7 +1387,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["all", "register", "breakdown", "sss", "philhealth", "pagibig", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["all", "register", "breakdown", "sss", "philhealth", "pagibig", "loans", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -1208,6 +1395,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
     refreshFloatingRegisterScrollbar();
     refreshFloatingAllRegisterScrollbar();
+  }
+
+  function setTabButtonVisible(key, visible) {
+    const btn = tabBtns.find((b) => b.dataset.tab === key);
+    if (!btn) return;
+    btn.style.display = visible ? "" : "none";
+    btn.hidden = !visible;
+  }
+
+  function syncCutoffReportVisibility() {
+    const selectedRun = getRun(selectedRunId);
+    const selectedRunCutoff = normalizeCutoffValue(selectedRun?.cutoff || "");
+    const filterCutoff = normalizeCutoffValue(cutoffSelect?.value || "");
+    const effectiveCutoff = selectedRunCutoff || filterCutoff;
+
+    if (effectiveCutoff === "26-10") {
+      showStatutoryReports = true;
+      showLoanReports = false;
+    } else if (effectiveCutoff === "11-25") {
+      showStatutoryReports = false;
+      showLoanReports = true;
+    } else {
+      showStatutoryReports = true;
+      showLoanReports = true;
+    }
+
+    ["sss", "philhealth", "pagibig"].forEach((key) => setTabButtonVisible(key, showStatutoryReports));
+    setTabButtonVisible("loans", showLoanReports);
+
+    if (allStatutorySections) allStatutorySections.style.display = showStatutoryReports ? "" : "none";
+    if (allLoansSection) allLoansSection.style.display = showLoanReports ? "" : "none";
+
+    if (!showStatutoryReports && ["sss", "philhealth", "pagibig"].includes(activeTab)) activeTab = "all";
+    if (!showLoanReports && activeTab === "loans") activeTab = "all";
   }
 
   tabBtns.forEach((b) => {
@@ -1490,17 +1711,43 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const aoaForBreakdown = (list) => {
-      const totals = [
-        ["Attendance Deductions", list.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
-        ["Other Deductions", list.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
-        ["SSS (EE)", list.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
-        ["PhilHealth (EE)", list.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
-        ["Pag-IBIG (EE)", list.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
-        ["Withholding Tax", list.reduce((a, r) => a + Number(r.tax || 0), 0)],
-        ["SSS (ER)", list.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
-        ["PhilHealth (ER)", list.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
-        ["Pag-IBIG (ER)", list.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
-      ];
+      const selectedRun = getRun(selectedRunId);
+      const runCutoff = normalizeCutoffValue(selectedRun?.cutoff || "");
+      const isFirstCutoff = runCutoff === "26-10";
+      const isSecondCutoff = runCutoff === "11-25";
+      const statutoryTotal = list.reduce(
+        (a, r) => a + Number(r.sssEe || 0) + Number(r.philhealthEe || 0) + Number(r.pagibigEe || 0),
+        0
+      );
+      const loanTotal = list.reduce((a, r) => a + Number(r.loanDeduction || 0) + Number(r.cashAdvanceDeduction || 0), 0);
+      const hasStatutory = statutoryTotal > 0;
+      const hasLoans = loanTotal > 0;
+
+      let mode = "statutory";
+      if (hasLoans && !hasStatutory) mode = "loan";
+      else if (hasStatutory && !hasLoans) mode = "statutory";
+      else if (isSecondCutoff) mode = "loan";
+      else if (isFirstCutoff) mode = "statutory";
+      else if (hasLoans) mode = "loan";
+
+      const totals = mode === "loan"
+        ? [
+          ["Attendance Deductions", list.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+          ["Loans", list.reduce((a, r) => a + Number(r.loanDeduction || 0), 0)],
+          ["Cash Advance", list.reduce((a, r) => a + Number(r.cashAdvanceDeduction || 0), 0)],
+          ["Charges", list.reduce((a, r) => a + Number(r.chargesDeduction || 0), 0)],
+          ["Other Deductions", list.reduce((a, r) => a + Number(r.otherDeductions || 0), 0)],
+        ]
+        : [
+          ["Attendance Deductions", list.reduce((a, r) => a + Number(r.attendanceDeduction || 0), 0)],
+          ["SSS (EE)", list.reduce((a, r) => a + Number(r.sssEe || 0), 0)],
+          ["PhilHealth (EE)", list.reduce((a, r) => a + Number(r.philhealthEe || 0), 0)],
+          ["Pag-IBIG (EE)", list.reduce((a, r) => a + Number(r.pagibigEe || 0), 0)],
+          ["Withholding Tax", list.reduce((a, r) => a + Number(r.tax || 0), 0)],
+          ["SSS (ER)", list.reduce((a, r) => a + Number(r.sssEr || 0), 0)],
+          ["PhilHealth (ER)", list.reduce((a, r) => a + Number(r.philhealthEr || 0), 0)],
+          ["Pag-IBIG (ER)", list.reduce((a, r) => a + Number(r.pagibigEr || 0), 0)],
+        ];
       return [["Item", "Amount"], ...totals];
     };
 
@@ -1508,6 +1755,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const rowsPremium = buildPremiumRows(list, kind);
       const headers = ["External Company", "Employee", "EE", "ER", "Total"];
       const body = rowsPremium.map((r) => [r.company, r.empName, r.ee, r.er, r.total]);
+      return [headers, ...body];
+    };
+
+    const aoaForLoans = (list) => {
+      const loanRows = buildLoanRows(list);
+      const headers = ["Name", "Loan Name", "Type", "Contribution Amount"];
+      const body = loanRows.map((r) => [r.empName, r.loanName, r.type, r.amount]);
       return [headers, ...body];
     };
 
@@ -1603,14 +1857,20 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const wb = xlsx.utils.book_new();
+    syncCutoffReportVisibility();
 
     if (activeTab === "all") {
       appendSheet(wb, "All", aoaForAll(rows));
       appendSheet(wb, "Payroll Register", aoaForRegister(rows));
       appendSheet(wb, "Deductions", aoaForBreakdown(rows));
-      appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
-      appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
-      appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
+      if (showStatutoryReports) {
+        appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
+        appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
+        appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
+      }
+      if (showLoanReports) {
+        appendSheet(wb, "Loans", aoaForLoans(rows));
+      }
       appendSheet(wb, "Company Payslips", aoaForCompanyPayslips(rows));
       appendSheet(wb, "Overall", aoaForOverall(rows));
       appendSheet(wb, "Issues", aoaForIssues(rows));
@@ -1623,12 +1883,14 @@ document.addEventListener("DOMContentLoaded", () => {
       appendSheet(wb, "Overall", aoaForOverall(rows));
     } else if (activeTab === "breakdown") {
       appendSheet(wb, "Deductions", aoaForBreakdown(rows));
-    } else if (activeTab === "sss") {
+    } else if (activeTab === "sss" && showStatutoryReports) {
       appendSheet(wb, "SSS", aoaForPremium(rows, "sss"));
-    } else if (activeTab === "philhealth") {
+    } else if (activeTab === "philhealth" && showStatutoryReports) {
       appendSheet(wb, "PhilHealth", aoaForPremium(rows, "philhealth"));
-    } else if (activeTab === "pagibig") {
+    } else if (activeTab === "pagibig" && showStatutoryReports) {
       appendSheet(wb, "Pag-IBIG", aoaForPremium(rows, "pagibig"));
+    } else if (activeTab === "loans" && showLoanReports) {
+      appendSheet(wb, "Loans", aoaForLoans(rows));
     } else if (activeTab === "issues") {
       appendSheet(wb, "Issues", aoaForIssues(rows));
     } else {

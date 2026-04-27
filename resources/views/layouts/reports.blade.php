@@ -102,6 +102,7 @@
                     <button class="tabBtn" type="button" data-tab="sss" aria-selected="false">SSS</button>
                     <button class="tabBtn" type="button" data-tab="philhealth" aria-selected="false">PhilHealth</button>
                     <button class="tabBtn" type="button" data-tab="pagibig" aria-selected="false">Pag-IBIG</button>
+                    <button class="tabBtn" type="button" data-tab="loans" aria-selected="false">Loans</button>
                     <button class="tabBtn" type="button" data-tab="fieldAreas" aria-selected="false">Field
                         Areas</button>
                     <button class="tabBtn" type="button" data-tab="companyPayslips" aria-selected="false">Company
@@ -122,146 +123,179 @@
                 <div class="card__title big">All Reports</div>
                 <div class="muted small">Complete stacked view of all report tables.</div>
 
-                <div class="card__title allReportsSectionTitle">Tab 1: Payroll Register</div>
-                <div class="allReportsPill allReportsPill--scroll">
-                    <div class="tablewrap mt12" id="allRegTableWrap">
-                        <table class="table" aria-label="All payroll register table">
-                            <thead>
-                                <tr>
-                                    <th>Emp ID</th>
-                                    <th>Employee</th>
-                                    <th>Assignment</th>
-                                    <th>Attendance (P/A/L)</th>
-                                    <th class="num">Daily Rate</th>
-                                    <th class="num">Attendance Pay</th>
-                                    <th class="num">Total Deductions</th>
-                                    <th class="num">Gross</th>
-                                    <th class="num">Net</th>
-                                    <th>Payslip Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allRegTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 1: Payroll Register</summary>
+                    <div class="allReportsPill allReportsPill--scroll">
+                        <div class="tablewrap mt12" id="allRegTableWrap">
+                            <table class="table" aria-label="All payroll register table">
+                                <thead>
+                                    <tr>
+                                        <th>Emp ID</th>
+                                        <th>Employee</th>
+                                        <th>Assignment</th>
+                                        <th>Attendance (P/A/L)</th>
+                                        <th class="num">Daily Rate</th>
+                                        <th class="num">Attendance Pay</th>
+                                        <th class="num">Total Deductions</th>
+                                        <th class="num">Gross</th>
+                                        <th class="num">Net</th>
+                                        <th>Payslip Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allRegTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 2: Deductions & Contributions</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All deductions and contributions table">
-                            <thead>
-                                <tr>
-                                    <th>Category</th>
-                                    <th class="num">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allBdTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 2: Deductions & Contributions</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All deductions and contributions table">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th class="num">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allBdTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
+                </details>
+
+                <div id="allStatutorySections">
+                    <details class="allReportsAccordion">
+                        <summary class="card__title allReportsSectionTitle">Tab 3: SSS</summary>
+                        <div class="allReportsPill allReportsPill--compact">
+                            <div id="allSssCompanyTables" class="premiumCompanyTables mt12"></div>
+                        </div>
+                    </details>
+
+                    <details class="allReportsAccordion">
+                        <summary class="card__title allReportsSectionTitle">Tab 4: PhilHealth</summary>
+                        <div class="allReportsPill allReportsPill--compact">
+                            <div id="allPhilhealthCompanyTables" class="premiumCompanyTables mt12"></div>
+                        </div>
+                    </details>
+
+                    <details class="allReportsAccordion">
+                        <summary class="card__title allReportsSectionTitle">Tab 5: Pag-IBIG</summary>
+                        <div class="allReportsPill allReportsPill--compact">
+                            <div id="allPagibigCompanyTables" class="premiumCompanyTables mt12"></div>
+                        </div>
+                    </details>
                 </div>
 
-                <div class="card__title allReportsSectionTitle">Tab 3: SSS</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div id="allSssCompanyTables" class="premiumCompanyTables mt12"></div>
+                <div id="allLoansSection">
+                    <details class="allReportsAccordion">
+                        <summary class="card__title allReportsSectionTitle">Tab 6: Loans</summary>
+                        <div class="allReportsPill allReportsPill--compact">
+                            <div id="allLoansTypeTables" class="premiumCompanyTables mt12"></div>
+                        </div>
+                    </details>
                 </div>
 
-                <div class="card__title allReportsSectionTitle">Tab 4: PhilHealth</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div id="allPhilhealthCompanyTables" class="premiumCompanyTables mt12"></div>
-                </div>
-
-                <div class="card__title allReportsSectionTitle">Tab 5: Pag-IBIG</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div id="allPagibigCompanyTables" class="premiumCompanyTables mt12"></div>
-                </div>
-
-                <div class="card__title allReportsSectionTitle">Tab 6: Field Area Allocations</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All field area allocations table">
-                            <tbody id="allFieldAreasTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 7: Field Area Allocations</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All field area allocations table">
+                                <tbody id="allFieldAreasTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 6.1: Field Area Totals</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All field area totals table">
-                            <thead>
-                                <tr>
-                                    <th>Area Place</th>
-                                    <th class="num">Paid Units</th>
-                                    <th class="num">Allocated Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allFieldAreasTotalsTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 7.1: Field Area Totals</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All field area totals table">
+                                <thead>
+                                    <tr>
+                                        <th>Area Place</th>
+                                        <th class="num">Paid Units</th>
+                                        <th class="num">Allocated Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allFieldAreasTotalsTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 7: Company Payslips</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All company payslips table">
-                            <tbody id="allCompanyPayslipsTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 8: Company Payslips</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All company payslips table">
+                                <tbody id="allCompanyPayslipsTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 8: Overall Summary</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All overall summary table">
-                            <thead>
-                                <tr>
-                                    <th>Metric</th>
-                                    <th class="num">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allOverallTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 9: Overall Summary</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All overall summary table">
+                                <thead>
+                                    <tr>
+                                        <th>Metric</th>
+                                        <th class="num">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allOverallTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 9: Payslip Release Log</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All audit log table">
-                            <thead>
-                                <tr>
-                                    <th>Run ID</th>
-                                    <th>Period</th>
-                                    <th>Status</th>
-                                    <th class="num">Employees</th>
-                                    <th class="num">Total Net</th>
-                                    <th>Processed At</th>
-                                    <th>Processed By</th>
-                                    <th>Payslips Generated</th>
-                                    <th>Released At</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allAuditTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 10: Payslip Release Log</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All audit log table">
+                                <thead>
+                                    <tr>
+                                        <th>Run ID</th>
+                                        <th>Period</th>
+                                        <th>Status</th>
+                                        <th class="num">Employees</th>
+                                        <th class="num">Total Net</th>
+                                        <th>Processed At</th>
+                                        <th>Processed By</th>
+                                        <th>Payslips Generated</th>
+                                        <th>Released At</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allAuditTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="card__title allReportsSectionTitle">Tab 10: Exceptions / Issues</div>
-                <div class="allReportsPill allReportsPill--compact">
-                    <div class="tablewrap mt12">
-                        <table class="table" aria-label="All issues table">
-                            <thead>
-                                <tr>
-                                    <th>Emp ID</th>
-                                    <th>Employee</th>
-                                    <th>Issue</th>
-                                    <th>Severity</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allIssuesTbody"></tbody>
-                        </table>
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 11: Exceptions / Issues</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All issues table">
+                                <thead>
+                                    <tr>
+                                        <th>Emp ID</th>
+                                        <th>Employee</th>
+                                        <th>Issue</th>
+                                        <th>Severity</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allIssuesTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                </details>
             </div>
 
             <!-- TAB: Payroll Register -->
@@ -336,6 +370,13 @@
                 <div class="card__title big">Pag-IBIG Report</div>
                 <div class="muted small">Grouped by external company. Includes employee EE and ER shares.</div>
                 <div id="pagibigCompanyTables" class="premiumCompanyTables mt12"></div>
+            </div>
+
+            <!-- TAB: Loans -->
+            <div class="tabPane" id="tab-loans" hidden>
+                <div class="card__title big">Loans Report</div>
+                <div class="muted small">Separated by SSS Loans and Pag-IBIG Loans, then by loan type.</div>
+                <div id="loansTypeTables" class="premiumCompanyTables mt12"></div>
             </div>
 
             <!-- TAB: Field Area Allocations -->
