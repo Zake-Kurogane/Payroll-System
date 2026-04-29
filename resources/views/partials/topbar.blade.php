@@ -1,3 +1,8 @@
+@php
+    $notifications = $topbarNotifications ?? [];
+    $notificationCount = count($notifications);
+@endphp
+
 <header class="top">
     <div>
         <div class="top__title">WELCOME</div>
@@ -15,6 +20,37 @@
     </div>
 
     <div class="top__right">
+        <div class="notif-menu">
+            <button class="notif-btn" type="button" id="notifMenuBtn" aria-haspopup="true" aria-expanded="false"
+                aria-label="Notifications">
+                <svg viewBox="0 0 24 24" class="ico" aria-hidden="true">
+                    <path
+                        d="M12 22a2.4 2.4 0 0 0 2.35-2h-4.7A2.4 2.4 0 0 0 12 22Zm7-6V11a7 7 0 1 0-14 0v5l-2 2v1h18v-1l-2-2Z" />
+                </svg>
+                <span class="notif-btn__badge">{{ $notificationCount }}</span>
+            </button>
+
+            <div class="notif-dropdown" id="notifMenu" role="menu" aria-labelledby="notifMenuBtn">
+                <div class="notif-dropdown__header">Notifications</div>
+                @forelse ($notifications as $notification)
+                    @php
+                        $notifKey = md5(($notification['message'] ?? '') . '|' . ($notification['target_url'] ?? ''));
+                    @endphp
+                    <a href="{{ $notification['target_url'] ?? '#' }}"
+                        class="notif-dropdown__item notif-dropdown__item--active"
+                        data-notif-key="{{ $notifKey }}"
+                        role="menuitem"
+                        @if (empty($notification['target_url'])) aria-disabled="true" @endif>
+                        {{ $notification['message'] ?? '' }}
+                    </a>
+                @empty
+                    <div class="notif-dropdown__item notif-dropdown__item--empty" role="menuitem">
+                        No new notifications.
+                    </div>
+                @endforelse
+            </div>
+        </div>
+
         <div class="user-menu">
             <button class="pill-user" type="button" id="userMenuBtn" aria-haspopup="true"
                 aria-expanded="false">
@@ -75,3 +111,112 @@
         </div>
     </div>
 </header>
+
+<style>
+    .top__right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .notif-menu {
+        position: relative;
+    }
+
+    .notif-btn {
+        position: relative;
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+    }
+
+    .notif-btn .ico {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+    }
+
+    .notif-btn__badge {
+        position: absolute;
+        top: -4px;
+        right: -2px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+    }
+
+    .notif-dropdown {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 10px);
+        width: min(420px, 90vw);
+        max-height: 420px;
+        overflow: auto;
+        background: #fff;
+        border: 1px solid rgba(17, 24, 39, 0.12);
+        border-radius: 14px;
+        box-shadow: 0 18px 28px rgba(17, 24, 39, 0.14);
+        padding: 8px;
+        display: none;
+        z-index: 9999;
+    }
+
+    .notif-dropdown.is-open {
+        display: block;
+    }
+
+    .notif-dropdown__header {
+        font-size: 12px;
+        font-weight: 800;
+        color: #6b7280;
+        padding: 6px 8px 10px;
+        border-bottom: 1px solid rgba(17, 24, 39, 0.1);
+        margin-bottom: 4px;
+    }
+
+    .notif-dropdown__item {
+        display: block;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        line-height: 1.35;
+        font-weight: 700;
+        color: #111827;
+        text-decoration: none;
+        background: rgba(107, 114, 128, 0.1);
+        margin-bottom: 8px;
+    }
+
+    .notif-dropdown__item:hover {
+        filter: brightness(0.98);
+    }
+
+    .notif-dropdown__item--empty {
+        background: rgba(107, 114, 128, 0.08);
+        color: #6b7280;
+        margin-bottom: 0;
+    }
+
+    .notif-dropdown__item:last-child {
+        margin-bottom: 0;
+    }
+
+    .notif-dropdown__item--active {
+        background: rgba(156, 29, 60, 0.18);
+    }
+</style>

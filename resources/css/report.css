@@ -611,11 +611,12 @@ h1 {
 
 .allReportsAccordion > summary {
     list-style: none;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    pointer-events: none;
 }
 
 .allReportsAccordion > summary::-webkit-details-marker {
@@ -623,14 +624,11 @@ h1 {
 }
 
 .allReportsAccordion > summary::after {
-    content: "\25BE";
-    font-size: 12px;
-    color: var(--muted);
-    transition: transform 0.2s ease;
+    content: "";
 }
 
 .allReportsAccordion[open] > summary::after {
-    transform: rotate(180deg);
+    transform: none;
 }
 
 .allReportsPill {
@@ -639,6 +637,53 @@ h1 {
     border: 1px solid var(--line);
     border-radius: 20px;
     background: #fff;
+}
+
+.allReportsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.allReportsMasterToggle {
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(156, 29, 60, 0.28);
+    border-radius: 999px;
+    background: rgba(156, 29, 60, 0.12);
+    color: var(--maroon);
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.allReportsMasterToggle:hover {
+    transform: translateY(-1px);
+    background: rgba(156, 29, 60, 0.18);
+    box-shadow: 0 8px 16px rgba(17, 24, 39, 0.12);
+}
+
+.allReportsMasterToggle__chev {
+    display: inline-block;
+    font-size: 18px;
+    font-weight: 1000;
+    line-height: 1;
+    transition: transform 0.16s ease;
+}
+
+.allReportsMasterToggle[aria-expanded="false"] .allReportsMasterToggle__chev {
+    transform: rotate(-90deg);
+}
+
+#allReportsMasterContent[hidden] {
+    display: none;
+}
+
+#tab-all.allReportsCollapsed .allReportsAccordion > :not(summary) {
+    display: none;
 }
 
 .allReportsPill > .tablewrap,

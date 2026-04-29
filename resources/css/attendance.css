@@ -1195,7 +1195,7 @@ tbody tr:hover {
     gap: 12px;
 }
 #empDrawer .previewSummary {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 #empDrawer .sumCard {
     align-items: center;
@@ -1299,7 +1299,7 @@ tbody tr:hover {
 
 .tablewrap--preview {
     max-height: 360px;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
     padding-right: 12px;
 }
 .table--preview {
@@ -1380,10 +1380,74 @@ tbody tr:hover {
 #empDrawer .drawer__body {
     display: flex;
     flex-direction: column;
+    gap: 10px;
 }
 #empDrawer .tablewrap--preview {
-    flex: 1;
-    max-height: none;
+    flex: 0 0 auto;
+    max-height: 360px;
+    padding-right: 0;
+}
+#empDrawer .tablewrap--preview .table--preview {
+    width: 100%;
+    table-layout: fixed;
+}
+#empDrawer .tablewrap--preview .table--preview th,
+#empDrawer .tablewrap--preview .table--preview td {
+    text-align: left;
+}
+#empDrawer .tablewrap--preview .table--preview th:nth-child(1),
+#empDrawer .tablewrap--preview .table--preview td:nth-child(1) {
+    width: 30%;
+}
+#empDrawer .tablewrap--preview .table--preview th:nth-child(2),
+#empDrawer .tablewrap--preview .table--preview td:nth-child(2) {
+    width: 20%;
+}
+#empDrawer .tablewrap--preview .table--preview th:nth-child(3),
+#empDrawer .tablewrap--preview .table--preview td:nth-child(3) {
+    width: 17%;
+}
+#empDrawer .tablewrap--preview .table--preview th:nth-child(4),
+#empDrawer .tablewrap--preview .table--preview td:nth-child(4) {
+    width: 17%;
+}
+#empDrawer .tablewrap--preview .table--preview th:nth-child(5),
+#empDrawer .tablewrap--preview .table--preview td:nth-child(5) {
+    width: 16%;
+    text-align: right;
+    padding-right: 14px;
+}
+#empDrawer .tablewrap--preview .table--preview th:last-child,
+#empDrawer .tablewrap--preview .table--preview td:last-child {
+    border-right: none;
+    padding-right: 8px;
+}
+#empDrawer .tablewrap--preview .table--preview thead th:last-child {
+    padding-right: 8px;
+}
+#empDrawer .drawerFilters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+}
+#empDrawer .drawerFilters .f {
+    min-width: 0;
+}
+#empDrawer .sectionTitle {
+    margin-top: 0;
+}
+#empDrawer .empDrawerMeta {
+    display: grid;
+    gap: 3px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 700;
+}
+#empDrawer .empDrawerMeta strong {
+    color: var(--text);
+    font-weight: 900;
 }
 .col-rowno {
     width: 74px;

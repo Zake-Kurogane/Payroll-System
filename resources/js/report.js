@@ -129,9 +129,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const allFieldAreasTbody = $("allFieldAreasTbody");
   const allFieldAreasTotalsTbody = $("allFieldAreasTotalsTbody");
   const allCompanyPayslipsTbody = $("allCompanyPayslipsTbody");
+  const allAtmNetGrossTbody = $("allAtmNetGrossTbody");
+  const allNonAtmNetGrossTbody = $("allNonAtmNetGrossTbody");
   const allOverallTbody = $("allOverallTbody");
   const allAuditTbody = $("allAuditTbody");
   const allIssuesTbody = $("allIssuesTbody");
+  const tabAllPane = $("tab-all");
+  const allReportsMasterToggle = $("allReportsMasterToggle");
+  const allReportsAccordions = $$("#tab-all .allReportsAccordion");
   const regTbody = $("regTbody");
   const bdTbody = $("bdTbody");
   const sssCompanyTables = $("sssCompanyTables");
@@ -141,6 +146,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const fieldAreasTbody = $("fieldAreasTbody");
   const fieldAreasTotalsTbody = $("fieldAreasTotalsTbody");
   const companyPayslipsTbody = $("companyPayslipsTbody");
+  const atmNetGrossTbody = $("atmNetGrossTbody");
+  const nonAtmNetGrossTbody = $("nonAtmNetGrossTbody");
   const overallTbody = $("overallTbody");
   const auditTbody = $("auditTbody");
   const issuesTbody = $("issuesTbody");
@@ -452,6 +459,35 @@ document.addEventListener("DOMContentLoaded", () => {
     return normalize(run?.status || "") === "released";
   }
 
+  function initAllReportsMasterToggle() {
+    allReportsAccordions.forEach((section) => {
+      section.open = true;
+      const summary = section.querySelector("summary");
+      if (summary) {
+        summary.addEventListener("click", (e) => e.preventDefault());
+        summary.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") e.preventDefault();
+        });
+      }
+    });
+
+    if (!allReportsMasterToggle || !tabAllPane) return;
+
+    const setState = (expanded) => {
+      allReportsMasterToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+      allReportsMasterToggle.setAttribute("aria-label", expanded ? "Collapse all reports" : "Expand all reports");
+      tabAllPane.classList.toggle("allReportsCollapsed", !expanded);
+    };
+
+    // Default: collapsed (titles only), matching requested behavior.
+    setState(false);
+
+    allReportsMasterToggle.addEventListener("click", () => {
+      const expanded = allReportsMasterToggle.getAttribute("aria-expanded") === "true";
+      setState(!expanded);
+    });
+  }
+
   function runMatchesFilters(run) {
     const monthVal = monthInput?.value || "";
     const cutoffVal = cutoffSelect?.value || "All";
@@ -585,10 +621,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const ded = rows.reduce((a, r) => a + Number(r.deductionsEe || 0), 0);
     const net = rows.reduce((a, r) => a + Number(r.netPay || 0), 0);
     const er = rows.reduce((a, r) => a + Number(r.employerShare || 0), 0);
-    const isAtm = (r) => {
-      const method = normalize(r.payMethod || "");
-      return method === "bank" || method === "atm";
-    };
+    const isAtm = (r) => isAtmPayMethod(r.payMethod);
     const atmNetGross = rows
       .filter((r) => isAtm(r))
       .reduce((a, r) => a + Number(r.netPay || 0), 0);
@@ -780,6 +813,54 @@ document.addEventListener("DOMContentLoaded", () => {
     const external = String(r.externalArea || "").trim();
     if (external) return external;
     return companyLabel(r);
+  }
+
+  function isAtmPayMethod(value) {
+    const method = normalize(value || "");
+    return method === "bank" || method === "atm";
+  }
+
+  function renderNetGrossTable(rows, tbody, atmMode) {
+    if (!tbody) return;
+    const filtered = rows
+      .filter((r) => (atmMode ? isAtmPayMethod(r.payMethod) : !isAtmPayMethod(r.payMethod)))
+      .slice()
+      .sort((a, b) => {
+        const c = companyLabel(a).localeCompare(companyLabel(b));
+        if (c !== 0) return c;
+        return String(a.empName || "").localeCompare(String(b.empName || ""));
+      });
+
+    tbody.innerHTML = "";
+
+    if (!filtered.length) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="6" class="muted small">No rows found.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    filtered.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(companyLabel(r))}</td>
+        <td>${escapeHtml(r.empId)}</td>
+        <td>${escapeHtml(r.empName)}</td>
+        <td>${escapeHtml(assignmentText(r))}</td>
+        <td>${escapeHtml((r.payMethod || "-").toUpperCase())}</td>
+        <td class="num"><strong>${escapeHtml(peso(r.netPay || 0))}</strong></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const total = filtered.reduce((a, r) => a + Number(r.netPay || 0), 0);
+    const tr = document.createElement("tr");
+    tr.className = "row-total";
+    tr.innerHTML = `
+      <td colspan="5"><strong>TOTAL</strong></td>
+      <td class="num"><strong>${escapeHtml(peso(total))}</strong></td>
+    `;
+    tbody.appendChild(tr);
   }
 
   const PREMIUM_CONFIG = {
@@ -1010,6 +1091,8 @@ document.addEventListener("DOMContentLoaded", () => {
     copyRows(fieldAreasTbody, allFieldAreasTbody);
     copyRows(fieldAreasTotalsTbody, allFieldAreasTotalsTbody);
     copyRows(companyPayslipsTbody, allCompanyPayslipsTbody);
+    copyRows(atmNetGrossTbody, allAtmNetGrossTbody);
+    copyRows(nonAtmNetGrossTbody, allNonAtmNetGrossTbody);
     copyRows(overallTbody, allOverallTbody);
     copyRows(auditTbody, allAuditTbody);
     copyRows(issuesTbody, allIssuesTbody);
@@ -1364,6 +1447,8 @@ document.addEventListener("DOMContentLoaded", () => {
     renderLoans(sorted);
     renderFieldAreaAllocations(FIELD_AREA_ALLOC);
     renderCompanyPayslips(sorted);
+    renderNetGrossTable(sorted, atmNetGrossTbody, true);
+    renderNetGrossTable(sorted, nonAtmNetGrossTbody, false);
     renderOverall(sorted);
     renderAudit();
     renderIssues(sorted);
@@ -1387,7 +1472,7 @@ document.addEventListener("DOMContentLoaded", () => {
       b.setAttribute("aria-selected", isActive ? "true" : "false");
     });
 
-    ["all", "register", "breakdown", "sss", "philhealth", "pagibig", "loans", "fieldAreas", "companyPayslips", "overall", "audit", "issues"].forEach((k) => {
+    ["all", "register", "breakdown", "sss", "philhealth", "pagibig", "loans", "fieldAreas", "companyPayslips", "atmNetGross", "nonAtmNetGross", "overall", "audit", "issues"].forEach((k) => {
       const pane = $(`tab-${k}`);
       if (!pane) return;
       pane.hidden = k !== tab;
@@ -1810,6 +1895,27 @@ document.addEventListener("DOMContentLoaded", () => {
       return [headers, ...body];
     };
 
+    const aoaForNetGross = (list, atmMode) => {
+      const headers = ["Company", "Emp ID", "Employee", "Assignment", "Pay Method", "Net Gross"];
+      const body = list
+        .filter((r) => (atmMode ? isAtmPayMethod(r.payMethod) : !isAtmPayMethod(r.payMethod)))
+        .slice()
+        .sort((a, b) => {
+          const ca = companyLabel(a).localeCompare(companyLabel(b));
+          if (ca !== 0) return ca;
+          return String(a.empName || "").localeCompare(String(b.empName || ""));
+        })
+        .map((r) => [
+          companyLabel(r),
+          r.empId,
+          r.empName,
+          assignmentText(r),
+          (r.payMethod || "-").toUpperCase(),
+          Number(r.netPay || 0),
+        ]);
+      return [headers, ...body];
+    };
+
     const aoaForAudit = () => {
       const list = RUNS.filter(runMatchesFilters);
       const headers = ["Run ID", "Period", "Status", "Employees", "Total Net", "Processed At", "Processed By", "Payslips Generated", "Released At"];
@@ -1872,6 +1978,8 @@ document.addEventListener("DOMContentLoaded", () => {
         appendSheet(wb, "Loans", aoaForLoans(rows));
       }
       appendSheet(wb, "Company Payslips", aoaForCompanyPayslips(rows));
+      appendSheet(wb, "ATM Net Gross", aoaForNetGross(rows, true));
+      appendSheet(wb, "Non ATM Net Gross", aoaForNetGross(rows, false));
       appendSheet(wb, "Overall", aoaForOverall(rows));
       appendSheet(wb, "Issues", aoaForIssues(rows));
       appendSheet(wb, "Audit", aoaForAudit());
@@ -1879,6 +1987,10 @@ document.addEventListener("DOMContentLoaded", () => {
       appendSheet(wb, "Audit", aoaForAudit());
     } else if (activeTab === "companyPayslips") {
       appendSheet(wb, "Company Payslips", aoaForCompanyPayslips(rows));
+    } else if (activeTab === "atmNetGross") {
+      appendSheet(wb, "ATM Net Gross", aoaForNetGross(rows, true));
+    } else if (activeTab === "nonAtmNetGross") {
+      appendSheet(wb, "Non ATM Net Gross", aoaForNetGross(rows, false));
     } else if (activeTab === "overall") {
       appendSheet(wb, "Overall", aoaForOverall(rows));
     } else if (activeTab === "breakdown") {
@@ -1984,6 +2096,7 @@ document.addEventListener("DOMContentLoaded", () => {
   contentScroller && contentScroller.addEventListener("scroll", refreshFloatingAllRegisterScrollbar, { passive: true });
   setRunUI(null);
   setActiveTab("all");
+  initAllReportsMasterToggle();
   loadFilterOptions()
     .finally(() => loadRuns())
     .finally(renderAll);

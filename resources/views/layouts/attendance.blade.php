@@ -430,12 +430,13 @@
         <div class="drawer__head">
             <div>
                 <div class="drawer__title" id="empDrawerTitle">Employee Attendance</div>
-                <div class="drawer__sub muted small" id="empDrawerSub">—</div>
+                <div class="drawer__sub empDrawerMeta" id="empDrawerSub">-</div>
             </div>
             <button class="iconx" type="button" id="closeEmpDrawerBtn" aria-label="Close employee drawer">✕</button>
         </div>
 
         <div class="drawer__body">
+            <div class="sectionTitle">Filters</div>
             <div class="drawerFilters">
                 <div class="f">
                     <label>Month</label>
@@ -447,6 +448,7 @@
                 </div>
             </div>
 
+            <div class="sectionTitle">Summary</div>
             <div class="previewSummary">
                 <div class="sumCard">
                     <div class="sumVal" id="empSumTotal">0</div>
@@ -458,6 +460,7 @@
                 </div>
             </div>
 
+            <div class="sectionTitle">Records</div>
             <div class="tablewrap tablewrap--preview">
                 <table class="table table--preview" aria-label="Employee attendance details table">
                     <thead>

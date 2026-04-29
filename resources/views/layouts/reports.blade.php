@@ -107,6 +107,8 @@
                         Areas</button>
                     <button class="tabBtn" type="button" data-tab="companyPayslips" aria-selected="false">Company
                         Payslips</button>
+                    <button class="tabBtn" type="button" data-tab="atmNetGross" aria-selected="false">ATM Net Gross</button>
+                    <button class="tabBtn" type="button" data-tab="nonAtmNetGross" aria-selected="false">Non ATM Net Gross</button>
                     <button class="tabBtn" type="button" data-tab="overall" aria-selected="false">Overall
                         Summary</button>
                     <button class="tabBtn" type="button" data-tab="audit" aria-selected="false">Payslip
@@ -120,7 +122,13 @@
 
             <!-- TAB: All -->
             <div class="tabPane" id="tab-all">
-                <div class="card__title big">All Reports</div>
+                <div class="allReportsHeader">
+                    <div class="card__title big">All Reports</div>
+                    <button class="allReportsMasterToggle" type="button" id="allReportsMasterToggle" aria-expanded="true"
+                        aria-label="Collapse all reports">
+                        <span class="allReportsMasterToggle__chev" aria-hidden="true">▾</span>
+                    </button>
+                </div>
                 <div class="muted small">Complete stacked view of all report tables.</div>
 
                 <details class="allReportsAccordion">
@@ -232,6 +240,48 @@
                         <div class="tablewrap mt12">
                             <table class="table" aria-label="All company payslips table">
                                 <tbody id="allCompanyPayslipsTbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 8.1: ATM Net Gross</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All ATM net gross table">
+                                <thead>
+                                    <tr>
+                                        <th>Company</th>
+                                        <th>Emp ID</th>
+                                        <th>Employee</th>
+                                        <th>Assignment</th>
+                                        <th>Pay Method</th>
+                                        <th class="num">Net Gross</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allAtmNetGrossTbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="allReportsAccordion">
+                    <summary class="card__title allReportsSectionTitle">Tab 8.2: Non ATM Net Gross</summary>
+                    <div class="allReportsPill allReportsPill--compact">
+                        <div class="tablewrap mt12">
+                            <table class="table" aria-label="All non ATM net gross table">
+                                <thead>
+                                    <tr>
+                                        <th>Company</th>
+                                        <th>Emp ID</th>
+                                        <th>Employee</th>
+                                        <th>Assignment</th>
+                                        <th>Pay Method</th>
+                                        <th class="num">Net Gross</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allNonAtmNetGrossTbody"></tbody>
                             </table>
                         </div>
                     </div>
@@ -413,6 +463,50 @@
                 <div class="tablewrap mt12">
                     <table class="table" aria-label="Company payslips table">
                         <tbody id="companyPayslipsTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: ATM Net Gross -->
+            <div class="tabPane" id="tab-atmNetGross" hidden>
+                <div class="card__title big">ATM Net Gross</div>
+                <div class="muted small">Employees paid via ATM/Bank with their net gross amount.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="ATM net gross table">
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Emp ID</th>
+                                <th>Employee</th>
+                                <th>Assignment</th>
+                                <th>Pay Method</th>
+                                <th class="num">Net Gross</th>
+                            </tr>
+                        </thead>
+                        <tbody id="atmNetGrossTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: NON ATM Net Gross -->
+            <div class="tabPane" id="tab-nonAtmNetGross" hidden>
+                <div class="card__title big">Non ATM Net Gross</div>
+                <div class="muted small">Employees paid outside ATM/Bank with their net gross amount.</div>
+
+                <div class="tablewrap mt12">
+                    <table class="table" aria-label="Non ATM net gross table">
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Emp ID</th>
+                                <th>Employee</th>
+                                <th>Assignment</th>
+                                <th>Pay Method</th>
+                                <th class="num">Net Gross</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nonAtmNetGrossTbody"></tbody>
                     </table>
                 </div>
             </div>

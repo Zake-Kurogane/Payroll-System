@@ -2399,6 +2399,24 @@ document.addEventListener("DOMContentLoaded", () => {
     return mins > 0 ? mins / 60 : 0;
   }
 
+  function renderEmpDrawerMeta(emp, positionText, assignmentTextValue) {
+    if (!empDrawerSub) return;
+    const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
+    const isRegular = employmentType === "regular";
+    const external = String(emp?.externalArea || "").trim() || "-";
+    const safePosition = escapeHtml(positionText || "-");
+    const safeAssignment = escapeHtml(assignmentTextValue || "-");
+
+    const lines = [];
+    lines.push(`<div><strong>${safePosition}</strong></div>`);
+    if (isRegular) {
+      lines.push(`<div>${escapeHtml(external)}</div>`);
+    }
+    lines.push(`<div>Assignment: <strong>${safeAssignment}</strong></div>`);
+
+    empDrawerSub.innerHTML = lines.join("");
+  }
+
   async function openEmpDrawer(empId) {
     currentEmpId = empId;
 
@@ -2415,20 +2433,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const assign = latest ? assignmentText(latest) : "-";
 
     if (empDrawerTitle) empDrawerTitle.textContent = name;
-    if (empDrawerSub) {
-      const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
-      const isRegular = employmentType === "regular";
-      const external = String(emp?.externalArea || "").trim() || "-";
-      const parts = [];
-      if (isRegular) {
-        parts.push(`External: <strong>${escapeHtml(external)}</strong>`);
-        parts.push(`External Position: <strong>${escapeHtml(pos)}</strong>`);
-      } else {
-        parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
-      }
-      parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
-      empDrawerSub.innerHTML = parts.join(" | ");
-    }
+    renderEmpDrawerMeta(emp, pos, assign);
 
     if (empCutoffMonthInput && !empCutoffMonthInput.value) {
       const now = new Date();
@@ -2441,25 +2446,11 @@ document.addEventListener("DOMContentLoaded", () => {
     renderEmpRecords();
 
     // After loading drawer records, update the subheader based on the latest record in this drawer.
-    if (empDrawerSub) {
-      const empLatest = empRecords
-        .slice()
-        .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-      const assign = empLatest ? assignmentText(empLatest) : "-";
-
-      const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
-      const isRegular = employmentType === "regular";
-      const external = String(emp?.externalArea || "").trim() || "-";
-      const parts = [];
-      if (isRegular) {
-        parts.push(`External: <strong>${escapeHtml(external)}</strong>`);
-        parts.push(`External Position: <strong>${escapeHtml(pos)}</strong>`);
-      } else {
-        parts.push(`Position: <strong>${escapeHtml(pos)}</strong>`);
-      }
-      parts.push(`Assignment: <strong>${escapeHtml(assign)}</strong>`);
-      empDrawerSub.innerHTML = parts.join(" | ");
-    }
+    const empLatest = empRecords
+      .slice()
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    const latestAssign = empLatest ? assignmentText(empLatest) : "-";
+    renderEmpDrawerMeta(emp, pos, latestAssign);
 
     if (empDrawer) {
       empDrawer.classList.add("is-open");
