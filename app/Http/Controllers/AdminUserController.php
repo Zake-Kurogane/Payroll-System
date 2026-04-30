@@ -71,6 +71,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('users', 'name')],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'role' => ['required', Rule::in(['admin', 'hr'])],
             'first_name' => ['nullable', 'string', 'max:255'],
             'middle_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
@@ -83,11 +84,12 @@ class AdminUserController extends Controller
             'first_name' => $validated['first_name'] ?? null,
             'middle_name' => $validated['middle_name'] ?? null,
             'last_name' => $validated['last_name'] ?? null,
-            'role' => 'hr',
+            'role' => $validated['role'],
             'created_by' => Auth::id(),
             'password' => Hash::make($validated['password']),
         ]);
 
-        return back()->with('success', 'HR account created.');
+        $roleLabel = strtoupper((string) $validated['role']);
+        return back()->with('success', $roleLabel . ' account created.');
     }
 }

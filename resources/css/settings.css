@@ -396,7 +396,7 @@ h1 {
     border-color: transparent;
     background: var(--maroon);
     color: #fff;
-    box-shadow: 0 14px 26px rgba(156, 29, 60, 0.2);
+    box-shadow: none;
 }
 .btn--soft {
     background: rgba(156, 29, 60, 0.08);
@@ -419,6 +419,9 @@ h1 {
 .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 10px 22px rgba(17, 24, 39, 0.14);
+}
+.btn--maroon:hover {
+    box-shadow: 0 14px 26px rgba(156, 29, 60, 0.2);
 }
 
 /* import indicator */

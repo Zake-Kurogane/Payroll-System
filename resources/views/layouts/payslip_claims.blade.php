@@ -411,7 +411,8 @@
                                                 value="{{ $assignmentFilter ?? '' }}" />
                                             <input type="hidden" name="area_place"
                                                 value="{{ $areaPlaceFilter ?? '' }}" />
-                                            <input type="hidden" name="sort" value="{{ $sortKey ?? 'area_place' }}" />
+                                            <input type="hidden" name="sort"
+                                                value="{{ $sortKey ?? 'area_place' }}" />
                                             <input type="hidden" name="dir" value="{{ $sortDir ?? 'asc' }}" />
                                             <button type="submit"
                                                 title="{{ $e['claimed_at'] ? 'Click to mark unclaimed' : 'Click to mark claimed' }}"

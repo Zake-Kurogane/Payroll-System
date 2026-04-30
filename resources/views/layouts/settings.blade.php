@@ -15,8 +15,6 @@
         <div class="headline">
             <div>
                 <h1>System Settings</h1>
-                <p class="muted">Helper text: Above 10,000 uses the cap (2% of 10,000 = 200 each, total 400).
-                </p>
             </div>
         </div>
 
@@ -677,9 +675,6 @@
                         </div>
                     </div>
 
-                    <div class="hint" style="margin-top:10px;">
-                        Above 10,000 uses the cap (2% of 10,000 = 200 each, total 400).
-                    </div>
                 </div>
             </div>
 
@@ -1142,9 +1137,8 @@
             <div class="card">
                 <div class="card__head">
                     <div>
-                        <div class="card__title">Create HR Account</div>
-                        <div class="muted small">Admin-only. HR accounts can access Employee Records, Attendance,
-                            Loans, and Employee Case Management.</div>
+                        <div class="card__title">Create User Account</div>
+                        <div class="muted small">Admin-only. Choose a role for the new account (Admin or HR).</div>
                     </div>
                 </div>
 
@@ -1171,6 +1165,13 @@
                             <input name="email" type="email" value="{{ old('email') }}" required />
                         </div>
                         <div class="field">
+                            <label>Role</label>
+                            <select name="role" required>
+                                <option value="hr" {{ old('role', 'hr') === 'hr' ? 'selected' : '' }}>HR</option>
+                                <option value="admin" {{ old('role') === 'admin' ? 'selected' : '' }}>Admin</option>
+                            </select>
+                        </div>
+                        <div class="field">
                             <label>First name</label>
                             <input name="first_name" value="{{ old('first_name') }}" />
                         </div>
@@ -1194,7 +1195,7 @@
 
                     <div class="actionsRow">
                         <div class="spacer"></div>
-                        <button class="btn btn--maroon" type="submit">Create HR Account</button>
+                        <button class="btn btn--maroon" type="submit">Create Account</button>
                     </div>
                 </form>
             </div>
