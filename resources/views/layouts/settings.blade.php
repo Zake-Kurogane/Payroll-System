@@ -1153,7 +1153,7 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('admin.users.hr.store') }}">
+                <form method="POST" action="{{ route('admin.users.store') }}">
                     @csrf
                     <div class="grid2">
                         <div class="field">
@@ -1179,7 +1179,7 @@
                             <label>Middle name</label>
                             <input name="middle_name" value="{{ old('middle_name') }}" />
                         </div>
-                        <div class="field field--full">
+                        <div class="field">
                             <label>Last name</label>
                             <input name="last_name" value="{{ old('last_name') }}" />
                         </div>
@@ -1203,13 +1203,13 @@
             <div class="card" style="margin-top:14px;">
                 <div class="card__head">
                     <div>
-                        <div class="card__title">HR Accounts</div>
-                        <div class="muted small">Accounts with role = HR.</div>
+                        <div class="card__title">Accounts</div>
+                        <div class="muted small">All created accounts.</div>
                     </div>
                 </div>
 
                 <div class="tablewrap">
-                    <table class="table" aria-label="HR accounts table">
+                    <table class="table" aria-label="Accounts table">
                         <thead>
                             <tr>
                                 <th>Username</th>
@@ -1230,7 +1230,7 @@
                 <div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="hrUserDrawerTitle">
                     <div class="drawer__head">
                         <div>
-                            <div class="drawer__title" id="hrUserDrawerTitle">Edit HR Account</div>
+                            <div class="drawer__title" id="hrUserDrawerTitle">Edit Account</div>
                             <div class="muted small">Update username, email, and optional password.</div>
                         </div>
                         <button class="iconbtn" id="closeHrUserDrawer" type="button" aria-label="Close">✕</button>

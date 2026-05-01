@@ -195,7 +195,6 @@ body {
     overflow: auto;
     min-height: calc(100vh - 68px);
     position: relative;
-    z-index: 0;
 }
 
 h1 {
@@ -543,6 +542,23 @@ tbody tr:hover {
     font-weight: 1000;
     display: grid;
     place-items: center;
+}
+.iconbtn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.iconbtn:hover {
+    background: rgba(156, 29, 60, 0.08);
+}
+.tableActionsInline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 /* radio pills */

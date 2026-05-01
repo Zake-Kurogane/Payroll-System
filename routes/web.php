@@ -160,10 +160,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/settings/attendance-codes', [SettingsController::class, 'getAttendanceCodes'])->name('settings.attendance_codes.get');
         Route::post('/settings/attendance-codes', [SettingsController::class, 'saveAttendanceCodes'])->name('settings.attendance_codes.save');
 
-        // Create HR accounts
-        Route::get('/admin/users/hr', [AdminUserController::class, 'indexHr'])->name('admin.users.hr.index');
-        Route::post('/admin/users/hr', [AdminUserController::class, 'storeHr'])->name('admin.users.hr.store');
-        Route::patch('/admin/users/hr/{user}', [AdminUserController::class, 'updateHr'])->name('admin.users.hr.update');
+        // Create and manage accounts
+        Route::get('/admin/users', [AdminUserController::class, 'index'])->name('admin.users.index');
+        Route::post('/admin/users', [AdminUserController::class, 'store'])->name('admin.users.store');
+        Route::patch('/admin/users/{user}', [AdminUserController::class, 'update'])->name('admin.users.update');
+        Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy'])->name('admin.users.destroy');
 
         // Deduction Cases (Charges / Shortages)
         Route::get('/employees/{emp_no}/deduction-cases', [DeductionCaseController::class, 'index']);

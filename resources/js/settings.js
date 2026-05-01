@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCashAdvancePolicy(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
   initPayrollDeductionPolicy(toast, apiFetch, document.getElementById("payrollDeductionNotice"), notifySettingsUpdated);
 
-  // ===== HR Accounts list (admin-only UI) =====
+  // ===== Accounts list (admin-only UI) =====
   const hrUsersTbody = document.getElementById("hrUsersTbody");
   const hrUserDrawer = document.getElementById("hrUserDrawer");
   const hrUserDrawerOverlay = document.getElementById("hrUserDrawerOverlay");
@@ -113,11 +113,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!hrUsersTbody) return;
     hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">Loading...</td></tr>`;
     try {
-      const rows = await apiFetch("/admin/users/hr");
+      const rows = await apiFetch("/admin/users");
       const list = Array.isArray(rows) ? rows : [];
       hrUsersCache = list;
       if (!list.length) {
-        hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">No HR accounts yet.</td></tr>`;
+        hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">No accounts yet.</td></tr>`;
         return;
       }
       hrUsersTbody.innerHTML = list.map((u) => {
@@ -130,23 +130,60 @@ document.addEventListener("DOMContentLoaded", () => {
             <td>${String(u.email || "—")}</td>
             <td>${String(createdBy)}</td>
             <td>${created}</td>
-            <td><button type="button" class="btn btn--soft btn--sm" data-hr-edit="${u.id}">Edit</button></td>
+            <td>
+              <div class="tableActionsInline">
+                <button type="button" class="iconbtn" data-hr-edit="${u.id}" title="Edit" aria-label="Edit">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+                  </svg>
+                </button>
+                <button type="button" class="iconbtn" data-hr-delete="${u.id}" title="Delete" aria-label="Delete">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
+              </div>
+            </td>
           </tr>
         `;
       }).join("");
     } catch (err) {
       hrUsersTbody.innerHTML = `<tr><td colspan="6" class="muted">Failed to load.</td></tr>`;
-      toast(err.message || "Failed to load HR accounts.", "error");
+      toast(err.message || "Failed to load accounts.", "error");
     }
   }
   loadHrUsers();
 
   hrUsersTbody?.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-hr-edit]");
-    if (!btn) return;
-    const id = Number(btn.getAttribute("data-hr-edit"));
+    const editBtn = e.target.closest("button[data-hr-edit]");
+    if (editBtn) {
+      const id = Number(editBtn.getAttribute("data-hr-edit"));
+      const user = hrUsersCache.find((x) => Number(x.id) === id);
+      openHrUserDrawer(user);
+      return;
+    }
+
+    const deleteBtn = e.target.closest("button[data-hr-delete]");
+    if (!deleteBtn) return;
+    const id = Number(deleteBtn.getAttribute("data-hr-delete"));
     const user = hrUsersCache.find((x) => Number(x.id) === id);
-    openHrUserDrawer(user);
+    const label = user?.username || `#${id}`;
+    if (!window.confirm(`Delete account "${label}"? This cannot be undone.`)) return;
+
+    (async () => {
+      try {
+        await apiFetch(`/admin/users/${id}`, { method: "DELETE" });
+        await loadHrUsers();
+        toast("Account deleted.");
+      } catch (err) {
+        toast(err.message || "Failed to delete account.", "error");
+      }
+    })();
   });
 
   hrUserForm?.addEventListener("submit", async (e) => {
@@ -165,7 +202,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pw) payload.password = pw;
 
     try {
-      await apiFetch(`/admin/users/hr/${id}`, {
+      await apiFetch(`/admin/users/${id}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
@@ -173,7 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadHrUsers();
       closeHrUserDrawerUI();
     } catch (err) {
-      toast(err.message || "Failed to save HR account.", "error");
+      toast(err.message || "Failed to save account.", "error");
     }
   });
 

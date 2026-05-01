@@ -12,13 +12,12 @@ use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
 {
-    public function indexHr(): JsonResponse
+    public function index(): JsonResponse
     {
         $rows = User::query()
-            ->where('role', 'hr')
             ->orderByDesc('id')
             ->with(['creator:id,name'])
-            ->get(['id', 'name', 'email', 'first_name', 'middle_name', 'last_name', 'created_by', 'created_at'])
+            ->get(['id', 'name', 'email', 'first_name', 'middle_name', 'last_name', 'role', 'created_by', 'created_at'])
             ->map(function (User $u) {
                 $full = trim(($u->last_name ? $u->last_name . ', ' : '') . ($u->first_name ?? '') . ($u->middle_name ? ' ' . $u->middle_name : ''));
                 return [
@@ -28,6 +27,7 @@ class AdminUserController extends Controller
                     'first_name' => $u->first_name,
                     'middle_name' => $u->middle_name,
                     'last_name' => $u->last_name,
+                    'role' => $u->role,
                     'full_name' => $full !== ',' ? $full : '',
                     'created_by' => $u->creator?->name,
                     'created_at' => $u->created_at ? (string) $u->created_at : null,
@@ -38,12 +38,8 @@ class AdminUserController extends Controller
         return response()->json($rows);
     }
 
-    public function updateHr(Request $request, User $user): JsonResponse
+    public function update(Request $request, User $user): JsonResponse
     {
-        if (($user->role ?? '') !== 'hr') {
-            abort(404);
-        }
-
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('users', 'name')->ignore($user->id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
@@ -66,7 +62,17 @@ class AdminUserController extends Controller
         return response()->json(['saved' => true]);
     }
 
-    public function storeHr(Request $request): RedirectResponse
+    public function destroy(User $user): JsonResponse
+    {
+        if ((int) $user->id === (int) Auth::id()) {
+            return response()->json(['message' => 'You cannot delete your own account.'], 422);
+        }
+
+        $user->delete();
+        return response()->json(['deleted' => true]);
+    }
+
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255', Rule::unique('users', 'name')],
