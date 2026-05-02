@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "dev:lan": "vite --host 0.0.0.0 --port 5173 --strictPort"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

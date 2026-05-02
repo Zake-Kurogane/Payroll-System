@@ -1376,6 +1376,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const periodLabel = `${r.run_code || r.id} ${r.period_month} (${r.cutoff || formatCutoffLabel(r.period_month, r.cutoff)})`;
       const isLocked = r.status === "Locked";
       const isDraft = r.status === "Draft";
+      const statusClass = isDraft ? "st--warn" : "st--ok";
       const periodCell = isLocked
         ? `<button class="linkRun" type="button" data-action="unlock" data-id="${r.id}" title="Unlock and edit">${periodLabel}</button>`
         : isDraft
@@ -1390,7 +1391,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <td class="muted small">${r.display_label || r.assignment_filter || ""}</td>
         <td class="num">${r.headcount ?? 0}</td>
         <td class="num">${money(r.net ?? 0)}</td>
-        <td><span class="st st--ok">${r.status}</span></td>
+        <td><span class="st ${statusClass}">${r.status}</span></td>
         <td class="num">${actionsCell}</td>
       `;
       runsTbody.appendChild(tr);
