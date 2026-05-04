@@ -943,7 +943,12 @@ class PayrollCalculator
         }
 
         if ($timing === 'monthly') {
-            $amount = $this->applySplitRuleSingle($amount, $splitRule, $cutoff);
+            $splitCutoff = $cutoff;
+            // Tax split configuration treats 11-25 as cutoff 1 for monthly timing.
+            if ($splitRule === 'cutoff1_only' || $splitRule === 'cutoff2_only') {
+                $splitCutoff = trim($cutoff) === '11-25' ? '26-10' : '11-25';
+            }
+            $amount = $this->applySplitRuleSingle($amount, $splitRule, $splitCutoff);
         }
 
         return $amount;
