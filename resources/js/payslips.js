@@ -348,11 +348,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const psReleaseBtn = $("psReleaseBtn");
   const psDrawerMeta = $("psDrawerMeta");
 
-  const printOverlay = $("printOverlay");
-  const printModal = $("printModal");
-  const printFrame = $("printFrame");
-  const printCloseBtn = $("printCloseBtn");
-
   // new: adjustment containers in preview
   const psEarnAdjRows = $("psEarnAdjRows");
   const psDedAdjRows = $("psDedAdjRows");
@@ -381,36 +376,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const selectedIdsSet = new Set();
 
   // =========================================================
-  // PRINT MODAL
+  // SYSTEM PRINT (no in-app preview modal)
   // =========================================================
-  function closePrintModal() {
-    if (!printModal || !printOverlay || !printFrame) return;
-    printModal.hidden = true;
-    printModal.setAttribute("aria-hidden", "true");
-    printOverlay.hidden = true;
-    printFrame.src = "about:blank";
-    const drawerOpen = !!(psDrawer && psDrawer.classList.contains("is-open"));
-    document.body.style.overflow = drawerOpen ? "hidden" : "";
-  }
+  let systemPrintFrame = null;
+  const ensureSystemPrintFrame = () => {
+    if (systemPrintFrame && document.body.contains(systemPrintFrame)) return systemPrintFrame;
+    systemPrintFrame = document.createElement("iframe");
+    systemPrintFrame.style.position = "fixed";
+    systemPrintFrame.style.right = "0";
+    systemPrintFrame.style.bottom = "0";
+    systemPrintFrame.style.width = "1px";
+    systemPrintFrame.style.height = "1px";
+    systemPrintFrame.style.border = "0";
+    systemPrintFrame.setAttribute("aria-hidden", "true");
+    document.body.appendChild(systemPrintFrame);
+    return systemPrintFrame;
+  };
 
-  function openPrintModal(url) {
-    if (!printModal || !printOverlay || !printFrame) return;
-    printFrame.src = url;
-    printOverlay.hidden = false;
-    printModal.hidden = false;
-    printModal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
-  }
+  const buildPayslipPrintHtmlUrl = (runId, ids = []) => {
+    const qs = new URLSearchParams({ run_id: String(runId || "") });
+    if (Array.isArray(ids) && ids.length) qs.set("ids", ids.join(","));
+    qs.set("autoprint", "1");
+    return `/payslips/print?${qs.toString()}`;
+  };
 
-  printCloseBtn && printCloseBtn.addEventListener("click", closePrintModal);
-  printOverlay && printOverlay.addEventListener("click", closePrintModal);
-
-  window.addEventListener("message", (e) => {
-    if (e.origin !== window.location.origin) return;
-    if (e.data && e.data.type === "payslips:afterprint") {
-      closePrintModal();
-    }
-  });
+  const printThroughSystemDialog = (runId, ids = []) => {
+    const frame = ensureSystemPrintFrame();
+    const url = `${buildPayslipPrintHtmlUrl(runId, ids)}&_ts=${Date.now()}`;
+    frame.src = url;
+  };
 
   // =========================================================
   // INIT DEFAULTS
@@ -1121,13 +1115,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // actions
     if (psPrintBtn) {
       psPrintBtn.onclick = () => {
-        const qs = new URLSearchParams({
-          run_id: String(p.runId || ""),
-          ids: String(p.id || ""),
-          autoprint: "1",
-          in_modal: "1",
-        });
-        openPrintModal(`/payslips/print?${qs.toString()}`);
+        printThroughSystemDialog(String(p.runId || ""), [String(p.id || "")]);
       };
     }
 
@@ -1195,13 +1183,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const action = btn.dataset.action;
       if (action === "view") return openPayslipDrawer(p);
       if (action === "print") {
-        const qs = new URLSearchParams({
-          run_id: String(p.runId || selectedRunId || ""),
-          ids: String(p.id || ""),
-          autoprint: "1",
-          in_modal: "1",
-        });
-        openPrintModal(`/payslips/print?${qs.toString()}`);
+        printThroughSystemDialog(
+          String(p.runId || selectedRunId || ""),
+          [String(p.id || "")]
+        );
         return;
       }
       if (action === "pdf") return alert("Row PDF download: connect to backend later.");
@@ -1373,13 +1358,7 @@ document.addEventListener("DOMContentLoaded", () => {
     bulkPrintBtn.addEventListener("click", () => {
       const ids = selectedIds();
       if (!ids.length) return alert("Select at least 1 payslip.");
-      const qs = new URLSearchParams({
-        run_id: selectedRunId,
-        ids: ids.join(","),
-        autoprint: "1",
-        in_modal: "1",
-      });
-      openPrintModal(`/payslips/print?${qs.toString()}`);
+      printThroughSystemDialog(selectedRunId, ids);
     });
 
   // pagination
@@ -1462,13 +1441,7 @@ document.addEventListener("DOMContentLoaded", () => {
     printBtn.addEventListener("click", () => {
       if (!selectedRunId) return;
       const ids = selectedIds();
-      const qs = new URLSearchParams({
-        run_id: selectedRunId,
-        autoprint: "1",
-        in_modal: "1",
-      });
-      if (ids.length) qs.set("ids", ids.join(","));
-      openPrintModal(`/payslips/print?${qs.toString()}`);
+      printThroughSystemDialog(selectedRunId, ids.length ? ids : []);
     });
 
   releaseAllBtn &&

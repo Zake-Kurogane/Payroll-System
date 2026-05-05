@@ -179,16 +179,6 @@
     <!-- PAYSLIP PREVIEW OVERLAY -->
     <div class="overlay" id="psOverlay" hidden></div>
 
-    <!-- PRINT PREVIEW MODAL -->
-    <div class="overlay" id="printOverlay" hidden></div>
-    <aside class="modal" id="printModal" aria-hidden="true" hidden>
-        <div class="modal__head">
-            <div class="modal__title">Print Preview</div>
-            <button class="btn" type="button" id="printCloseBtn">Close</button>
-        </div>
-        <iframe class="modal__frame" id="printFrame" title="Print Preview"></iframe>
-    </aside>
-
     <!-- PAYSLIP PREVIEW DRAWER -->
     <aside class="drawer drawer--wide" id="psDrawer" aria-hidden="true">
         <div class="drawer__head">

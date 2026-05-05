@@ -85,7 +85,6 @@ class PayslipController extends Controller
             'run_id' => ['required', 'integer', 'exists:payroll_runs,id'],
             'ids' => ['nullable', 'string'],
             'autoprint' => ['nullable', 'boolean'],
-            'in_modal' => ['nullable', 'boolean'],
         ]);
 
         $run = PayrollRun::query()->findOrFail($validated['run_id']);
@@ -108,7 +107,6 @@ class PayslipController extends Controller
             'run' => $run,
             'payslips' => $payload,
             'autoprint' => (bool) ($validated['autoprint'] ?? false),
-            'inModal' => (bool) ($validated['in_modal'] ?? false),
             'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
         ]);
     }
@@ -146,7 +144,6 @@ class PayslipController extends Controller
             'run' => $run,
             'payslips' => $payload,
             'autoprint' => false,
-            'inModal' => false,
             'payDate' => $this->resolvePayDate($run->period_month, $run->cutoff),
         ])->render();
 
