@@ -1,4 +1,9 @@
-<aside class="side">
+<aside class="side" id="sideNav" aria-hidden="false">
+    <button class="side__mobileClose" type="button" id="mobileNavClose" aria-label="Close navigation">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18.3 5.7a1 1 0 0 0-1.4 0L12 10.6 7.1 5.7a1 1 0 1 0-1.4 1.4l4.9 4.9-4.9 4.9a1 1 0 0 0 1.4 1.4l4.9-4.9 4.9 4.9a1 1 0 0 0 1.4-1.4l-4.9-4.9 4.9-4.9a1 1 0 0 0 0-1.4Z" />
+        </svg>
+    </button>
     <div class="brand">
         <div class="brand__mark">
             <img class="brand__logo" src="{{ asset('image/logo.png') }}"

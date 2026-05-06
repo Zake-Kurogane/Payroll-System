@@ -26,6 +26,7 @@
             @yield('content')
         </main>
     </div>
+    <button type="button" class="mobile-nav-overlay" id="mobileNavOverlay" aria-label="Close navigation"></button>
 
     @can('admin')
         <!-- Edit Profile Drawer (global) -->

@@ -1,0 +1,183 @@
+/* Shared mobile layout fixes across page-specific CSS bundles. */
+.mobile-nav-overlay,
+.side__mobileClose {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  body.mobile-nav-open {
+    overflow: hidden;
+  }
+
+  .shell {
+    grid-template-columns: 1fr !important;
+    min-height: 100dvh !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .side {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(86vw, 320px) !important;
+    max-width: 320px !important;
+    height: 100dvh !important;
+    z-index: 1200 !important;
+    background: #fff !important;
+    transform: translateX(-105%);
+    transition: transform 160ms ease;
+    box-shadow: 0 14px 30px rgba(17, 24, 39, 0.28);
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  body.mobile-nav-open .side {
+    transform: translateX(0);
+  }
+
+  .side__mobileClose {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(17, 24, 39, 0.12);
+    background: #fff;
+    color: #111827;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  .side__mobileClose svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+  }
+
+  .mobile-nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: rgba(17, 24, 39, 0.38);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1100;
+    transition: opacity 160ms ease;
+  }
+
+  body.mobile-nav-open .mobile-nav-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .main {
+    min-height: 100dvh !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .top {
+    height: auto !important;
+    min-height: 64px;
+    padding: 10px 12px !important;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .top__left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .top__title {
+    font-size: 17px !important;
+    line-height: 1.1;
+  }
+
+  .top__sub {
+    max-width: 58vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+  }
+
+  .top__right {
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .pill-user {
+    padding: 6px 8px !important;
+  }
+
+  .pill-user__name {
+    display: none;
+  }
+
+  .content {
+    min-height: calc(100dvh - 64px) !important;
+    overflow: auto !important;
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  .headline,
+  .headline--withActions,
+  .filterbar,
+  .filterbar__left,
+  .filterbar__right,
+  .cutoffbar,
+  .cutoffbar__left,
+  .cutoffbar__right,
+  .runCard,
+  .runCard__left,
+  .runCard__right,
+  .tablecard__head,
+  .tableFooter {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .headline__actions,
+  .runActions,
+  .bulk,
+  .tableFooter__right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .card {
+    max-width: 100%;
+    padding: 12px !important;
+  }
+
+  .tablewrap {
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table {
+    min-width: 760px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .top__sub {
+    max-width: 44vw;
+  }
+
+  .content {
+    padding: 8px !important;
+  }
+}

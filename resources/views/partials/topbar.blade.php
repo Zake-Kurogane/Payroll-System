@@ -4,18 +4,27 @@
 @endphp
 
 <header class="top">
-    <div>
-        <div class="top__title">WELCOME</div>
-        <div class="top__sub">
-            {{
-                trim(
-                    collect([
-                        auth()->user()->first_name,
-                        auth()->user()->middle_name,
-                        auth()->user()->last_name,
-                    ])->filter()->implode(' ')
-                ) ?: auth()->user()->name
-            }}
+    <div class="top__left">
+        <button class="mobile-menu-btn" type="button" id="mobileMenuBtn" aria-label="Open navigation"
+            aria-expanded="false" aria-controls="sideNav">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1zm0 6a1 1 0 0 1 1-1h16a1 1 0 1 1 0 2H4a1 1 0 0 1-1-1zm1 5a1 1 0 1 0 0 2h16a1 1 0 1 0 0-2H4z" />
+            </svg>
+        </button>
+
+        <div>
+            <div class="top__title">WELCOME</div>
+            <div class="top__sub">
+                {{
+                    trim(
+                        collect([
+                            auth()->user()->first_name,
+                            auth()->user()->middle_name,
+                            auth()->user()->last_name,
+                        ])->filter()->implode(' ')
+                    ) ?: auth()->user()->name
+                }}
+            </div>
         </div>
     </div>
 
@@ -113,6 +122,33 @@
 </header>
 
 <style>
+    .top__left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    .mobile-menu-btn {
+        display: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .mobile-menu-btn svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+    }
+
     .top__right {
         display: flex;
         align-items: center;
@@ -218,5 +254,11 @@
 
     .notif-dropdown__item--active {
         background: rgba(156, 29, 60, 0.18);
+    }
+
+    @media (max-width: 900px) {
+        .mobile-menu-btn {
+            display: inline-flex;
+        }
     }
 </style>
