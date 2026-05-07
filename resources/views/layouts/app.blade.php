@@ -11,6 +11,7 @@
     <link rel="apple-touch-icon" href="{{ asset('image/logo.png') }}">
 
     @yield('vite')
+    @vite(['resources/css/mobile_layout.css'])
     @vite(['resources/css/profile_drawer.css'])
     @vite(['resources/js/app.js'])
     @stack('styles')

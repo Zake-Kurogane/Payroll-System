@@ -17,6 +17,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -104,6 +105,18 @@ class DashboardController extends Controller
             $periodMonthsForDisplay[] = $this->shiftYearMonth($month, -1);
         }
         $periodMonthsForDisplay = array_values(array_unique(array_filter($periodMonthsForDisplay)));
+
+        $cacheKey = 'dashboard.summary:v1:' . md5(json_encode([
+            'month' => $month,
+            'cutoff' => $cutoff,
+            'assignment' => $assignment,
+            'place' => $place,
+            'deduction_type' => $deductionType,
+        ]));
+        $cachedPayload = Cache::get($cacheKey);
+        if ($cachedPayload !== null) {
+            return response()->json($cachedPayload);
+        }
 
         $releasedRunsForMonth = PayrollRun::query()
             ->where('status', 'Released')
@@ -352,7 +365,7 @@ class DashboardController extends Controller
             $trendDed[] = (float) ($entry['total']['deductions'] ?? 0);
         }
 
-        return response()->json([
+        $payload = [
             'filters' => [
                 'month' => $month,
                 'cutoff' => $cutoff,
@@ -387,7 +400,11 @@ class DashboardController extends Controller
                 'months' => $trendMonths,
                 'default_mode' => 'by_cutoff',
             ],
-        ]);
+        ];
+
+        Cache::put($cacheKey, $payload, now()->addSeconds(30));
+
+        return response()->json($payload);
     }
 
     private function normalizeCutoff(string $cutoff): string

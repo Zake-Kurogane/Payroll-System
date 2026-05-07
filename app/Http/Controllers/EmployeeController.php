@@ -271,34 +271,40 @@ class EmployeeController extends Controller
             return collect();
         });
 
-        $assignments = Assignment::where('is_active', true)
-            ->orderBy('sort_order')
-            ->pluck('label');
+        $assignments = Cache::remember('employees.assignments', 300, function () {
+            return Assignment::where('is_active', true)
+                ->orderBy('sort_order')
+                ->pluck('label');
+        });
 
-        // Return grouped and ordered by assignment sort_order
-        $assignmentOrder = Assignment::where('is_active', true)
-            ->orderBy('sort_order')
-            ->pluck('label')
-            ->all();
-        $rows = AreaPlace::where('is_active', true)
-            ->orderBy('sort_order')
-            ->get(['label', 'parent_assignment']);
-        $grouped = [];
-        foreach ($rows as $row) {
-            $parent = $row->parent_assignment ?? 'Field';
-            $grouped[$parent][] = $row->label;
-        }
-        $ordered = [];
-        foreach ($assignmentOrder as $label) {
-            if (isset($grouped[$label])) {
-                $ordered[$label] = $grouped[$label];
+        $areaPlaces = Cache::remember('employees.area_places_grouped', 300, function () {
+            // Return grouped and ordered by assignment sort_order
+            $assignmentOrder = Assignment::where('is_active', true)
+                ->orderBy('sort_order')
+                ->pluck('label')
+                ->all();
+            $rows = AreaPlace::where('is_active', true)
+                ->orderBy('sort_order')
+                ->get(['label', 'parent_assignment']);
+            $grouped = [];
+            foreach ($rows as $row) {
+                $parent = $row->parent_assignment ?? 'Field';
+                $grouped[$parent][] = $row->label;
             }
-        }
-        $areaPlaces = $ordered;
+            $ordered = [];
+            foreach ($assignmentOrder as $label) {
+                if (isset($grouped[$label])) {
+                    $ordered[$label] = $grouped[$label];
+                }
+            }
+            return $ordered;
+        });
 
-        $employmentTypes = EmploymentType::where('is_active', true)
-            ->orderBy('sort_order')
-            ->pluck('label');
+        $employmentTypes = Cache::remember('employees.employment_types', 300, function () {
+            return EmploymentType::where('is_active', true)
+                ->orderBy('sort_order')
+                ->pluck('label');
+        });
 
         $positions = collect();
         if (Schema::hasTable('positions')) {
@@ -913,6 +919,7 @@ class EmployeeController extends Controller
         Cache::forget('employees.assignments');
         Cache::forget('employees.area_places');
         Cache::forget('employees.area_places_grouped');
+        Cache::forget('employees.employment_types');
     }
 
     private function validateEmployee(Request $request, ?int $ignoreId = null): array

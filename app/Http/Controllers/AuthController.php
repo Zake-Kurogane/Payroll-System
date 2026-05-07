@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
 
@@ -17,19 +18,36 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
+        Log::info('LOGIN step 1: start');
         $validator = Validator::make($request->all(), [
             'username' => ['required', 'string', 'min:3'],
             'password' => ['required', 'string', 'min:6'],
         ]);
 
         if ($validator->fails()) {
+            Log::info('LOGIN step 2: validation failed');
             return back()->withErrors(['login' => 'Invalid credentials'])->withInput();
         }
 
+        Log::info('LOGIN step 3: validation passed');
         $validated = $validator->validated();
+        $loginInput = trim($validated['username']);
 
-        if (Auth::attempt(['name' => $validated['username'], 'password' => $validated['password']])) {
+        $credentialSets = [
+            ['name' => $loginInput, 'password' => $validated['password']],
+            ['email' => $loginInput, 'password' => $validated['password']],
+        ];
+
+        foreach ($credentialSets as $i => $credentials) {
+            Log::info("LOGIN step 4.$i: attempting auth with key=" . array_key_first($credentials));
+            if (!Auth::attempt($credentials)) {
+                Log::info("LOGIN step 4.$i: attempt failed");
+                continue;
+            }
+
+            Log::info('LOGIN step 5: auth succeeded, regenerating session');
             $request->session()->regenerate();
+            Log::info('LOGIN step 6: session regenerated');
             $user = Auth::user();
             if (($user->role ?? 'admin') === 'hr') {
                 return redirect()->intended(route('employee.records'));
@@ -37,6 +55,7 @@ class AuthController extends Controller
             return redirect()->intended(route('index'));
         }
 
+        Log::info('LOGIN step 7: all attempts failed, returning error');
         return back()->withErrors(['login' => 'Invalid credentials'])->withInput();
     }
 

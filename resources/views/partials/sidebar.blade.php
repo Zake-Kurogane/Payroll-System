@@ -6,8 +6,8 @@
     </button>
     <div class="brand">
         <div class="brand__mark">
-            <img class="brand__logo" src="{{ asset('image/logo.png') }}"
-                alt="Aura Fortune G5 Traders Corporation logo" />
+            <div class="brand__logo" role="img" aria-label="Aura Fortune G5 Traders Corporation logo"
+                style="background-image:url('{{ asset('image/logo.png') }}')"></div>
         </div>
 
         <div class="brand__text">

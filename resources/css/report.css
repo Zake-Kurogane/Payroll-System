@@ -66,8 +66,9 @@ body {
 .brand__logo {
     width: 82px;
     height: 82px;
-    object-fit: contain;
-    display: block;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
 }
 .brand__title {
     font-weight: 1000;
