@@ -411,6 +411,26 @@
                         <label>Birthday</label>
                         <input type="date" id="f_bday" />
                     </div>
+
+                    <div class="field">
+                        <label>Gender</label>
+                        <select id="f_gender">
+                            <option value="">-- Select --</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Marital Status</label>
+                        <select id="f_maritalStatus">
+                            <option value="">-- Select --</option>
+                            <option value="Single">Single</option>
+                            <option value="Married">Married</option>
+                            <option value="Separated">Separated</option>
+                            <option value="Widowed">Widowed</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="sectionTitle">Contact & Address</div>

@@ -17,6 +17,8 @@ class Employee extends Model
         'status',
         'employment_status_id',
         'birthday',
+        'gender',
+        'marital_status',
         'mobile',
         'address',
         'address_province',

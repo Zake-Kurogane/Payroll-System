@@ -94,6 +94,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       externalArea: emp.external_area || "",
       externalPositionId: emp.external_position_id || emp.external_position?.id || emp.externalPosition?.id || "",
       birthday: emp.birthday || "",
+      gender: emp.gender || "",
+      maritalStatus: emp.marital_status || "",
       hired: emp.date_hired || "",
       mobile: emp.mobile || "",
       email: emp.email || "",
@@ -122,6 +124,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       status: data.status || null,
       employment_status_id: data.statusId || null,
       birthday: data.birthday || null,
+      gender: data.gender || null,
+      marital_status: data.maritalStatus || null,
       mobile: data.mobile || null,
       address: [data.addrStreet, data.addrBarangay, data.addrCity, data.addrProvince].filter(Boolean).join(", ") || null,
       address_province: data.addrProvince || null,
@@ -254,6 +258,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_last = F("f_last");
   const f_middle = F("f_middle");
   const f_bday = F("f_bday");
+  const f_gender = F("f_gender");
+  const f_maritalStatus = F("f_maritalStatus");
   const f_mobile = F("f_mobile");
   const f_email = F("f_email");
   const f_addrProvince = F("f_addrProvince");
@@ -328,6 +334,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const f_pagibig = F("f_pagibig");
   const f_tin = F("f_tin");
   const f_forceStatutoryPremiums = F("f_forceStatutoryPremiums");
+  const forceStatutoryWrap = f_forceStatutoryPremiums ? (f_forceStatutoryPremiums.closest(".field") || null) : null;
 
   const f_bankName = F("f_bankName");
   const f_accountName = F("f_accountName");
@@ -772,6 +779,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     hidePLInfo();
     resetDisciplineUI();
     syncAssignmentUI();
+    syncForceStatutoryUI();
     syncCashAdvanceFields();
     syncSalaryFields();
     syncPayoutFields();
@@ -794,6 +802,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_last && (f_last.value = emp.last || "");
     f_middle && (f_middle.value = emp.middle || "");
     f_bday && (f_bday.value = emp.birthday || "");
+    f_gender && (f_gender.value = emp.gender || "");
+    f_maritalStatus && (f_maritalStatus.value = emp.maritalStatus || "");
     f_mobile && (f_mobile.value = formatMobile(emp.mobile || ""));
     f_email && (f_email.value = emp.email || "");
     if (f_addrStreet) f_addrStreet.value = emp.addrStreet || "";
@@ -856,6 +866,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     f_accountNumber && (f_accountNumber.value = formatAccount(emp.accountNumber || ""));
 
     syncAssignmentUI();
+    syncForceStatutoryUI();
     syncCashAdvanceFields();
     syncSalaryFields();
     syncPayoutFields();
@@ -895,6 +906,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       dept: f_dept?.value?.trim(),
       basedLocation: f_basedLocation?.value?.trim(),
       birthday: f_bday?.value || "",
+      gender: f_gender?.value?.trim(),
+      maritalStatus: f_maritalStatus?.value?.trim(),
       mobile: onlyDigits(f_mobile?.value),
       email: f_email?.value?.trim(),
       addrProvince: f_addrProvince?.value ? (f_addrProvince.options[f_addrProvince.selectedIndex]?.text || "") : "",
@@ -1204,6 +1217,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
     if (externalPositionWrap) externalPositionWrap.style.display = show ? "" : "none";
+  }
+
+  function syncForceStatutoryUI() {
+    const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
+    if (forceStatutoryWrap) forceStatutoryWrap.style.display = isRegular ? "none" : "";
+    if (isRegular && f_forceStatutoryPremiums) {
+      f_forceStatutoryPremiums.checked = false;
+    }
   }
 
   async function fetchAndShowPLBalance(empNo) {
@@ -2170,6 +2191,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   f_type && f_type.addEventListener("change", () => {
     syncCashAdvanceFields();
     syncExternalAreaUI();
+    syncForceStatutoryUI();
 
     // PL allowance applies only to Regular employees.
     const isRegular = String(f_type?.value || "").toLowerCase() === "regular";
@@ -2391,6 +2413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Init
   syncAssignmentUI();
+  syncForceStatutoryUI();
   syncCashAdvanceFields();
   syncSalaryFields();
   syncPayoutFields();

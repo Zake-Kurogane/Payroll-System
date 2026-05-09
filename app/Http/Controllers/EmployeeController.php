@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
+use App\Models\ActivityLog;
 use App\Models\Employee;
 use App\Models\EmployeeAreaHistory;
 use App\Models\EmploymentStatus;
@@ -301,9 +302,14 @@ class EmployeeController extends Controller
         });
 
         $employmentTypes = Cache::remember('employees.employment_types', 300, function () {
-            return EmploymentType::where('is_active', true)
+            $types = EmploymentType::where('is_active', true)
                 ->orderBy('sort_order')
-                ->pluck('label');
+                ->pluck('label')
+                ->values();
+            if (!$types->contains(fn ($label) => strtolower(trim((string) $label)) === 'ojt')) {
+                $types->push('OJT');
+            }
+            return $types;
         });
 
         $positions = collect();
@@ -744,6 +750,14 @@ class EmployeeController extends Controller
         if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
             $employee->load('externalPosition:id,name');
         }
+
+        $this->logEmployeeActivity(
+            'employee_created',
+            'Created employee record',
+            $employee,
+            'Employee ID: ' . (string) ($employee->emp_no ?: '-') . ' • ' . trim(($employee->last_name ?? '') . ', ' . ($employee->first_name ?? '')),
+            ['changed_fields' => array_keys($validated)],
+        );
         return response()->json($employee, 201);
     }
 
@@ -773,6 +787,7 @@ class EmployeeController extends Controller
             unset($validated['force_statutory_premiums']);
         }
 
+        $original = $employee->getOriginal();
         $employee->update($validated);
         if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
             $employee->positions()->sync($positionIds);
@@ -811,6 +826,23 @@ class EmployeeController extends Controller
         if (Schema::hasColumn('employees', 'external_position_id') && Schema::hasTable('external_positions')) {
             $employee->load('externalPosition:id,name');
         }
+
+        $changed = [];
+        foreach (array_keys($validated) as $field) {
+            $before = $original[$field] ?? null;
+            $after = $employee->{$field} ?? null;
+            if ((string) $before !== (string) $after) {
+                $changed[] = $field;
+            }
+        }
+
+        $this->logEmployeeActivity(
+            'employee_updated',
+            'Updated employee record',
+            $employee,
+            'Employee ID: ' . (string) ($employee->emp_no ?: '-') . ' • Fields changed: ' . (count($changed) ? implode(', ', $changed) : 'none'),
+            ['changed_fields' => $changed],
+        );
         return response()->json($employee);
     }
 
@@ -887,10 +919,45 @@ class EmployeeController extends Controller
     public function destroy(string $empNo)
     {
         $employee = Employee::where('emp_no', $empNo)->firstOrFail();
+        $snapshot = [
+            'emp_no' => $employee->emp_no,
+            'name' => trim(($employee->last_name ?? '') . ', ' . ($employee->first_name ?? '')),
+        ];
         $employee->delete();
         $this->forgetEmployeeCaches();
 
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'event_type' => 'employee_deleted',
+            'entity_type' => 'employee',
+            'entity_key' => (string) ($snapshot['emp_no'] ?? ''),
+            'title' => 'Deleted employee record',
+            'description' => 'Employee ID: ' . (string) ($snapshot['emp_no'] ?? '-') . ' • ' . (string) ($snapshot['name'] ?? '-'),
+            'meta' => $snapshot,
+        ]);
+
         return response()->json(['deleted' => true]);
+    }
+
+    private function logEmployeeActivity(string $eventType, string $title, Employee $employee, string $description, array $meta = []): void
+    {
+        if (!Schema::hasTable('activity_logs')) {
+            return;
+        }
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'event_type' => $eventType,
+            'entity_type' => 'employee',
+            'entity_key' => (string) ($employee->emp_no ?? ''),
+            'title' => $title,
+            'description' => $description,
+            'meta' => array_merge([
+                'employee_id' => $employee->id,
+                'emp_no' => $employee->emp_no,
+                'name' => trim(($employee->last_name ?? '') . ', ' . ($employee->first_name ?? '')),
+            ], $meta),
+        ]);
     }
 
     private function externalAreaRequiredRule(Request $request): array
@@ -960,6 +1027,8 @@ class EmployeeController extends Controller
             'status' => ['nullable', 'string', 'max:50'],
             'employment_status_id' => ['nullable', 'integer', 'exists:employment_statuses,id'],
             'birthday' => ['nullable', 'date'],
+            'gender' => ['nullable', Rule::in(['Male', 'Female'])],
+            'marital_status' => ['nullable', Rule::in(['Single', 'Married', 'Separated', 'Widowed'])],
             'mobile' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:500'],
             'address_province' => ['nullable', 'string', 'max:255'],
@@ -1124,6 +1193,8 @@ class EmployeeController extends Controller
             'status',
             'employment_status_id',
             'birthday',
+            'gender',
+            'marital_status',
             'mobile',
             'address',
             'address_province',

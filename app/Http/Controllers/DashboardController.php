@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AreaPlace;
+use App\Models\ActivityLog;
 use App\Models\Assignment;
 use App\Models\Employee;
 use App\Models\EmployeeAreaHistory;
@@ -18,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -646,6 +648,31 @@ class DashboardController extends Controller
                 'ts' => optional($a->created_at)?->timestamp ?? 0,
                 'target_url' => url('/employee-records'),
             ]);
+        }
+
+        if (Schema::hasTable('activity_logs')) {
+            $logs = ActivityLog::query()
+                ->orderByDesc('created_at')
+                ->limit(60)
+                ->get(['event_type', 'title', 'description', 'user_id', 'created_at', 'entity_type', 'entity_key']);
+
+            foreach ($logs as $log) {
+                $u = $roleUsers->get((int) $log->user_id) ?? User::query()->find((int) $log->user_id, ['id', 'name', 'role']);
+                $targetUrl = url('/dashboard');
+                if ((string) $log->entity_type === 'employee') {
+                    $targetUrl = url('/employee-records');
+                }
+                $items->push([
+                    'type' => (string) $log->event_type,
+                    'title' => (string) $log->title,
+                    'description' => (string) ($log->description ?: ''),
+                    'actor_name' => $u?->name ?: 'Unknown',
+                    'actor_role' => strtoupper((string) ($u?->role ?: '')),
+                    'occurred_at' => optional($log->created_at)?->toIso8601String(),
+                    'ts' => optional($log->created_at)?->timestamp ?? 0,
+                    'target_url' => $targetUrl,
+                ]);
+            }
         }
 
         return $items
