@@ -39,10 +39,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ===== API helpers =====
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
   const serverRendered = window.__serverRender === true;
+  const pageQuery = new URLSearchParams(window.location.search || "");
+  const forcedEmployeeParams = {};
+  if (pageQuery.get("probation_due") === "1") {
+    forcedEmployeeParams.probation_due = "1";
+  }
   if (serverRendered) {
     const navEntries = performance.getEntriesByType && performance.getEntriesByType("navigation");
     const navType = navEntries && navEntries.length ? navEntries[0].type : "";
-    if ((navType === "reload" || navType === "reload_navigation") && window.location.search) {
+    const shouldKeepQuery = pageQuery.get("probation_due") === "1";
+    if ((navType === "reload" || navType === "reload_navigation") && window.location.search && !shouldKeepQuery) {
       window.location.href = window.location.pathname;
     }
   }
@@ -161,7 +167,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadEmployees(params = {}) {
-    const qs = new URLSearchParams(params);
+    const qs = new URLSearchParams({ ...forcedEmployeeParams, ...params });
     const url = qs.toString() ? `/employees?${qs.toString()}` : "/employees";
     const rows = await apiFetch(url);
     employees = Array.isArray(rows) ? rows.map(fromApi) : [];
@@ -1624,13 +1630,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deptVal = deptFilter?.value || "";
     const statusVal = statusFilter?.value || "";
     const assignVal = assignmentFilter || "All";
-    const areaVal = areaSubFilter || areaPlaceFilter?.value || "";
+      const areaVal = areaSubFilter || areaPlaceFilter?.value || "";
+      const areaNeedle = normalize(areaVal);
 
-    return list.filter(emp => {
-      const okDept = !deptVal || deptVal === "All" || (emp.dept || "") === deptVal;
-      const okStatus = statusMatches(emp, statusVal);
-      const okAssign = assignVal === "All" || !assignVal || (emp.assignmentType || "") === assignVal;
-      const okArea = !areaVal || areaVal === "All" || (emp.areaPlace || "") === areaVal;
+      return list.filter(emp => {
+        const okDept = !deptVal || deptVal === "All" || (emp.dept || "") === deptVal;
+        const okStatus = statusMatches(emp, statusVal);
+        const okAssign = assignVal === "All" || !assignVal || (emp.assignmentType || "") === assignVal;
+        const areaPlace = normalize(emp.areaPlace || "");
+        const basedLocation = normalize(emp.basedLocation || "");
+        const okArea = !areaVal || areaVal === "All" || (
+          assignVal === "Field"
+            ? areaPlace === areaNeedle
+            : (basedLocation === areaNeedle || areaPlace === areaNeedle)
+        );
 
       const text = normalize(
         `${emp.empId} ${fullName(emp)} ${emp.dept || ""} ${emp.position || ""} ${emp.type || ""} ${emp.status || ""} ${assignmentText(emp)}`
@@ -2562,7 +2575,18 @@ document.addEventListener("DOMContentLoaded", async () => {
           assignSeg.appendChild(allBtn);
 
           (data.assignments || []).forEach((label) => {
-            const places = areaPlaces[label] || [];
+            const places = Array.isArray(areaPlaces[label]) ? areaPlaces[label] : [];
+            const placesForLabel = places.filter((place) => {
+              if (!employees.length) return true;
+              const want = normalize(place);
+              return employees.some((emp) => {
+                if (String(emp.assignmentType || "") !== String(label || "")) return false;
+                if (String(label || "") === "Field") {
+                  return normalize(emp.areaPlace || "") === want;
+                }
+                return normalize(emp.basedLocation || "") === want || normalize(emp.areaPlace || "") === want;
+              });
+            });
             const wrap = document.createElement("div");
             wrap.className = "seg__btn-wrap";
 
@@ -2571,7 +2595,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             btn.className = `seg__btn seg__btn--emp${activeAssign === label ? " is-active" : ""}`;
             btn.setAttribute("data-assign", label);
             btn.textContent = label;
-            if (places.length) {
+            if (placesForLabel.length) {
               const chev = document.createElement("span");
               chev.className = "seg__chevron";
               chev.textContent = "▾";
@@ -2579,12 +2603,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             wrap.appendChild(btn);
 
-            if (places.length) {
+            if (placesForLabel.length) {
               const dropdown = document.createElement("div");
               dropdown.className = "seg__dropdown";
               dropdown.setAttribute("data-group", label);
               dropdown.style.display = "none";
-              places.forEach((p) => {
+              placesForLabel.forEach((p) => {
                 const item = document.createElement("button");
                 item.type = "button";
                 item.className = `seg__dropdown-item${activeArea === p ? " is-active" : ""}`;
@@ -2630,6 +2654,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       await loadEmployees();
+      await loadFilters();
     } catch (err) {
       if (!serverRendered) throw err;
       console.warn("Failed to load full employee list. Using server seed.", err);

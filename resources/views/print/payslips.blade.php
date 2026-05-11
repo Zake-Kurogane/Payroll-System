@@ -465,6 +465,7 @@
                                 <tr>
                                     <td>Shortages</td>
                                     <td class="num">-</td>
+                                    <td class="num">-</td>
                                     <td class="num">{!! $money($shortages) !!}</td>
                                 </tr>
                                 <tr>

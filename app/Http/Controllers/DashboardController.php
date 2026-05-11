@@ -134,7 +134,9 @@ class DashboardController extends Controller
                         ->join('employees as e', 'e.id', '=', 'prr.employee_id')
                         ->whereColumn('prr.payroll_run_id', 'payroll_runs.id')
                         ->when($assignment !== 'All', fn ($x) => $x->where('e.assignment_type', $assignment))
-                        ->when($place !== '', fn ($x) => $x->where('e.area_place', $place));
+                        ->when($place !== '', function ($x) use ($assignment, $place) {
+                            $this->applyEmployeePlaceFilter($x, $assignment, $place, 'e');
+                        });
                 });
             })->orderByDesc('id')->get();
 
@@ -169,7 +171,9 @@ class DashboardController extends Controller
                 ->whereIn('payroll_run_id', $runScopeIds)
                 ->join('employees as e', 'e.id', '=', 'payroll_run_rows.employee_id')
                 ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-                ->when($place !== '', fn ($q) => $q->where('e.area_place', $place));
+                ->when($place !== '', function ($q) use ($assignment, $place) {
+                    $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+                });
 
             $employees = (int) (clone $rowQuery)->distinct('payroll_run_rows.employee_id')->count('payroll_run_rows.employee_id');
             $gross = (float) ((clone $rowQuery)->sum('payroll_run_rows.gross') ?? 0);
@@ -182,7 +186,9 @@ class DashboardController extends Controller
                 ->whereNotNull('claimed_at')
                 ->join('employees as e', 'e.id', '=', 'payslip_claims.employee_id')
                 ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-                ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
+                ->when($place !== '', function ($q) use ($assignment, $place) {
+                    $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+                })
                 ->count('payslip_claims.id');
 
             $unclaimedPayslips = max(0, $expectedPayslips - (int) $claimedCount);
@@ -191,7 +197,9 @@ class DashboardController extends Controller
                 ->whereIn('payroll_run_id', $runScopeIds)
                 ->join('employees as e', 'e.id', '=', 'payslips.employee_id')
                 ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-                ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
+                ->when($place !== '', function ($q) use ($assignment, $place) {
+                    $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+                })
                 ->count('payslips.id');
 
             $payslipsNotGenerated = max(0, $expectedPayslips - (int) $generatedCount);
@@ -200,7 +208,9 @@ class DashboardController extends Controller
                 ->whereIn('payroll_run_id', $runScopeIds)
                 ->join('employees as e', 'e.id', '=', 'payroll_run_rows.employee_id')
                 ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-                ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
+                ->when($place !== '', function ($q) use ($assignment, $place) {
+                    $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+                })
                 ->selectRaw("COALESCE(NULLIF(TRIM(e.assignment_type), ''), 'Unassigned') as assignment_label")
                 ->selectRaw('COUNT(DISTINCT payroll_run_rows.employee_id) as employees')
                 ->selectRaw('SUM(payroll_run_rows.gross) as gross')
@@ -214,7 +224,9 @@ class DashboardController extends Controller
                 ->whereNotNull('claimed_at')
                 ->join('employees as e', 'e.id', '=', 'payslip_claims.employee_id')
                 ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-                ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
+                ->when($place !== '', function ($q) use ($assignment, $place) {
+                    $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+                })
                 ->selectRaw("COALESCE(NULLIF(TRIM(e.assignment_type), ''), 'Unassigned') as assignment_label")
                 ->selectRaw('COUNT(payslip_claims.id) as claimed')
                 ->groupBy('e.assignment_type')
@@ -254,7 +266,9 @@ class DashboardController extends Controller
                         ->join('employees as e', 'e.id', '=', 'prr.employee_id')
                         ->whereColumn('prr.payroll_run_id', 'payroll_runs.id')
                         ->when($assignment !== 'All', fn ($x) => $x->where('e.assignment_type', $assignment))
-                        ->when($place !== '', fn ($x) => $x->where('e.area_place', $place));
+                        ->when($place !== '', function ($x) use ($assignment, $place) {
+                            $this->applyEmployeePlaceFilter($x, $assignment, $place, 'e');
+                        });
                 });
             })
             ->get();
@@ -317,7 +331,9 @@ class DashboardController extends Controller
             ->where('pr.status', 'Released')
             ->whereBetween('pr.period_month', [$sourceStartYm, $sourceEndYm])
             ->when($assignment !== 'All', fn ($q) => $q->where('e.assignment_type', $assignment))
-            ->when($place !== '', fn ($q) => $q->where('e.area_place', $place))
+            ->when($place !== '', function ($q) use ($assignment, $place) {
+                $this->applyEmployeePlaceFilter($q, $assignment, $place, 'e');
+            })
             ->selectRaw('pr.period_month as period_month, pr.cutoff as cutoff')
             ->selectRaw('SUM(payroll_run_rows.net_pay) as net')
             ->selectRaw("SUM({$deductionExpr}) as deductions")
@@ -419,6 +435,23 @@ class DashboardController extends Controller
             return '11-25';
         }
         return 'all';
+    }
+
+    private function applyEmployeePlaceFilter($query, string $assignment, string $place, string $employeeAlias = 'e'): void
+    {
+        $normalizedAssignment = strtolower(trim($assignment));
+        $areaColumn = "{$employeeAlias}.area_place";
+        $basedColumn = "{$employeeAlias}.based_location";
+
+        if ($normalizedAssignment === 'field') {
+            $query->where($areaColumn, $place);
+            return;
+        }
+
+        $query->where(function ($q) use ($areaColumn, $basedColumn, $place) {
+            $q->where($basedColumn, $place)
+              ->orWhere($areaColumn, $place);
+        });
     }
 
     private function deductionExpression(string $deductionType): string

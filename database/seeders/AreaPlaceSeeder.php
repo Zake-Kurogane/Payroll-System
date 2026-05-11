@@ -20,8 +20,9 @@ class AreaPlaceSeeder extends Seeder
             ['code' => 'stallion-farm',     'label' => 'Stallion Farm',     'parent_assignment' => 'Davao', 'sort_order' => 4],
             ['code' => 'auraland-property', 'label' => 'Auraland Property', 'parent_assignment' => 'Davao', 'sort_order' => 5],
             // Tagum sub-options
-            ['code' => 'aura-fortune',       'label' => 'AURA FORTUNE G5 TRADERS CORPORATION', 'parent_assignment' => 'Tagum', 'sort_order' => 1],
+            ['code' => 'aura-fortune',       'label' => 'G5 Tagum',          'parent_assignment' => 'Tagum', 'sort_order' => 1],
             ['code' => 'rtu-building-tagum', 'label' => 'RTU BUILDING',      'parent_assignment' => 'Tagum', 'sort_order' => 2],
+            ['code' => 'g5-refinery',        'label' => 'G5 Refinery',       'parent_assignment' => 'Tagum', 'sort_order' => 3],
             // Field sub-options (area places)
             ['code' => 'buena-gold',   'label' => 'BUENA GOLD TRADING',                        'parent_assignment' => 'Field', 'sort_order' => 1],
             ['code' => 'davao-gold',   'label' => 'DAVAO GOLD TRADING',                        'parent_assignment' => 'Field', 'sort_order' => 2],

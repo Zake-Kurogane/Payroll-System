@@ -473,9 +473,9 @@
   min-width: 0;
 }
 
-/* Loans tables: hide horizontal scrollbar (tables are designed to fit the card) */
+/* Loans tables: allow horizontal scroll on smaller viewports */
 .loans-page .tablewrap {
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
 }
 
@@ -736,6 +736,29 @@ body.drawer-open {
 .table .col-actions {
   width: 200px;
   min-width: 200px;
+}
+
+@media (max-width: 1366px) {
+  .loans-page .table th {
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+  .loans-page .table td {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+  .table .col-actions {
+    width: 160px;
+    min-width: 160px;
+  }
+  .loans-page .iconbtn {
+    width: 30px;
+    height: 30px;
+  }
+  .loans-page .iconbtn svg {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 /* Match Employee Records action buttons */

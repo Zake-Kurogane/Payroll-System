@@ -707,6 +707,45 @@ class AttendanceController extends Controller
             ->get(['id', 'emp_no', 'assignment_type'])
             ->keyBy('emp_no');
 
+        $existingStatusByEmployeeDate = [];
+        if (!empty($rowsToUpsert) && $employeesByNo->isNotEmpty()) {
+            $employeeIds = $employeesByNo->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $dates = array_values(array_unique(array_map(
+                fn ($r) => (string) ($r['date'] ?? ''),
+                $rowsToUpsert
+            )));
+            $dates = array_values(array_filter($dates, fn ($d) => $d !== ''));
+
+            if (!empty($employeeIds) && !empty($dates)) {
+                $existingRecords = AttendanceRecord::query()
+                    ->whereIn('employee_id', $employeeIds)
+                    ->whereIn('date', $dates)
+                    ->get(['employee_id', 'date', 'status']);
+
+                foreach ($existingRecords as $existing) {
+                    $dateStr = $existing->date instanceof \DateTimeInterface
+                        ? $existing->date->format('Y-m-d')
+                        : Carbon::parse((string) $existing->date)->format('Y-m-d');
+                    $existingStatusByEmployeeDate[((int) $existing->employee_id) . '|' . $dateStr] = (string) ($existing->status ?? '');
+                }
+            }
+        }
+
+        $plUsageByEmployeeYear = [];
+        if ($employeesByNo->isNotEmpty()) {
+            $employeeIds = $employeesByNo->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $plUsedRows = AttendanceRecord::query()
+                ->whereIn('employee_id', $employeeIds)
+                ->where('status', 'Paid Leave')
+                ->selectRaw('employee_id, YEAR(date) as year_key, COUNT(*) as used_count')
+                ->groupBy('employee_id', 'year_key')
+                ->get();
+
+            foreach ($plUsedRows as $plUsed) {
+                $plUsageByEmployeeYear[((int) $plUsed->employee_id) . '|' . ((int) $plUsed->year_key)] = (int) ($plUsed->used_count ?? 0);
+            }
+        }
+
         foreach ($rowsToUpsert as $row) {
             $empNo = (string) ($row['emp_no'] ?? '');
             if ($empNo !== '' && !isset($employeesByNo[$empNo])) {
@@ -736,6 +775,27 @@ class AttendanceController extends Controller
                         if (!$isRegular || !$hasAssignment) {
                             $src = (string) ($row['_src'] ?? 'Row');
                             $errors[] = "{$src}: Paid Leave is only allowed for eligible regular employees with PL allowance.";
+                            continue;
+                        }
+
+                        $workDate = (string) ($row['date'] ?? '');
+                        $workYear = Carbon::parse($workDate)->year;
+                        $usageKey = ((int) $emp->id) . '|' . $workYear;
+                        $employeeDateKey = ((int) $emp->id) . '|' . $workDate;
+                        $existingStatus = (string) ($existingStatusByEmployeeDate[$employeeDateKey] ?? '');
+                        $alreadyPaidLeaveForDate = $existingStatus === 'Paid Leave';
+                        $used = (int) ($plUsageByEmployeeYear[$usageKey] ?? 0);
+
+                        // Importing a new Paid Leave day is blocked once balance reaches zero.
+                        if (!$alreadyPaidLeaveForDate && $used >= 5) {
+                            $src = (string) ($row['_src'] ?? 'Row');
+                            $errors[] = "{$src}: Paid Leave balance exhausted (0 of 5 days remaining for {$workYear}).";
+                            continue;
+                        }
+
+                        // Reserve this paid leave slot during validation so subsequent rows can't exceed 5.
+                        if (!$alreadyPaidLeaveForDate) {
+                            $plUsageByEmployeeYear[$usageKey] = $used + 1;
                         }
                     }
                 }

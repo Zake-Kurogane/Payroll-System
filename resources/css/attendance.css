@@ -756,7 +756,7 @@ h1 {
 .tablewrap {
     border-radius: 16px;
     border: 1px solid var(--line);
-    overflow-x: hidden;
+    overflow-x: auto;
     overflow-y: auto;
 }
 .table {
@@ -841,6 +841,65 @@ tbody tr:hover {
 .table:not(.table--preview) td:nth-child(9) {
     width: 140px;
 } /* Action */
+
+@media (max-width: 1366px) {
+    thead th {
+        padding: 7px 6px;
+        font-size: 10px;
+    }
+    tbody td {
+        padding: 7px 6px;
+        font-size: 11px;
+    }
+    .iconbtn {
+        width: 30px;
+        height: 30px;
+    }
+    .iconbtn svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+/* Mac/laptop view: compress attendance table to fit without horizontal scroll */
+@media (min-width: 1024px) and (max-width: 1440px) {
+    .tablewrap {
+        overflow-x: hidden;
+    }
+
+    .table:not(.table--preview) th:nth-child(2),
+    .table:not(.table--preview) td:nth-child(2) {
+        width: 80px;
+    } /* Date */
+    .table:not(.table--preview) th:nth-child(3),
+    .table:not(.table--preview) td:nth-child(3) {
+        width: 70px;
+    } /* Emp ID */
+    .table:not(.table--preview) th:nth-child(4),
+    .table:not(.table--preview) td:nth-child(4) {
+        width: 150px;
+    } /* Name */
+    .table:not(.table--preview) th:nth-child(5),
+    .table:not(.table--preview) td:nth-child(5) {
+        width: 120px;
+    } /* Assignment */
+    .table:not(.table--preview) th:nth-child(6),
+    .table:not(.table--preview) td:nth-child(6) {
+        width: 120px;
+    } /* Area */
+    .table:not(.table--preview) th:nth-child(7),
+    .table:not(.table--preview) td:nth-child(7) {
+        width: 120px;
+    } /* Clock In/Out */
+    .table:not(.table--preview) th:nth-child(8),
+    .table:not(.table--preview) td:nth-child(8) {
+        width: 90px;
+    } /* Status */
+    .table:not(.table--preview) th:nth-child(9),
+    .table:not(.table--preview) td:nth-child(9) {
+        width: 110px;
+    } /* Action */
+}
 
 .tableFooter {
     display: flex;
@@ -1717,4 +1776,3 @@ th.sortable.is-desc .sortIcon {
     outline: 2px solid rgba(156, 29, 60, 0.45);
     outline-offset: -2px;
 }
-

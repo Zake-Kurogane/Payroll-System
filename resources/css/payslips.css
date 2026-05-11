@@ -693,7 +693,8 @@ tbody tr:hover {
 
 /* Payslips List: no internal scroll, fit to card width */
 .tablewrap--payslipsList {
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 .table--payslipsList {
     min-width: 0;
@@ -778,6 +779,25 @@ tbody tr:hover {
 .table--payslipsList thead th:nth-child(8),
 .table--payslipsList tbody td:nth-child(8) {
     width: 10%; /* Delivery */
+}
+
+@media (max-width: 1366px) {
+    .table--payslipsList thead th {
+        padding: 8px 6px;
+        font-size: 11px;
+    }
+    .table--payslipsList tbody td {
+        padding: 8px 6px;
+        font-size: 12px;
+    }
+    .iconbtn {
+        width: 30px;
+        height: 30px;
+    }
+    .iconbtn svg {
+        width: 14px;
+        height: 14px;
+    }
 }
 
 /* Sort icon (chevron style) */
@@ -1804,4 +1824,3 @@ th.sortable.is-desc .sortIcon {
     outline: 2px solid rgba(156, 29, 60, 0.45);
     outline-offset: -2px;
 }
-

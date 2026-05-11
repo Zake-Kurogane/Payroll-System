@@ -28,6 +28,7 @@ class EmployeeController extends Controller
 {
     public function index()
     {
+        $probationDueOnly = request()->boolean('probation_due');
         $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) request()->query('q', ''));
         $status = request()->query('status');
@@ -50,6 +51,7 @@ class EmployeeController extends Controller
 
         $employees = Employee::query()
             ->with($with)
+            ->when($probationDueOnly, fn ($query) => $this->applyProbationDueFilter($query))
             ->when(!$canViewComp, function ($query) {
                 $query->select($this->hrEmployeeSelectColumns());
             })
@@ -89,6 +91,7 @@ class EmployeeController extends Controller
 
     public function page(Request $request)
     {
+        $probationDueOnly = $request->boolean('probation_due');
         $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
@@ -110,6 +113,7 @@ class EmployeeController extends Controller
 
         $employees = Employee::query()
             ->with($with)
+            ->when($probationDueOnly, fn ($query) => $this->applyProbationDueFilter($query))
             ->when(!$canViewComp, function ($query) {
                 $query->select($this->hrEmployeeSelectColumns());
             })
@@ -465,7 +469,7 @@ class EmployeeController extends Controller
             'assignment_type' => $emp->assignment_type,
             'total'           => 5,
             'used'            => (int) ($usedCounts[$emp->id] ?? 0),
-            'remaining'       => 5 - (int) ($usedCounts[$emp->id] ?? 0),
+            'remaining'       => max(0, 5 - (int) ($usedCounts[$emp->id] ?? 0)),
         ]));
     }
 
@@ -487,7 +491,7 @@ class EmployeeController extends Controller
             'applicable' => true,
             'total'      => $total,
             'used'       => $used,
-            'remaining'  => $total - $used,
+            'remaining'  => max(0, $total - $used),
             'year'       => $year,
         ]);
     }
@@ -724,6 +728,7 @@ class EmployeeController extends Controller
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
         }
+        $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
             unset($validated['force_statutory_premiums']);
         }
@@ -783,6 +788,7 @@ class EmployeeController extends Controller
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
         }
+        $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
             unset($validated['force_statutory_premiums']);
         }
@@ -1229,5 +1235,25 @@ class EmployeeController extends Controller
         }
 
         return $columns;
+    }
+
+    private function applyRefinersAssignmentRule(array $validated): array
+    {
+        $department = strtolower(trim((string) ($validated['department'] ?? '')));
+        if ($department === 'operations-refiners') {
+            $validated['assignment_type'] = 'Tagum';
+            $validated['area_place'] = 'G5 Refinery';
+            $validated['based_location'] = 'G5 Refinery';
+        }
+        return $validated;
+    }
+
+    private function applyProbationDueFilter($query): void
+    {
+        $sixMonthsAgo = now()->subMonthsNoOverflow(6)->toDateString();
+
+        $query->whereNotNull('date_hired')
+            ->whereDate('date_hired', '<=', $sixMonthsAgo)
+            ->whereRaw('LOWER(TRIM(COALESCE(employment_type, ""))) LIKE ?', ['%probation%']);
     }
 }

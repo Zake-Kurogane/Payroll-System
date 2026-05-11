@@ -17,14 +17,88 @@
     justify-content: flex-start;
     column-gap: 12px;
     row-gap: 14px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     width: 100%;
-    overflow-x: auto;
+    overflow: visible;
+}
+
+/* Keep assignment controls from stretching awkwardly on desktop */
+.cutoffbar__left .filter-assign {
+    flex: 1 1 360px;
+    min-width: 280px;
+    order: 1;
+}
+
+.cutoffbar__left .f.f--wide {
+    order: 1;
+}
+
+.cutoffbar__left .seg.seg--pill {
+    flex-wrap: nowrap;
+    width: fit-content;
+    max-width: 100%;
+    display: inline-flex;
+    overflow: hidden;
+    min-height: 44px;
+}
+
+.cutoffbar__left .filter-assign > .seg.seg--pill {
+    justify-self: start;
+}
+
+.cutoffbar__left .seg__btn {
+    height: 44px;
+    padding: 0 18px;
+    white-space: nowrap;
+}
+
+@media (max-width: 1024px) {
+    .cutoffbar__left .f.f--wide {
+        flex: 1 1 240px;
+        min-width: 220px;
+    }
+
+    .cutoffbar__left .f.f--wide input,
+    .cutoffbar__left .f.f--wide select {
+        min-width: 0;
+    }
+
+    .cutoffbar__left .filter-assign {
+        flex: 1 1 100%;
+        min-width: 0;
+        order: 2;
+    }
+
+    .cutoffbar__left .seg__btn {
+        height: 44px;
+        padding: 0 14px;
+    }
 }
 
 @media (max-width: 720px) {
     .cutoffbar__left {
         justify-content: flex-start;
+        align-items: stretch;
+    }
+
+    .cutoffbar__left .f.f--wide,
+    .cutoffbar__left .filter-assign {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .cutoffbar__left .seg.seg--pill {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .cutoffbar__left .seg__btn-wrap {
+        position: relative;
+    }
+
+    .cutoffbar__left .seg__dropdown {
+        max-width: min(92vw, 360px);
     }
 }
 
