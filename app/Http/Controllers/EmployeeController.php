@@ -1250,10 +1250,21 @@ class EmployeeController extends Controller
 
     private function applyProbationDueFilter($query): void
     {
-        $sixMonthsAgo = now()->subMonthsNoOverflow(6)->toDateString();
+        // Show employees one month before status end date:
+        // probationary: 6-month term (notify from 5 months)
+        // trainee: 3-month term (notify from 2 months)
+        $fiveMonthsAgo = now()->subMonthsNoOverflow(5)->toDateString();
+        $twoMonthsAgo = now()->subMonthsNoOverflow(2)->toDateString();
 
         $query->whereNotNull('date_hired')
-            ->whereDate('date_hired', '<=', $sixMonthsAgo)
-            ->whereRaw('LOWER(TRIM(COALESCE(employment_type, ""))) LIKE ?', ['%probation%']);
+            ->where(function ($q) {
+                $q->where(function ($qq) use ($fiveMonthsAgo) {
+                    $qq->whereRaw('LOWER(TRIM(COALESCE(employment_type, ""))) LIKE ?', ['%probation%'])
+                        ->whereDate('date_hired', '<=', $fiveMonthsAgo);
+                })->orWhere(function ($qq) use ($twoMonthsAgo) {
+                    $qq->whereRaw('LOWER(TRIM(COALESCE(employment_type, ""))) LIKE ?', ['%trainee%'])
+                        ->whereDate('date_hired', '<=', $twoMonthsAgo);
+                });
+            });
     }
 }

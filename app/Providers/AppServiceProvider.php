@@ -161,26 +161,81 @@ class AppServiceProvider extends ServiceProvider
                 }
 
                 try {
-                    $probationEndingCount = Employee::query()
+                    $statusRows = Employee::query()
                         ->whereNotNull('date_hired')
                         ->where(function ($q) {
                             $q->whereRaw('LOWER(COALESCE(employment_type, "")) LIKE ?', ['%probation%'])
-                                ->orWhereRaw('LOWER(COALESCE(employment_type, "")) LIKE ?', ['%probationary%']);
+                                ->orWhereRaw('LOWER(COALESCE(employment_type, "")) LIKE ?', ['%probationary%'])
+                                ->orWhereRaw('LOWER(COALESCE(employment_type, "")) LIKE ?', ['%trainee%']);
                         })
-                        ->get(['date_hired'])
+                        ->get(['first_name', 'middle_name', 'last_name', 'date_hired', 'employment_type'])
                         ->filter(function ($employee) use ($now) {
-                            $probationEnd = Carbon::parse($employee->date_hired)->addMonthsNoOverflow(6)->endOfDay();
-                            return $probationEnd->lessThanOrEqualTo($now);
-                        })
-                        ->count();
+                            // Probationary/Trainee term is 6 months.
+                            // Start notifying one month ahead and keep active while type is unchanged.
+                            $notifyStart = Carbon::parse($employee->date_hired)->addMonthsNoOverflow(5)->startOfDay();
+                            return $notifyStart->lessThanOrEqualTo($now);
+                        });
 
-                    if ($probationEndingCount > 0) {
+                    $emitStatusNotification = function ($rows, string $label, int $termMonths) use (&$items, $now) {
+                        if ($rows->isEmpty()) {
+                            return;
+                        }
+
+                        $todayStart = $now->copy()->startOfDay();
+                        $nextMonthCutoff = $now->copy()->addMonthNoOverflow()->endOfDay();
+                        $dueNextMonthNames = $rows
+                            ->filter(function ($employee) use ($todayStart, $nextMonthCutoff, $termMonths) {
+                                $statusEnd = Carbon::parse($employee->date_hired)->addMonthsNoOverflow($termMonths)->endOfDay();
+                                return $statusEnd->greaterThanOrEqualTo($todayStart)
+                                    && $statusEnd->lessThanOrEqualTo($nextMonthCutoff);
+                            })
+                            ->map(function ($employee) {
+                                return trim(collect([$employee->first_name, $employee->middle_name, $employee->last_name])->filter()->implode(' '));
+                            })
+                            ->filter()
+                            ->values();
+
+                        $statusWord = strtolower($label);
+                        $totalCount = $rows->count();
+                        $overdueCount = $rows->filter(function ($employee) use ($todayStart, $termMonths) {
+                            $statusEnd = Carbon::parse($employee->date_hired)->addMonthsNoOverflow($termMonths)->endOfDay();
+                            return $statusEnd->lt($todayStart);
+                        })->count();
+                        $message = "{$totalCount} {$statusWord} employees still need employment status update.";
+
+                        if ($dueNextMonthNames->isNotEmpty()) {
+                            $preview = $dueNextMonthNames->take(5)->implode(', ');
+                            $remaining = $dueNextMonthNames->count() - min(5, $dueNextMonthNames->count());
+                            $suffix = $remaining > 0 ? " and {$remaining} more" : '';
+                            $message = "{$dueNextMonthNames->count()} {$statusWord} employees will finish within the next month: {$preview}{$suffix}. This will stay active until employment type is changed.";
+                        } elseif ($overdueCount > 0) {
+                            $message = "{$overdueCount} {$statusWord} employees are already overdue and still need employment status update.";
+                        }
+
                         $items[] = [
                             'level' => 'warning',
-                            'message' => "{$probationEndingCount} employees have reached/passed 6 months probation and are still marked as probationary. Please review for regularization.",
+                            'message' => $message,
                             'target_url' => url('/employee-records?probation_due=1'),
                         ];
-                    }
+                    };
+
+                    $probationRows = $statusRows->filter(function ($employee) {
+                        $type = strtolower(trim((string) ($employee->employment_type ?? '')));
+                        return str_contains($type, 'probation');
+                    })->filter(function ($employee) use ($now) {
+                        $notifyStart = Carbon::parse($employee->date_hired)->addMonthsNoOverflow(5)->startOfDay();
+                        return $notifyStart->lessThanOrEqualTo($now);
+                    })->values();
+                    $emitStatusNotification($probationRows, 'Probationary', 6);
+
+                    $traineeRows = $statusRows->filter(function ($employee) {
+                        $type = strtolower(trim((string) ($employee->employment_type ?? '')));
+                        return str_contains($type, 'trainee');
+                    })->filter(function ($employee) use ($now) {
+                        $notifyStart = Carbon::parse($employee->date_hired)->addMonthsNoOverflow(2)->startOfDay();
+                        return $notifyStart->lessThanOrEqualTo($now);
+                    })->values();
+                    $emitStatusNotification($traineeRows, 'Trainee', 3);
                 } catch (\Throwable $e) {
                     Log::warning('Topbar notification failed: probation ending', ['error' => $e->getMessage()]);
                 }

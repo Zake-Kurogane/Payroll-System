@@ -773,7 +773,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function clearForm() {
     empForm?.reset();
     clearFormErrors();
-    if (f_assignmentType) f_assignmentType.value = "G5-Davao";
+    if (f_assignmentType) f_assignmentType.value = "Davao";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_dept) f_dept.value = "";
     if (f_basedLocation) f_basedLocation.value = "";
@@ -848,13 +848,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (f_assignmentType) {
       const assign = String(emp.assignmentType || "");
-      if (assign && !Array.from(f_assignmentType.options).some(o => o.value === assign)) {
-        const opt = document.createElement("option");
-        opt.value = assign;
-        opt.textContent = assign;
-        f_assignmentType.appendChild(opt);
+      const optionValues = Array.from(f_assignmentType.options).map(o => String(o.value || ""));
+      const legacyMap = {
+        "G5 Tagum": "Tagum",
+        "G5 Davao": "Davao",
+        "G5-Davao": "Davao",
+      };
+      const resolvedAssign = legacyMap[assign] || assign;
+      if (resolvedAssign && optionValues.includes(resolvedAssign)) {
+        f_assignmentType.value = resolvedAssign;
+      } else {
+        f_assignmentType.value = f_assignmentType.value || optionValues[0] || "";
       }
-      f_assignmentType.value = assign || f_assignmentType.value || "G5-Davao";
     }
     if (f_areaPlace) setSelectValuePreserveOption(f_areaPlace, emp.areaPlace || "");
     if (f_externalArea) f_externalArea.value = emp.externalArea || "";
