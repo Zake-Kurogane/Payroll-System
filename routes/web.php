@@ -55,6 +55,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/employees/{emp_no}/area-history', [EmployeeController::class, 'areaHistory'])->name('employees.areaHistory');
         Route::get('/employees/{emp_no}/pl-balance', [EmployeeController::class, 'paidLeaveBalance'])->name('employees.plBalance');
         Route::get('/employees/{emp_no}/attendance-year', [EmployeeController::class, 'attendanceYear'])->name('employees.attendanceYear');
+        Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
+        Route::put('/employees/{emp_no}', [EmployeeController::class, 'update'])->name('employees.update');
+        Route::post('/employees/bulk-assign', [EmployeeController::class, 'bulkAssign'])->name('employees.bulkAssign');
 
         // Employee Case Management
         Route::get('/employee-cases', [EmployeeCaseController::class, 'page'])->name('employee.cases');
@@ -96,10 +99,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/index', [DashboardController::class, 'index'])->name('index');
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
         // Employee CRUD
-        Route::post('/employees', [EmployeeController::class, 'store'])->name('employees.store');
-        Route::put('/employees/{emp_no}', [EmployeeController::class, 'update'])->name('employees.update');
         Route::delete('/employees/{emp_no}', [EmployeeController::class, 'destroy'])->name('employees.destroy');
-        Route::post('/employees/bulk-assign', [EmployeeController::class, 'bulkAssign'])->name('employees.bulkAssign');
 
         // Disciplinary
         Route::view('/employee-disciplinary', 'layouts.disciplinary')->name('employee.disciplinary');

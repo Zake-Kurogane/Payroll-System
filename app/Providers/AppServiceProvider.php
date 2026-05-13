@@ -214,6 +214,7 @@ class AppServiceProvider extends ServiceProvider
 
                         $items[] = [
                             'level' => 'warning',
+                            'persistent' => true,
                             'message' => $message,
                             'target_url' => url('/employee-records?probation_due=1'),
                         ];
@@ -240,10 +241,36 @@ class AppServiceProvider extends ServiceProvider
                     Log::warning('Topbar notification failed: probation ending', ['error' => $e->getMessage()]);
                 }
 
+                try {
+                    $noCompCount = Employee::query()
+                        ->where(function ($q) {
+                            $q->whereNull('status')
+                                ->orWhereRaw('LOWER(TRIM(COALESCE(status, ""))) NOT IN (?, ?)', ['inactive', 'resigned']);
+                        })
+                        ->whereRaw('COALESCE(basic_pay, 0) <= 0')
+                        ->whereRaw('COALESCE(allowance, 0) <= 0')
+                        ->count();
+
+                    if ($noCompCount > 0) {
+                        $items[] = [
+                            'level' => 'warning',
+                            'admin_only' => true,
+                            'persistent' => true,
+                            'message' => "{$noCompCount} employees were added with NO COMPENSATION.",
+                            'target_url' => url('/employee-records?no_compensation=1'),
+                        ];
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Topbar notification failed: no compensation employees', ['error' => $e->getMessage()]);
+                }
+
                 return $items;
             });
 
             if (($user->role ?? 'admin') !== 'admin') {
+                $notifications = array_values(array_filter($notifications, function ($notification) {
+                    return !((bool) ($notification['admin_only'] ?? false));
+                }));
                 foreach ($notifications as &$notification) {
                     $targetUrl = (string) ($notification['target_url'] ?? '');
                     $isPayslipPage = str_contains($targetUrl, '/payslip')

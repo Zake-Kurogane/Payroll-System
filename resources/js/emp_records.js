@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let positionsCatalog = Array.isArray(window.__positions) ? window.__positions : [];
   let externalPositionsCatalog = Array.isArray(window.__externalPositions) ? window.__externalPositions : [];
+  let externalCompaniesCatalog = Array.isArray(window.__externalCompanies) ? window.__externalCompanies : [];
 
   const CAN_VIEW_COMP = window.__canViewCompensation !== undefined ? !!window.__canViewCompensation : true;
   const CAN_DELETE_EMPLOYEE = window.__canDeleteEmployee !== undefined ? !!window.__canDeleteEmployee : true;
@@ -44,10 +45,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (pageQuery.get("probation_due") === "1") {
     forcedEmployeeParams.probation_due = "1";
   }
+  if (pageQuery.get("no_compensation") === "1") {
+    forcedEmployeeParams.no_compensation = "1";
+  }
   if (serverRendered) {
     const navEntries = performance.getEntriesByType && performance.getEntriesByType("navigation");
     const navType = navEntries && navEntries.length ? navEntries[0].type : "";
-    const shouldKeepQuery = pageQuery.get("probation_due") === "1";
+    const shouldKeepQuery = pageQuery.get("probation_due") === "1" || pageQuery.get("no_compensation") === "1";
     if ((navType === "reload" || navType === "reload_navigation") && window.location.search && !shouldKeepQuery) {
       window.location.href = window.location.pathname;
     }
@@ -69,9 +73,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (csrfToken) headers["X-CSRF-TOKEN"] = csrfToken;
 
     const res = await fetch(url, { ...options, headers });
-    const data = await res.json().catch(() => null);
+    const raw = await res.text();
+    let data = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      data = null;
+    }
     if (!res.ok) {
-      const msg = data?.message || "Request failed.";
+      const validation = data?.errors && typeof data.errors === "object"
+        ? Object.values(data.errors).flat().filter(Boolean).join(" ")
+        : "";
+      const fallback = raw && !data ? raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220) : "";
+      const msg = data?.message || validation || fallback || `Request failed (HTTP ${res.status}).`;
       throw new Error(msg);
     }
     return data;
@@ -1023,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       "Total Salary",
       "Assignment Type",
       "Area Place",
-      "External Area",
+      "External Company",
       "Cash Advance Eligible",
       "SSS",
       "PhilHealth",
@@ -1129,29 +1143,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function populateExternalAreaPlaces(selectEl) {
     if (!selectEl) return;
-    const current = selectEl.value;
-    const preferredOrder = ["Davao", "Tagum", "Field"];
-    const keys = [
-      ...preferredOrder.filter(k => Object.prototype.hasOwnProperty.call(areaPlaces, k)),
-      ...Object.keys(areaPlaces).filter(k => !preferredOrder.includes(k)),
-    ];
-    const seen = new Set();
-    const places = [];
-    keys.forEach((k) => {
-      (areaPlaces[k] || []).forEach((p) => {
-        const label = String(p || "").trim();
-        if (!label) return;
-        const key = label.toLowerCase();
-        if (seen.has(key)) return;
-        seen.add(key);
-        places.push(label);
-      });
-    });
+    const current = String(selectEl.value || "").trim();
+    const places = (externalCompaniesCatalog || [])
+      .map((p) => String(p || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
     selectEl.innerHTML =
       `<option value="">-- Select --</option>` +
       places.map(p => `<option value="${p}">${p}</option>`).join("");
-    if (places.includes(current)) selectEl.value = current;
+    if (places.includes(current)) {
+      selectEl.value = current;
+    }
   }
 
   function populateExternalPositions(selectEl) {
@@ -1541,7 +1544,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const ap = (emp.areaPlace || "").trim();
         if (needsAreaPlace && !ap) missing.push("Area Place");
         const isRegular = String(emp.type || "").toLowerCase() === "regular";
-        if (isRegular && !(emp.externalArea || "").trim()) missing.push("External Area");
+        if (isRegular && !(emp.externalArea || "").trim()) missing.push("External Company");
         if (isRegular && !emp.externalPositionId) missing.push("External Position");
       }
     }
@@ -2347,7 +2350,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const isRegular = String(data.type || "").toLowerCase() === "regular";
     if (isRegular) {
       if (!data.externalArea) {
-        setFieldError(f_externalArea, errExternalArea, "External Area is required for Regular employees.");
+        setFieldError(f_externalArea, errExternalArea, "External Company is required for Regular employees.");
       }
       if (!data.externalPositionId) {
         setFieldError(f_externalPosition, errExternalPosition, "External Position is required for Regular employees.");
@@ -2443,6 +2446,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   if ((!externalPositionsCatalog || !externalPositionsCatalog.length) && Array.isArray(window.__externalPositions)) {
     externalPositionsCatalog = window.__externalPositions;
   }
+  if ((!externalCompaniesCatalog || !externalCompaniesCatalog.length) && Array.isArray(window.__externalCompanies)) {
+    externalCompaniesCatalog = window.__externalCompanies;
+  }
   renderPositionsDropdown();
   updatePositionsButton(selectedPositionIds());
   populateExternalPositions(f_externalPosition);
@@ -2504,10 +2510,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (posSearch) posSearch.value = q;
         filterPositionsList(q);
       }
-      if (Array.isArray(data.external_positions)) {
-        externalPositionsCatalog = data.external_positions;
-        populateExternalPositions(f_externalPosition);
-      }
+        if (Array.isArray(data.external_positions)) {
+          externalPositionsCatalog = data.external_positions;
+          populateExternalPositions(f_externalPosition);
+        }
+        if (Array.isArray(data.external_companies)) {
+          externalCompaniesCatalog = data.external_companies;
+          populateExternalAreaPlaces(f_externalArea);
+        }
       if (deptFilter) {
         const depts = (data.departments || [])
           .slice()

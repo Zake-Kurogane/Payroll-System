@@ -13,6 +13,7 @@ use App\Models\AreaPlace;
 use App\Models\AttendanceCode;
 use App\Models\Department;
 use App\Models\BasedLocation;
+use App\Models\ExternalCompany;
 use App\Models\ExternalPosition;
 use App\Models\Position;
 use Carbon\Carbon;
@@ -21,6 +22,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -29,6 +31,7 @@ class EmployeeController extends Controller
     public function index()
     {
         $probationDueOnly = request()->boolean('probation_due');
+        $noCompOnly = request()->boolean('no_compensation');
         $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) request()->query('q', ''));
         $status = request()->query('status');
@@ -52,6 +55,7 @@ class EmployeeController extends Controller
         $employees = Employee::query()
             ->with($with)
             ->when($probationDueOnly, fn ($query) => $this->applyProbationDueFilter($query))
+            ->when($noCompOnly, fn ($query) => $this->applyNoCompensationFilter($query))
             ->when(!$canViewComp, function ($query) {
                 $query->select($this->hrEmployeeSelectColumns());
             })
@@ -92,6 +96,7 @@ class EmployeeController extends Controller
     public function page(Request $request)
     {
         $probationDueOnly = $request->boolean('probation_due');
+        $noCompOnly = $request->boolean('no_compensation');
         $canViewComp = Gate::allows('viewCompensation');
         $q = trim((string) $request->query('q', ''));
         $status = $request->query('status');
@@ -114,6 +119,7 @@ class EmployeeController extends Controller
         $employees = Employee::query()
             ->with($with)
             ->when($probationDueOnly, fn ($query) => $this->applyProbationDueFilter($query))
+            ->when($noCompOnly, fn ($query) => $this->applyNoCompensationFilter($query))
             ->when(!$canViewComp, function ($query) {
                 $query->select($this->hrEmployeeSelectColumns());
             })
@@ -229,6 +235,13 @@ class EmployeeController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']);
         }
+        $externalCompanies = collect();
+        if (Schema::hasTable('external_companies')) {
+            $externalCompanies = ExternalCompany::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->pluck('name');
+        }
 
         return view('layouts.emp_records', [
             'employees' => $employees,
@@ -239,6 +252,7 @@ class EmployeeController extends Controller
             'groupedAreaPlaces' => $groupedAreaPlaces,
             'positions' => $positions,
             'externalPositions' => $externalPositions,
+            'externalCompanies' => $externalCompanies,
         ]);
     }
 
@@ -331,6 +345,13 @@ class EmployeeController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name']);
         }
+        $externalCompanies = collect();
+        if (Schema::hasTable('external_companies')) {
+            $externalCompanies = ExternalCompany::where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->pluck('name');
+        }
 
         return response()->json([
             'statuses' => $statuses,
@@ -341,6 +362,7 @@ class EmployeeController extends Controller
             'employment_types' => $employmentTypes,
             'positions' => $positions,
             'external_positions' => $externalPositions,
+            'external_companies' => $externalCompanies,
         ]);
     }
 
@@ -706,6 +728,7 @@ class EmployeeController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateEmployee($request);
+        $canViewComp = Gate::allows('viewCompensation');
 
         $positionIds = [];
         if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
@@ -727,6 +750,10 @@ class EmployeeController extends Controller
         if (strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
+        }
+        if (!$canViewComp) {
+            $validated['basic_pay'] = 0;
+            $validated['allowance'] = 0;
         }
         $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
@@ -771,6 +798,7 @@ class EmployeeController extends Controller
         $employee = Employee::where('emp_no', $empNo)->firstOrFail();
         $oldAreaPlace = $employee->area_place;
         $validated = $this->validateEmployee($request, $employee->id);
+        $canViewComp = Gate::allows('viewCompensation');
 
         $positionIds = [];
         if (Schema::hasTable('positions') && Schema::hasTable('employee_position')) {
@@ -787,6 +815,9 @@ class EmployeeController extends Controller
         if (strtolower(trim((string) ($validated['employment_type'] ?? ''))) !== 'regular') {
             $validated['external_area'] = null;
             $validated['external_position_id'] = null;
+        }
+        if (!$canViewComp) {
+            unset($validated['basic_pay'], $validated['allowance']);
         }
         $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
@@ -993,10 +1024,12 @@ class EmployeeController extends Controller
         Cache::forget('employees.area_places');
         Cache::forget('employees.area_places_grouped');
         Cache::forget('employees.employment_types');
+        Cache::forget('employees.external_companies');
     }
 
     private function validateEmployee(Request $request, ?int $ignoreId = null): array
     {
+        $canViewComp = Gate::allows('viewCompensation');
         $uniqueEmpNo = Rule::unique('employees', 'emp_no');
         if ($ignoreId !== null) {
             $uniqueEmpNo = $uniqueEmpNo->ignore($ignoreId);
@@ -1064,13 +1097,11 @@ class EmployeeController extends Controller
                 : ['nullable', 'string', 'max:255'],
             'external_area' => array_merge(
                 ['nullable', 'string', 'max:255'],
-                AreaPlace::where('is_active', true)->pluck('label')->isNotEmpty()
-                    ? [Rule::in(AreaPlace::where('is_active', true)->pluck('label')->all())]
-                    : [],
+                $this->externalCompanyInRule(),
                 $this->externalAreaRequiredRule($request)
             ),
-            'basic_pay' => ['required', 'numeric', 'min:0'],
-            'allowance' => ['required', 'numeric', 'min:0'],
+            'basic_pay' => $canViewComp ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
+            'allowance' => $canViewComp ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'bank_account_name' => ['nullable', 'string', 'max:255'],
             'bank_account_number' => ['nullable', 'string', 'max:255'],
@@ -1112,6 +1143,24 @@ class EmployeeController extends Controller
             $validated['area_place'] = null;
         }
         return $validated;
+    }
+
+    private function externalCompanyInRule(): array
+    {
+        if (!Schema::hasTable('external_companies')) {
+            return [];
+        }
+
+        try {
+            $names = ExternalCompany::where('is_active', true)->pluck('name')->all();
+            if (!count($names)) {
+                return [];
+            }
+            return [Rule::in($names)];
+        } catch (\Throwable $e) {
+            Log::warning('External company validation fallback engaged', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     private function normalizePositionIds(array $ids): array
@@ -1257,7 +1306,7 @@ class EmployeeController extends Controller
         $twoMonthsAgo = now()->subMonthsNoOverflow(2)->toDateString();
 
         $query->whereNotNull('date_hired')
-            ->where(function ($q) {
+            ->where(function ($q) use ($fiveMonthsAgo, $twoMonthsAgo) {
                 $q->where(function ($qq) use ($fiveMonthsAgo) {
                     $qq->whereRaw('LOWER(TRIM(COALESCE(employment_type, ""))) LIKE ?', ['%probation%'])
                         ->whereDate('date_hired', '<=', $fiveMonthsAgo);
@@ -1266,5 +1315,15 @@ class EmployeeController extends Controller
                         ->whereDate('date_hired', '<=', $twoMonthsAgo);
                 });
             });
+    }
+
+    private function applyNoCompensationFilter($query): void
+    {
+        $query->where(function ($q) {
+            $q->whereNull('status')
+                ->orWhereRaw('LOWER(TRIM(COALESCE(status, ""))) NOT IN (?, ?)', ['inactive', 'resigned']);
+        })
+            ->whereRaw('COALESCE(basic_pay, 0) <= 0')
+            ->whereRaw('COALESCE(allowance, 0) <= 0');
     }
 }

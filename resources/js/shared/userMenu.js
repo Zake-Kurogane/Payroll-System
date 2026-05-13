@@ -65,7 +65,8 @@ export function initUserMenuDropdown(options = {}) {
 
     notifMenu.querySelectorAll(".notif-dropdown__item[data-notif-key]").forEach((item) => {
       const key = item.getAttribute("data-notif-key");
-      if (key && readMap[key]) {
+      const isPersistent = item.getAttribute("data-persistent") === "1";
+      if (!isPersistent && key && readMap[key]) {
         item.classList.remove("notif-dropdown__item--active");
       }
     });
@@ -79,11 +80,12 @@ export function initUserMenuDropdown(options = {}) {
     notifMenu.querySelectorAll(".notif-dropdown__item--active").forEach((item) => {
       item.addEventListener("click", () => {
         const key = item.getAttribute("data-notif-key");
-        if (key) {
+        const isPersistent = item.getAttribute("data-persistent") === "1";
+        if (!isPersistent && key) {
           readMap[key] = true;
           persistReadMap();
+          item.classList.remove("notif-dropdown__item--active");
         }
-        item.classList.remove("notif-dropdown__item--active");
         refreshUnreadBadge();
       });
     });

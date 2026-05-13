@@ -48,6 +48,7 @@
                     <a href="{{ $notification['target_url'] ?? '#' }}"
                         class="notif-dropdown__item notif-dropdown__item--active"
                         data-notif-key="{{ $notifKey }}"
+                        data-persistent="{{ !empty($notification['persistent']) ? '1' : '0' }}"
                         role="menuitem"
                         @if (empty($notification['target_url'])) aria-disabled="true" @endif>
                         {{ $notification['message'] ?? '' }}

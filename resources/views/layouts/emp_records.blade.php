@@ -212,7 +212,7 @@
                                             $assignType === 'Field' &&
                                             strtolower(trim((string) ($emp->employment_type ?? ''))) === 'regular';
                                         if ($isRegularField && trim((string) ($emp->external_area ?? '')) === '') {
-                                            $missing[] = 'External Area';
+                                            $missing[] = 'External Company';
                                         }
                                         $govRequired = ['sss', 'philhealth', 'pagibig', 'tin'];
                                         $missingGov = array_filter(
@@ -352,6 +352,7 @@
             window.__canDeleteEmployee = @json(Gate::allows('admin'));
             window.__positions = @json($positions ?? []);
             window.__externalPositions = @json($externalPositions ?? []);
+            window.__externalCompanies = @json($externalCompanies ?? []);
         </script>
 
         <div class="toast" id="toast" aria-live="polite" aria-atomic="true"></div>
@@ -618,13 +619,11 @@
                     </div>
 
                     <div class="field" id="externalAreaWrap" style="display:none;">
-                        <label>External Area</label>
+                        <label>External Company</label>
                         <select id="f_externalArea" name="externalArea" disabled>
-                            <option value="">-- Select external area --</option>
-                            @foreach ($groupedAreaPlaces as $group => $places)
-                                @foreach ($places as $ap)
-                                    <option value="{{ $ap }}">{{ $ap }}</option>
-                                @endforeach
+                            <option value="">-- Select external company --</option>
+                            @foreach (($externalCompanies ?? []) as $company)
+                                <option value="{{ $company }}">{{ $company }}</option>
                             @endforeach
                         </select>
                         <small class="err" id="errExternalArea"></small>
