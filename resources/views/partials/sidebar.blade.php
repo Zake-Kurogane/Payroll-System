@@ -1,3 +1,14 @@
+@php
+    $companyName = trim((string) (\App\Models\CompanySetup::query()->value('company_name') ?? 'PAYROLL SYSTEM'));
+    $words = preg_split('/\s+/', $companyName) ?: [];
+    $titleWords = array_slice($words, 0, 4);
+    $subWords = array_slice($words, 4);
+    $brandTitle = trim(implode(' ', $titleWords));
+    $brandSub = trim(implode(' ', $subWords));
+    if ($brandTitle === '') {
+        $brandTitle = $companyName;
+    }
+@endphp
 <aside class="side" id="sideNav" aria-hidden="false">
     <button class="side__mobileClose" type="button" id="mobileNavClose" aria-label="Close navigation">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -6,13 +17,15 @@
     </button>
     <div class="brand">
         <div class="brand__mark">
-            <div class="brand__logo" role="img" aria-label="Aura Fortune G5 Traders Corporation logo"
+            <div class="brand__logo" role="img" aria-label="{{ $companyName }} logo"
                 style="background-image:url('{{ asset('image/logo.png') }}')"></div>
         </div>
 
         <div class="brand__text">
-            <div class="brand__title">AURA FORTUNE G5</div>
-            <div class="brand__sub">TRADERS CORPORATION</div>
+            <div class="brand__title">{{ $brandTitle }}</div>
+            @if($brandSub !== '')
+                <div class="brand__sub">{{ $brandSub }}</div>
+            @endif
         </div>
     </div>
 

@@ -14,6 +14,13 @@ class PayrollDeductionPolicy extends Model
         'cap_cash_advance_to_net_pay',
         'loans_before_charges',
         'charges_before_cash_advance',
+        'field_daily_divisor',
+        'non_field_daily_divisor',
+        'field_unpaid_statuses',
+        'field_unpaid_absent_and_leave',
+        'field_absent_deduction_exempt',
+        'external_runs_allow_all_assignments',
+        'split_employees_by_run_type_when_assignment_specific',
     ];
 
     protected $casts = [
@@ -24,6 +31,10 @@ class PayrollDeductionPolicy extends Model
         'cap_cash_advance_to_net_pay' => 'boolean',
         'loans_before_charges' => 'boolean',
         'charges_before_cash_advance' => 'boolean',
+        'field_unpaid_statuses' => 'array',
+        'field_unpaid_absent_and_leave' => 'boolean',
+        'field_absent_deduction_exempt' => 'boolean',
+        'external_runs_allow_all_assignments' => 'boolean',
+        'split_employees_by_run_type_when_assignment_specific' => 'boolean',
     ];
 }
-

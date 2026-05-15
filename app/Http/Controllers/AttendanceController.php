@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceRecord;
+use App\Models\AttendanceCode;
+use App\Models\AttendanceCodeSetting;
+use App\Models\AttendanceAssignmentStatusRule;
 use App\Models\Employee;
 use App\Models\PayrollCalendarSetting;
+use App\Models\TimekeepingRule;
 use App\Services\Attendance\AttendanceSummaryService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,43 +23,6 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class AttendanceController extends Controller
 {
-    private const STATUS_VALUES = [
-        'Present',
-        'Late',
-        'Absent',
-        'Leave',
-        'RNR',
-        'Paid Leave',
-        'Half-day',
-        'Day Off',
-        'Holiday',
-        'LOA',
-    ];
-
-    private const STATUS_CODES = [
-        'P' => 'Present',
-        'PR' => 'Present',
-        'L' => 'Late',
-        'LT' => 'Late',
-        'A' => 'Absent',
-        'AB' => 'Absent',
-        'PL' => 'Paid Leave',
-        'VL' => 'Paid Leave',
-        'SL' => 'Paid Leave',
-        'SPL' => 'Paid Leave',
-        'UL' => 'Absent',
-        'LWOP' => 'Absent',
-        'RNR' => 'RNR',
-        'HD' => 'Half-day',
-        'OFF' => 'Day Off',
-        'HOL' => 'Holiday',
-        'LOA' => 'LOA',
-    ];
-
-    private const TEMPLATE_CODES = ['P', 'L', 'A', 'RNR', 'PL', 'HD', 'OFF', 'HOL', 'LOA'];
-    private const NO_TIME_STATUSES = ['Absent', 'Leave', 'Paid Leave', 'Day Off', 'Holiday', 'LOA', 'RNR'];
-    private const TIME_TRACKED_STATUSES = ['Present', 'Late', 'Half-day'];
-
     public function resolveArea(Request $request)
     {
         $v = $request->validate([
@@ -361,10 +328,10 @@ class AttendanceController extends Controller
         }
 
         $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
-        $isField = strtolower(trim((string) ($employee->assignment_type ?? ''))) === 'field';
         $hasAssignment = !empty($employee->assignment_type);
-        if ($isField) {
-            abort(422, 'Paid Leave is not applicable for Field employees.');
+        $ruleErr = $this->validateRestDayStatusForEmployee($employee, 'Paid Leave');
+        if ($ruleErr) {
+            abort(422, $ruleErr);
         }
         if (!$isRegular || !$hasAssignment) {
             abort(422, 'Paid Leave is only allowed for eligible regular employees with PL allowance.');
@@ -376,8 +343,9 @@ class AttendanceController extends Controller
             ->whereYear('date', $year)
             ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
             ->count();
-        if ($used >= 5) {
-            abort(422, "Paid Leave balance exhausted (0 of 5 days remaining for {$year}).");
+        $cap = $this->paidLeaveCapDays();
+        if ($used >= $cap) {
+            abort(422, "Paid Leave balance exhausted (0 of {$cap} days remaining for {$year}).");
         }
     }
 
@@ -407,7 +375,7 @@ class AttendanceController extends Controller
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
 
-        $statusListFormula = '"' . implode(',', self::TEMPLATE_CODES) . '"';
+        $statusListFormula = '"' . implode(',', $this->templateCodes()) . '"';
         $noTimeFormula = 'OR($J{row}="A",$J{row}="PL",$J{row}="OFF",$J{row}="HOL",$J{row}="LOA",$J{row}="RNR")';
         $timeRequiredFormula = 'OR($J{row}="P",$J{row}="L",$J{row}="HD")';
 
@@ -452,11 +420,7 @@ class AttendanceController extends Controller
             $assignLower = strtolower(trim((string) $assignType));
             $defaultStatus = '';
             if ($isSunday) {
-                if ($assignLower === 'field') {
-                    $defaultStatus = 'RNR';
-                } elseif (in_array($assignLower, ['davao', 'tagum'], true)) {
-                    $defaultStatus = 'OFF';
-                }
+                $defaultStatus = $this->defaultSundayStatusForAssignment($assignType) ?? '';
             }
             $name = trim($e->last_name . ', ' . $e->first_name . ($e->middle_name ? ' ' . $e->middle_name : ''));
             $sheet->fromArray([
@@ -483,21 +447,31 @@ class AttendanceController extends Controller
 
             $sheet->getCell("J{$row}")->setDataValidation($dv);
 
-            // Auto status based on grace time (07:35): Present if within grace, Late if beyond
-            $sheet->setCellValue("J{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(7,35,0),"P","L"))', $row, $row));
+            $schedule = $this->timeScheduleForAssignment((string) ($e->assignment_type ?? ''));
+            $start = $schedule['start'] ?? '07:30';
+            $end = $schedule['end'] ?? '17:00';
+            [$startH, $startM] = $this->splitTimeParts($start);
+            [$endH, $endM] = $this->splitTimeParts($end);
 
-            // Minutes late: compute after 07:35, otherwise 0
+            // No grace period: late starts immediately after assignment start time.
+            $sheet->setCellValue("J{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(%d,%d,0),"P","L"))', $row, $row, $startH, $startM));
+
+            // Minutes late: compute after assignment start, otherwise 0.
             $lateFormula = sprintf(
-                '=IF($F%d="","",MAX(0,ROUND(($F%d-TIME(7,35,0))*1440,0)))',
+                '=IF($F%d="","",MAX(0,ROUND(($F%d-TIME(%d,%d,0))*1440,0)))',
                 $row,
-                $row
+                $row,
+                $startH,
+                $startM
             );
             $sheet->setCellValue("H{$row}", $lateFormula);
 
-            // Minutes undertime: compute when clock_out is before 17:00
+            // Minutes undertime: compute when clock_out is before assignment end time.
             $underFormula = sprintf(
-                '=IF($G%d="","",MAX(0,ROUND((TIME(17,0,0)-$G%d)*1440,0)))',
+                '=IF($G%d="","",MAX(0,ROUND((TIME(%d,%d,0)-$G%d)*1440,0)))',
                 $row,
+                $endH,
+                $endM,
                 $row
             );
             $sheet->setCellValue("I{$row}", $underFormula);
@@ -653,7 +627,8 @@ class AttendanceController extends Controller
                 $late = $this->parseNumberCell($lateCell, $errors, "{$sheetName} row {$r}: minutes_late must be a number.");
                 $under = $this->parseNumberCell($underCell, $errors, "{$sheetName} row {$r}: minutes_undertime must be a number.");
 
-                $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut);
+                $sheetAssignment = trim((string) $sheet->getCell("D{$r}")->getValue());
+                $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut, $sheetAssignment);
 
                 // Normalize undertime from clock_out when available so values are always consistent.
                 if ($underFromClockOut !== null) {
@@ -663,7 +638,7 @@ class AttendanceController extends Controller
                 }
 
                 if ($status) {
-                    if (in_array($status, self::NO_TIME_STATUSES, true)) {
+                    if (in_array($status, $this->noTimeStatuses(), true)) {
                         if ($clockIn !== '' || $clockOut !== '') {
                             $errors[] = "{$sheetName} row {$r}: clock_in/out must be empty for {$status}.";
                         }
@@ -672,13 +647,6 @@ class AttendanceController extends Controller
                         }
                     }
                     // Clock times are optional for Present, Late, Half-day, etc.
-                }
-
-                if (in_array($status, self::TIME_TRACKED_STATUSES, true)) {
-                    $computedLate = $this->computeLateMinutes($clockIn);
-                    if ($computedLate !== null) {
-                        $late = $computedLate;
-                    }
                 }
 
                 $areaVal = trim((string) $sheet->getCell("E{$r}")->getValue());
@@ -693,6 +661,7 @@ class AttendanceController extends Controller
                     'clock_out' => $clockOut ?: null,
                     'minutes_late' => (int) ($late ?? 0),
                     'minutes_undertime' => (int) ($under ?? 0),
+                    '_sheet_assignment' => $sheetAssignment,
                 ];
             }
         }
@@ -746,7 +715,7 @@ class AttendanceController extends Controller
             }
         }
 
-        foreach ($rowsToUpsert as $row) {
+        foreach ($rowsToUpsert as &$row) {
             $empNo = (string) ($row['emp_no'] ?? '');
             if ($empNo !== '' && !isset($employeesByNo[$empNo])) {
                 $src = (string) ($row['_src'] ?? 'Row');
@@ -756,6 +725,17 @@ class AttendanceController extends Controller
             if ($empNo !== '') {
                 $emp = $employeesByNo[$empNo] ?? null;
                 if ($emp) {
+                    $assignmentType = (string) ($emp->assignment_type ?? ($row['_sheet_assignment'] ?? ''));
+                    if (in_array((string) ($row['status'] ?? ''), $this->timeTrackedStatuses(), true)) {
+                        $computedLate = $this->computeLateMinutes((string) ($row['clock_in'] ?? ''), $assignmentType);
+                        if ($computedLate !== null) {
+                            $row['minutes_late'] = (int) $computedLate;
+                        }
+                    }
+                    $computedUnder = $this->computeUndertimeMinutesFromClockOut((string) ($row['clock_out'] ?? ''), $assignmentType);
+                    if ($computedUnder !== null) {
+                        $row['minutes_undertime'] = (int) $computedUnder;
+                    }
                     $status = (string) ($row['status'] ?? '');
                     $ruleErr = $this->validateRestDayStatusForEmployee($emp, $status);
                     if ($ruleErr) {
@@ -765,11 +745,11 @@ class AttendanceController extends Controller
                     if ($status === 'Paid Leave') {
                         $fullEmp = Employee::find((int) $emp->id);
                         $isRegular = strtolower(trim((string) ($fullEmp?->employment_type ?? ''))) === 'regular';
-                        $isField = strtolower(trim((string) ($fullEmp?->assignment_type ?? ''))) === 'field';
                         $hasAssignment = !empty($fullEmp?->assignment_type);
-                        if ($isField) {
+                        $plRuleErr = $fullEmp ? $this->validateRestDayStatusForEmployee($fullEmp, 'Paid Leave') : null;
+                        if ($plRuleErr) {
                             $src = (string) ($row['_src'] ?? 'Row');
-                            $errors[] = "{$src}: Paid Leave is not applicable for Field employees.";
+                            $errors[] = "{$src}: {$plRuleErr}";
                             continue;
                         }
                         if (!$isRegular || !$hasAssignment) {
@@ -787,9 +767,10 @@ class AttendanceController extends Controller
                         $used = (int) ($plUsageByEmployeeYear[$usageKey] ?? 0);
 
                         // Importing a new Paid Leave day is blocked once balance reaches zero.
-                        if (!$alreadyPaidLeaveForDate && $used >= 5) {
+                        $cap = $this->paidLeaveCapDays();
+                        if (!$alreadyPaidLeaveForDate && $used >= $cap) {
                             $src = (string) ($row['_src'] ?? 'Row');
-                            $errors[] = "{$src}: Paid Leave balance exhausted (0 of 5 days remaining for {$workYear}).";
+                            $errors[] = "{$src}: Paid Leave balance exhausted (0 of {$cap} days remaining for {$workYear}).";
                             continue;
                         }
 
@@ -801,6 +782,7 @@ class AttendanceController extends Controller
                 }
             }
         }
+        unset($row);
 
         if (!empty($errors)) {
             return response()->json([
@@ -870,7 +852,7 @@ class AttendanceController extends Controller
         return $request->validate([
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
             'date' => ['required', 'date'],
-            'status' => ['required', Rule::in(self::STATUS_VALUES)],
+            'status' => ['required', Rule::in($this->statusValues())],
             'area_place' => ['nullable', 'string', 'max:255'],
             'clock_in' => ['nullable', 'date_format:H:i'],
             'clock_out' => ['nullable', 'date_format:H:i'],
@@ -885,7 +867,7 @@ class AttendanceController extends Controller
         $clockIn = (string) ($record['clock_in'] ?? '');
         $clockOut = (string) ($record['clock_out'] ?? '');
 
-        if (in_array($status, self::NO_TIME_STATUSES, true)) {
+        if (in_array($status, $this->noTimeStatuses(), true)) {
             $record['clock_in'] = null;
             $record['clock_out'] = null;
             $record['minutes_late'] = 0;
@@ -894,11 +876,106 @@ class AttendanceController extends Controller
             return $record;
         }
 
-        $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn) ?? 0);
-        $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut) ?? 0);
+        $employee = !empty($record['employee_id']) ? Employee::find((int) $record['employee_id']) : null;
+        $assignmentType = (string) ($employee?->assignment_type ?? '');
+        $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn, $assignmentType) ?? 0);
+        $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut, $assignmentType) ?? 0);
         $record['ot_hours'] = 0;
 
         return $record;
+    }
+
+    private function attendanceCodes()
+    {
+        return AttendanceCode::query()->orderBy('code')->get(['code', 'description', 'counts_as_present', 'counts_as_paid']);
+    }
+
+    private function attendanceCodeSettings(): ?AttendanceCodeSetting
+    {
+        return AttendanceCodeSetting::query()->first();
+    }
+
+    private function statusValues(): array
+    {
+        $values = $this->attendanceCodes()
+            ->pluck('description')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '')
+            ->unique()
+            ->values()
+            ->all();
+        return count($values) ? $values : ['Present'];
+    }
+
+    private function statusCodeMap(): array
+    {
+        $map = [];
+        foreach ($this->attendanceCodes() as $row) {
+            $code = strtoupper(trim((string) $row->code));
+            $desc = trim((string) $row->description);
+            if ($code === '' || $desc === '') {
+                continue;
+            }
+            $map[$code] = $desc;
+        }
+        return $map;
+    }
+
+    private function templateCodes(): array
+    {
+        $settings = $this->attendanceCodeSettings();
+        $codes = collect($settings?->template_codes ?? [])
+            ->map(fn ($v) => strtoupper(trim((string) $v)))
+            ->filter()
+            ->values();
+        if ($codes->isNotEmpty()) {
+            return $codes->all();
+        }
+        return array_values(array_keys($this->statusCodeMap()));
+    }
+
+    private function noTimeStatuses(): array
+    {
+        $settings = $this->attendanceCodeSettings();
+        $statuses = collect($settings?->no_time_statuses ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->values();
+        if ($statuses->isNotEmpty()) {
+            return $statuses->all();
+        }
+
+        return $this->attendanceCodes()
+            ->filter(fn ($c) => !$c->counts_as_present && !$c->counts_as_paid)
+            ->pluck('description')
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function timeTrackedStatuses(): array
+    {
+        $settings = $this->attendanceCodeSettings();
+        $statuses = collect($settings?->time_tracked_statuses ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->values();
+        if ($statuses->isNotEmpty()) {
+            return $statuses->all();
+        }
+        $noTime = $this->noTimeStatuses();
+        return collect($this->statusValues())
+            ->reject(fn ($s) => in_array($s, $noTime, true))
+            ->values()
+            ->all();
+    }
+
+    private function paidLeaveCapDays(): int
+    {
+        $settings = $this->attendanceCodeSettings();
+        $cap = (int) ($settings?->paid_leave_cap_days ?? 5);
+        return $cap > 0 ? $cap : 5;
     }
 
     private function validateRestDayStatusForEmployee(Employee $employee, string $status): ?string
@@ -909,22 +986,60 @@ class AttendanceController extends Controller
         }
 
         $assignment = strtolower(trim((string) ($employee->assignment_type ?? '')));
-        $isField = $assignment === 'field';
-        $isDavaoOrTagum = in_array($assignment, ['davao', 'tagum'], true);
-
-        if ($s === 'RNR' && !$isField) {
-            return 'RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.';
+        $rulesByAssignment = $this->assignmentStatusRules();
+        $rules = $rulesByAssignment[$assignment] ?? [];
+        $statusKey = strtolower($s);
+        if (!isset($rules[$statusKey])) {
+            return null;
         }
 
-        if ($s === 'Day Off' && !$isDavaoOrTagum) {
-            return 'Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.';
-        }
-
-        if ($s === 'Paid Leave' && $isField) {
-            return 'Paid Leave is not applicable for Field employees.';
+        $rule = $rules[$statusKey];
+        if (!($rule['is_allowed'] ?? true)) {
+            return (string) ($rule['message'] ?? 'Selected status is not allowed for this assignment.');
         }
 
         return null;
+    }
+
+    private function defaultSundayStatusForAssignment(string $assignmentType): ?string
+    {
+        $assignment = strtolower(trim($assignmentType));
+        if ($assignment === '') {
+            return null;
+        }
+        $rulesByAssignment = $this->assignmentStatusRules();
+        $rules = $rulesByAssignment[$assignment] ?? [];
+        foreach ($rules as $rule) {
+            $default = trim((string) ($rule['default_sunday_status'] ?? ''));
+            if ($default !== '') {
+                return $default;
+            }
+        }
+        return null;
+    }
+
+    private function assignmentStatusRules(): array
+    {
+        $rows = AttendanceAssignmentStatusRule::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['assignment_type', 'status', 'is_allowed', 'message', 'default_sunday_status']);
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $assignmentKey = strtolower(trim((string) $row->assignment_type));
+            $statusKey = strtolower(trim((string) $row->status));
+            if ($assignmentKey === '' || $statusKey === '') {
+                continue;
+            }
+            $grouped[$assignmentKey][$statusKey] = [
+                'is_allowed' => (bool) $row->is_allowed,
+                'message' => (string) ($row->message ?? ''),
+                'default_sunday_status' => (string) ($row->default_sunday_status ?? ''),
+            ];
+        }
+
+        return $grouped;
     }
 
     private function cutoffRange(string $month, string $cutoff): array
@@ -1008,10 +1123,11 @@ class AttendanceController extends Controller
             return null;
         }
         $upper = strtoupper($raw);
-        if (isset(self::STATUS_CODES[$upper])) {
-            return self::STATUS_CODES[$upper];
+        $map = $this->statusCodeMap();
+        if (isset($map[$upper])) {
+            return $map[$upper];
         }
-        foreach (self::STATUS_VALUES as $status) {
+        foreach ($this->statusValues() as $status) {
             if (strcasecmp($raw, $status) === 0) {
                 return $status;
             }
@@ -1102,7 +1218,7 @@ class AttendanceController extends Controller
 
     private function shouldAutoMarkHalfDay(?string $status, string $clockIn, string $clockOut): bool
     {
-        if (!in_array((string) $status, self::TIME_TRACKED_STATUSES, true)) {
+        if (!in_array((string) $status, $this->timeTrackedStatuses(), true)) {
             return false;
         }
 
@@ -1116,17 +1232,21 @@ class AttendanceController extends Controller
         return in_array($clockInMinutes, [12 * 60, 13 * 60], true); // in at 12:00 PM or 1:00 PM
     }
 
-    private function computeLateMinutes(string $clockIn): ?int
+    private function computeLateMinutes(string $clockIn, string $assignmentType = ''): ?int
     {
         $minutesIn = $this->parseTimeToMinutes($clockIn);
         if ($minutesIn === null) {
             return null;
         }
-        $grace = (7 * 60) + 35; // 07:35
-        return max(0, $minutesIn - $grace);
+        $schedule = $this->timeScheduleForAssignment($assignmentType);
+        $start = $this->parseTimeToMinutes((string) ($schedule['start'] ?? '07:30'));
+        if ($start === null) {
+            $start = (7 * 60) + 30;
+        }
+        return max(0, $minutesIn - $start);
     }
 
-    private function computeUndertimeMinutesFromClockOut(string $clockOut): ?int
+    private function computeUndertimeMinutesFromClockOut(string $clockOut, string $assignmentType = ''): ?int
     {
         if ($clockOut === '') {
             return null;
@@ -1135,11 +1255,54 @@ class AttendanceController extends Controller
         if ($minutesOut === null) {
             return null;
         }
-        $endOfWork = 17 * 60; // 17:00
+        $schedule = $this->timeScheduleForAssignment($assignmentType);
+        $endOfWork = $this->parseTimeToMinutes((string) ($schedule['end'] ?? '17:00'));
+        if ($endOfWork === null) {
+            $endOfWork = 17 * 60;
+        }
         if ($minutesOut >= $endOfWork) {
             return 0;
         }
         return max(0, $endOfWork - $minutesOut);
+    }
+
+    private function timeScheduleForAssignment(string $assignmentType): array
+    {
+        $rule = TimekeepingRule::query()->first();
+        $defaults = [
+            'davao' => ['start' => '07:45', 'end' => '17:00'],
+            'tagum' => ['start' => '07:30', 'end' => '17:00'],
+            'field' => ['start' => '06:30', 'end' => '17:30'],
+            'mebatas' => ['start' => '07:00', 'end' => '19:00'],
+        ];
+        $saved = is_array($rule?->assignment_schedules) ? $rule->assignment_schedules : [];
+        $schedules = array_replace_recursive($defaults, $saved);
+
+        $key = $this->scheduleKeyForAssignment($assignmentType);
+        return is_array($schedules[$key] ?? null) ? $schedules[$key] : $defaults[$key];
+    }
+
+    private function scheduleKeyForAssignment(string $assignmentType): string
+    {
+        $v = strtolower(trim($assignmentType));
+        if (str_contains($v, 'mebatas')) {
+            return 'mebatas';
+        }
+        if (str_contains($v, 'field')) {
+            return 'field';
+        }
+        if (str_contains($v, 'davao')) {
+            return 'davao';
+        }
+        return 'tagum';
+    }
+
+    private function splitTimeParts(string $time): array
+    {
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) {
+            return [7, 30];
+        }
+        return [(int) $m[1], (int) $m[2]];
     }
 
     private function parseTimeToMinutes(string $value): ?int

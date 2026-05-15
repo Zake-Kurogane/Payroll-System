@@ -32,7 +32,11 @@ class PayslipMail extends Mailable
         $subject = 'Payslip for ' . trim($period . ' (' . $cutoff . ')');
 
         $fromAddress = (string) (config('mail.from.address') ?? '');
-        $fromName = "AURA FORTUNE G5 TRADERS CORPORATION \u{2014}PAYSLIP.";
+        $companyName = trim((string) ($this->company?->company_name ?? ''));
+        if ($companyName === '') {
+            $companyName = trim((string) (CompanySetup::query()->value('company_name') ?? 'Payroll System'));
+        }
+        $fromName = $companyName . ' - PAYSLIP';
 
         $attachmentName = 'Payslip_' . ($this->payslip['emp_no'] ?? ($this->payslip['employee_id'] ?? 'EMP')) . '_' . $period . '_' . $cutoff . '.pdf';
         $pdf = $this->renderPayslipPdf();

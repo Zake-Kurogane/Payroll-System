@@ -30,8 +30,6 @@
                 aria-controls="tab-timekeeping" aria-selected="false" tabindex="-1">Timekeeping Rules</button>
             <button type="button" class="tab" data-tab="attendance" id="tab-attendance-btn" role="tab"
                 aria-controls="tab-attendance" aria-selected="false" tabindex="-1">Attendance Codes</button>
-            <button type="button" class="tab" data-tab="ot" id="tab-ot-btn" role="tab" aria-controls="tab-ot"
-                aria-selected="false" tabindex="-1">Overtime Rules</button>
             <button type="button" class="tab" data-tab="statutory" id="tab-statutory-btn" role="tab"
                 aria-controls="tab-statutory" aria-selected="false" tabindex="-1">Statutory Setup</button>
             <button type="button" class="tab" data-tab="withholdingtax" id="tab-withholdingtax-btn" role="tab"
@@ -57,7 +55,7 @@
                 <div class="grid2">
                     <div class="field">
                         <label>Company Name</label>
-                        <input type="text" id="companyName" placeholder="AURA FORTUNE G5 TRADERS CORPORATION" />
+                        <input type="text" id="companyName" placeholder="Company Name" />
                     </div>
 
                     <div class="field">
@@ -196,6 +194,43 @@
                         <div class="card__title">Salary &amp; Proration Rules</div>
                         <div class="muted small">Defines default salary computation and rounding behavior.
                         </div>
+                        <div class="field">
+                            <label>Field daily divisor</label>
+                            <input type="number" id="pdFieldDailyDivisor" min="1" max="366" value="30" />
+                        </div>
+                        <div class="field">
+                            <label>Non-Field daily divisor</label>
+                            <input type="number" id="pdNonFieldDailyDivisor" min="1" max="366" value="26" />
+                        </div>
+                        <div class="field field--full">
+                            <label>Field unpaid statuses</label>
+                            <input type="text" id="pdFieldUnpaidStatuses" placeholder="RNR, Absent" />
+                            <div class="hint">Comma-separated status labels</div>
+                        </div>
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdFieldUnpaidAbsentLeave" checked />
+                                <span>Field: treat absent/leave statuses as unpaid</span>
+                            </label>
+                        </div>
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdFieldAbsentDeductionExempt" checked />
+                                <span>Field: exempt absent deduction (already handled by paid days)</span>
+                            </label>
+                        </div>
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdExternalRunsAllowAllAssignments" />
+                                <span>Allow External runs to use assignment filter = All</span>
+                            </label>
+                        </div>
+                        <div class="field field--full">
+                            <label class="rowLabel">
+                                <input type="checkbox" id="pdSplitEmployeesByRunTypeWhenAssignmentSpecific" checked />
+                                <span>When assignment is specific: External=Regular, Internal=Non-regular</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="notice notice--success" id="prorationNotice" hidden></div>
@@ -254,16 +289,50 @@
                 </div>
                 <div class="notice notice--success" id="timekeepingNotice" hidden></div>
 
-                <div class="sectionTitle">Shift &amp; Grace</div>
+                <div class="sectionTitle">Assignment Schedules</div>
                 <div class="grid2">
                     <div class="field">
-                        <label>Shift Start Time</label>
-                        <input type="time" id="shiftStart" value="07:30" />
+                        <label>Davao (start/end)</label>
+                        <div class="row" style="gap:8px;">
+                            <input type="time" id="tkDavaoStart" value="07:45" />
+                            <input type="time" id="tkDavaoEnd" value="17:00" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Tagum (start/end)</label>
+                        <div class="row" style="gap:8px;">
+                            <input type="time" id="tkTagumStart" value="07:30" />
+                            <input type="time" id="tkTagumEnd" value="17:00" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Field (start/end)</label>
+                        <div class="row" style="gap:8px;">
+                            <input type="time" id="tkFieldStart" value="06:30" />
+                            <input type="time" id="tkFieldEnd" value="17:30" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Mebatas (start/end)</label>
+                        <div class="row" style="gap:8px;">
+                            <input type="time" id="tkMebatasStart" value="07:00" />
+                            <input type="time" id="tkMebatasEnd" value="19:00" />
+                        </div>
                     </div>
 
                     <div class="field">
                         <label>Grace Minutes</label>
-                        <input type="number" id="graceMinutes" value="5" min="0" />
+                        <input type="number" id="graceMinutes" value="0" min="0" readonly />
+                        <div class="hint">No grace period: late starts immediately after schedule start.</div>
+                    </div>
+
+                    <div class="field">
+                        <label>Fallback Shift Start (legacy)</label>
+                        <input type="time" id="shiftStart" value="07:30" />
+                        <div class="hint">Used only when assignment schedule mapping is unavailable.</div>
                     </div>
                 </div>
 
@@ -306,15 +375,26 @@
                             <span>Enable Undertime Deduction</span>
                         </label>
                     </div>
+                </div>
 
+                <div class="grid2">
                     <div class="field">
                         <label>Undertime Type</label>
                         <select id="undertimeRuleType" disabled>
                             <option value="rate_based" selected>rate_based</option>
                             <option value="flat_penalty">flat_penalty</option>
                         </select>
+                        <div class="hint">Select flat penalty to enter per-minute undertime amount.</div>
                     </div>
 
+                    <div class="field">
+                        <label>Work Minutes per Day</label>
+                        <input type="number" id="workMinutesPerDay" value="480" min="1" />
+                        <div class="hint">Used for rate-based computations.</div>
+                    </div>
+                </div>
+
+                <div class="grid2">
                     <div class="field" id="undertimePenaltyWrap">
                         <label>Undertime Penalty Per Minute</label>
                         <div class="moneyInput">
@@ -324,12 +404,6 @@
                         </div>
                         <div class="hint" id="undertimeHint">Undertime deduction uses daily rate / work
                             minutes per day.</div>
-                    </div>
-
-                    <div class="field">
-                        <label>Work Minutes per Day</label>
-                        <input type="number" id="workMinutesPerDay" value="480" min="1" />
-                        <div class="hint">Used for rate-based computations.</div>
                     </div>
                 </div>
 
@@ -370,6 +444,13 @@
                     </div>
                 </div>
 
+                <div class="grid2" style="margin-bottom:12px;">
+                    <div class="field">
+                        <label>Paid Leave cap per year (days)</label>
+                        <input type="number" id="paidLeaveCapDays" min="1" max="365" value="5" />
+                    </div>
+                </div>
+
                 <div class="tablewrap">
                     <table class="table">
                         <thead>
@@ -379,6 +460,8 @@
                                 <th>Counts as Present?</th>
                                 <th>Counts as Paid?</th>
                                 <th>Affects Deductions?</th>
+                                <th>No-time?</th>
+                                <th>Time-tracked?</th>
                                 <th>Notes</th>
                                 <th style="width:140px">Actions</th>
                             </tr>
@@ -435,6 +518,22 @@
                                     <span>Affects Deductions</span>
                                 </label>
                             </div>
+
+                            <div class="field">
+                                <label class="rowLabel">
+                                    <input type="checkbox" id="noTimeField" />
+                                    <span>No-time status</span>
+                                </label>
+                                <div class="hint">Auto-clear in/out + minutes for this status.</div>
+                            </div>
+
+                            <div class="field">
+                                <label class="rowLabel">
+                                    <input type="checkbox" id="timeTrackedField" />
+                                    <span>Time-tracked status</span>
+                                </label>
+                                <div class="hint">Allows time-based half-day rules for this status.</div>
+                            </div>
                         </div>
 
                         <div class="actionsRow">
@@ -446,85 +545,6 @@
                 </div>
             </aside>
         </section>
-
-        <!-- 7) OVERTIME RULES -->
-        <section class="tabPanel" id="tab-ot" role="tabpanel" aria-labelledby="tab-ot-btn" hidden>
-            <div class="card">
-                <div class="card__head">
-                    <div>
-                        <div class="card__title">Overtime Rules</div>
-                        <div class="muted small">Mode can be flat ₱/hr or rate-based multiplier (future-proof).
-                        </div>
-                    </div>
-                </div>
-                <div class="notice notice--success" id="overtimeNotice" hidden></div>
-
-                <div class="sectionTitle">OT Computation Mode</div>
-                <div class="grid2">
-                    <div class="field field--full">
-                        <label>OT Mode</label>
-                        <div class="radioRow">
-                            <label class="radioPill">
-                                <input type="radio" name="otMode" id="otModeFlat" value="flat_rate" checked />
-                                <span>flat_rate (₱80/hr)</span>
-                            </label>
-                            <label class="radioPill">
-                                <input type="radio" name="otMode" id="otModeRate" value="rate_based" />
-                                <span>rate_based (daily rate × multiplier)</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="field field--full">
-                        <label class="rowLabel">
-                            <input type="checkbox" id="otRequireApproval" />
-                            <span>Require approval?</span>
-                        </label>
-                        <div class="hint">Optional (default OFF)</div>
-                    </div>
-
-                    <div class="field" id="otFlatWrap">
-                        <label>Flat OT Rate</label>
-                        <div class="moneyInput">
-                            <span class="moneyPrefix">₱</span>
-                            <input type="number" id="otFlatRate" value="80" min="0" step="0.01" />
-                        </div>
-                        <div class="hint">₱ / hour</div>
-                    </div>
-
-                    <div class="field" id="otMultWrap">
-                        <label>OT Multiplier</label>
-                        <input type="number" id="otMultiplier" value="1.25" min="0" step="0.01" />
-                        <div class="hint">Only used when rate_based.</div>
-                    </div>
-
-                    <div class="field">
-                        <label>Work Minutes per Day</label>
-                        <input type="number" id="otWorkMinsSummary" value="480" readonly />
-                        <div class="hint">Pulled from Timekeeping Rules.</div>
-                    </div>
-
-                    <div class="field">
-                        <label>Rounding Option</label>
-                        <select id="otRounding">
-                            <option value="none" selected>none</option>
-                            <option value="nearest_15">nearest 15 mins</option>
-                            <option value="nearest_30">nearest 30 mins</option>
-                            <option value="nearest_60">nearest 60 mins</option>
-                            <option value="down_15">always round down to 15 mins</option>
-                            <option value="up_15">always round up to 15 mins</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="actionsRow">
-                    <div class="spacer"></div>
-                    <button class="btn btn--maroon" type="button" id="otSave">Save Overtime
-                        Rules</button>
-                </div>
-            </div>
-        </section>
-
         <!-- 8) STATUTORY SETUP -->
         <section class="tabPanel" id="tab-statutory" role="tabpanel" aria-labelledby="tab-statutory-btn" hidden>
             <div class="notice notice--success" id="statutoryNotice" hidden></div>
@@ -1281,3 +1301,6 @@
 
 
 @endsection
+
+
+

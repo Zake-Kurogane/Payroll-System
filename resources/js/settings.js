@@ -53,6 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const notifySettingsUpdated = () => broadcastSettingsUpdate();
   initTimekeeping(toast, apiFetch, document.getElementById("timekeepingNotice"), notifySettingsUpdated);
+  initAttendanceCodes(toast, apiFetch, document.getElementById("attendanceNotice"), notifySettingsUpdated);
   initCashAdvancePolicy(toast, apiFetch, document.getElementById("cashAdvanceNotice"), notifySettingsUpdated);
   initPayrollDeductionPolicy(toast, apiFetch, document.getElementById("payrollDeductionNotice"), notifySettingsUpdated);
 
@@ -122,13 +123,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       hrUsersTbody.innerHTML = list.map((u) => {
         const created = u.created_at ? new Date(u.created_at).toLocaleString() : "—";
-        const createdBy = u.created_by || "—";
+        const rawCreatedBy = String(u.created_by || "").replace(/\uFFFD/g, "").trim();
+        const createdBy = rawCreatedBy || "-";
         return `
           <tr>
             <td>${String(u.username || "—")}</td>
             <td>${String(u.full_name || "—")}</td>
             <td>${String(u.email || "—")}</td>
-            <td>${String(createdBy)}</td>
+            <td>${createdBy}</td>
             <td>${created}</td>
             <td>
               <div class="tableActionsInline">
@@ -354,376 +356,6 @@ document.addEventListener("DOMContentLoaded", () => {
       toast(err.message || "Failed to save Salary & Proration Rules.", "error");
     }
   });
-
-  // ===== OT dynamic fields =====
-  const otModeFlat = document.getElementById("otModeFlat");
-  const otModeRate = document.getElementById("otModeRate");
-  const otFlatWrap = document.getElementById("otFlatWrap");
-  const otMultWrap = document.getElementById("otMultWrap");
-  const overtimeNotice = document.getElementById("overtimeNotice");
-
-  function syncOtUI() {
-    const mode = otModeRate?.checked ? "rate_based" : "flat_rate";
-    if (otFlatWrap) otFlatWrap.style.display = mode === "flat_rate" ? "block" : "none";
-    if (otMultWrap) otMultWrap.style.display = mode === "rate_based" ? "block" : "none";
-  }
-  otModeFlat?.addEventListener("change", syncOtUI);
-  otModeRate?.addEventListener("change", syncOtUI);
-
-  async function loadOvertimeRules() {
-    try {
-      const row = await apiFetch("/settings/overtime-rules");
-      if (row.ot_mode === "rate_based") {
-        otModeRate && (otModeRate.checked = true);
-      } else {
-        otModeFlat && (otModeFlat.checked = true);
-      }
-      document.getElementById("otRequireApproval") && (document.getElementById("otRequireApproval").checked = !!row.require_approval);
-      document.getElementById("otFlatRate") && (document.getElementById("otFlatRate").value = row.flat_rate ?? 80);
-      document.getElementById("otMultiplier") && (document.getElementById("otMultiplier").value = row.multiplier ?? 1.25);
-      document.getElementById("otRounding") && (document.getElementById("otRounding").value = row.rounding ?? "none");
-      syncOtUI();
-    } catch (err) {
-      toast(err.message || "Failed to load Overtime Rules.", "error");
-    }
-  }
-
-  document.getElementById("otSave")?.addEventListener("click", () => {
-    const otFlatRate = Number(document.getElementById("otFlatRate")?.value || 0);
-    const otMode = document.getElementById("otModeRate")?.checked ? "rate_based" : "flat_rate";
-    const otMultiplier = Number(document.getElementById("otMultiplier")?.value || 1.25);
-    const otRequireApproval = !!document.getElementById("otRequireApproval")?.checked;
-    const otRounding = String(document.getElementById("otRounding")?.value || "none");
-
-    apiFetch("/settings/overtime-rules", {
-      method: "POST",
-      body: JSON.stringify({
-        ot_mode: otMode,
-        require_approval: otRequireApproval,
-        flat_rate: otFlatRate,
-        multiplier: otMultiplier,
-        rounding: otRounding,
-      }),
-    })
-      .then(() => {
-        if (!showNotice(overtimeNotice, "Overtime rules saved.")) {
-          toast("Saved Overtime Rules.");
-        }
-        notifySettingsUpdated();
-      })
-      .catch((err) => toast(err.message || "Failed to save Overtime Rules.", "error"));
-  });
-
-  // ===== Statutory =====
-  const sssImportBtn = document.getElementById("sssImportBtn");
-  const sssImportFile = document.getElementById("sssImportFile");
-  const sssEmptyState = document.getElementById("sssEmptyState");
-  const sssPreviewWrap = document.getElementById("sssPreviewWrap");
-  const sssPreviewHead = document.getElementById("sssPreviewHead");
-  const sssPreviewBody = document.getElementById("sssPreviewBody");
-  const sssMeta = document.getElementById("sssMeta");
-  const sssClearBtn = document.getElementById("sssClearBtn");
-  const sssToggleBtn = document.getElementById("sssToggleBtn");
-  const sssImportedWrap = document.getElementById("sssImportedWrap");
-  const sssImportedName = document.getElementById("sssImportedName");
-
-  function parseCsvRow(line) {
-    const out = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === "\"") {
-        const next = line[i + 1];
-        if (inQuotes && next === "\"") {
-          cur += "\"";
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        out.push(cur);
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    out.push(cur);
-    return out;
-  }
-
-  function parseCsv(text) {
-    const lines = String(text || "")
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n")
-      .split("\n");
-    const rows = [];
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      rows.push(parseCsvRow(line));
-    }
-    return rows;
-  }
-
-  function normalizeTable(rawRows) {
-    const cleaned = (rawRows || [])
-      .map((row) => (row || []).map((cell) => String(cell ?? "").trim()))
-      .filter((row) => row.some((cell) => cell !== ""));
-    if (!cleaned.length) return null;
-    const maxCols = Math.max(...cleaned.map((r) => r.length));
-    let header = cleaned[0].map((h, i) => h || `Column ${i + 1}`);
-    if (header.length < maxCols) {
-      header = header.concat(Array.from({ length: maxCols - header.length }, (_, i) => `Column ${header.length + i + 1}`));
-    }
-    const rows = cleaned.slice(1).map((r) => {
-      const row = r.slice(0, header.length);
-      if (row.length < header.length) {
-        row.push(...Array.from({ length: header.length - row.length }, () => ""));
-      }
-      return row;
-    });
-    return { header, rows };
-  }
-
-  function normalizeHeaderLabel(label) {
-    return String(label || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  function normalizeSssHeaders(header) {
-    const map = {
-      rangeofcompensation: "range_of_compensation",
-      range: "range_of_compensation",
-      compensation: "range_of_compensation",
-      salaryrange: "range_of_compensation",
-      msc: "msc",
-      monthlysalarycredit: "msc",
-      salarycredit: "msc",
-      monthlysalary: "msc",
-      mscregularsss: "msc",
-      ee: "ss_ee",
-      employee: "ss_ee",
-      employeeshare: "ss_ee",
-      sssee: "ss_ee",
-      employeeshareee: "ss_ee",
-      ssseecontribution: "ss_ee",
-      eeshare: "ss_ee",
-      employeesss: "ss_ee",
-      regularee: "ss_ee",
-      er: "ss_er",
-      employer: "ss_er",
-      employershare: "ss_er",
-      ssser: "ss_er",
-      employershareer: "ss_er",
-      sssercontribution: "ss_er",
-      ershare: "ss_er",
-      employersss: "ss_er",
-      regularer: "ss_er",
-      ec: "ec",
-      employercompensation: "ec",
-      employercomp: "ec",
-      employercontributionec: "ec",
-      total: "total",
-      totalcontribution: "total",
-      totalcontributions: "total",
-      totalss: "total",
-      totalsscontribution: "total",
-    };
-    return header.map((h) => {
-      const key = normalizeHeaderLabel(h);
-      return map[key] || h;
-    });
-  }
-
-  async function parseTabularFile(file) {
-    const name = file?.name || "Import";
-    const ext = name.split(".").pop()?.toLowerCase();
-    let rows = [];
-    if (ext === "xlsx" || ext === "xls") {
-      const xlsx = window.XLSX;
-      if (!xlsx) throw new Error("XLSX library not loaded. Please refresh the page.");
-      const data = await file.arrayBuffer();
-      const wb = xlsx.read(data, { type: "array" });
-      const sheetNames = wb.SheetNames || [];
-      const preferred = sheetNames.find((s) => /tax|withholding/i.test(String(s)));
-      const sheetName = preferred || sheetNames[0];
-      const ws = sheetName ? wb.Sheets[sheetName] : null;
-      if (!ws) throw new Error("No sheet found in XLSX.");
-      rows = xlsx.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: "" });
-    } else if (ext === "csv") {
-      const text = await file.text();
-      rows = parseCsv(text);
-    } else {
-      throw new Error("Unsupported file type. Please use CSV, XLSX, or XLS.");
-    }
-    const table = normalizeTable(rows);
-    if (!table) throw new Error("No rows found in file.");
-    return {
-      header: table.header,
-      rows: table.rows,
-      sourceName: name,
-      importedAt: Date.now(),
-    };
-  }
-
-  function renderSssTable(payload) {
-    if (!payload || !sssPreviewHead || !sssPreviewBody || !sssPreviewWrap) return;
-    const { header, rows, sourceName, importedAt } = payload;
-    sssPreviewHead.innerHTML = "";
-    sssPreviewBody.innerHTML = "";
-    const headRow = document.createElement("tr");
-    header.forEach((h) => {
-      const th = document.createElement("th");
-      th.textContent = h || "";
-      headRow.appendChild(th);
-    });
-    sssPreviewHead.appendChild(headRow);
-
-    const maxPreview = 200;
-    rows.slice(0, maxPreview).forEach((r) => {
-      const tr = document.createElement("tr");
-      header.forEach((_, idx) => {
-        const td = document.createElement("td");
-        td.textContent = r[idx] ?? "";
-        tr.appendChild(td);
-      });
-      sssPreviewBody.appendChild(tr);
-    });
-
-    if (sssEmptyState) sssEmptyState.style.display = "none";
-    sssPreviewWrap.style.display = "none";
-    if (sssMeta) {
-      const stamp = importedAt ? new Date(importedAt).toLocaleString() : "";
-      const extra = rows.length > maxPreview ? ` • showing first ${maxPreview}` : "";
-      sssMeta.textContent = `${sourceName || "Imported file"} • ${rows.length} rows, ${header.length} columns${extra}${stamp ? ` • ${stamp}` : ""}`;
-      sssMeta.style.display = "none";
-    }
-    if (sssImportedWrap) sssImportedWrap.style.display = "grid";
-    if (sssImportedName) sssImportedName.textContent = sourceName || "Imported file";
-    if (sssToggleBtn) {
-      sssToggleBtn.textContent = "View";
-      sssToggleBtn.style.display = "inline-flex";
-    }
-    if (sssClearBtn) sssClearBtn.style.display = "inline-flex";
-  }
-
-  function clearSssTable() {
-    if (sssPreviewHead) sssPreviewHead.innerHTML = "";
-    if (sssPreviewBody) sssPreviewBody.innerHTML = "";
-    if (sssPreviewWrap) sssPreviewWrap.style.display = "none";
-    if (sssMeta) sssMeta.style.display = "none";
-    if (sssEmptyState) sssEmptyState.style.display = "block";
-    if (sssClearBtn) sssClearBtn.style.display = "none";
-    if (sssToggleBtn) sssToggleBtn.style.display = "none";
-    if (sssImportedWrap) sssImportedWrap.style.display = "none";
-    if (sssImportFile) sssImportFile.value = "";
-  }
-
-  sssImportBtn?.addEventListener("click", () => sssImportFile?.click());
-  sssImportFile?.addEventListener("change", async () => {
-    const f = sssImportFile.files?.[0];
-    if (!f) return;
-    try {
-      const payload = await parseTabularFile(f);
-      payload.header = normalizeSssHeaders(payload.header || []);
-      await apiFetch("/settings/statutory-setup", {
-        method: "POST",
-        body: JSON.stringify({ sss_table: payload }),
-      });
-      const saved = await apiFetch("/settings/statutory-setup");
-      if (!saved?.sss_table) {
-        throw new Error("Saved response missing sss_table. Please refresh and try again.");
-      }
-      renderSssTable(saved.sss_table);
-      notifySettingsUpdated();
-      toast(`Imported and saved: ${f.name}`);
-      notifySettingsUpdated();
-    } catch (err) {
-      toast(err.message || "Failed to import SSS table.", "error");
-    } finally {
-      sssImportFile.value = "";
-    }
-  });
-  sssClearBtn?.addEventListener("click", () => {
-    apiFetch("/settings/statutory-setup", {
-      method: "POST",
-      body: JSON.stringify({ sss_table: null }),
-    })
-      .then(() => {
-        clearSssTable();
-        toast("SSS table cleared.");
-        notifySettingsUpdated();
-      })
-      .catch((err) => toast(err.message || "Failed to clear SSS table.", "error"));
-  });
-  sssToggleBtn?.addEventListener("click", () => {
-    if (!sssPreviewWrap) return;
-    const isHidden = sssPreviewWrap.style.display === "none";
-    sssPreviewWrap.style.display = isHidden ? "block" : "none";
-    if (sssMeta) sssMeta.style.display = isHidden ? "block" : "none";
-    if (sssToggleBtn) sssToggleBtn.textContent = isHidden ? "Hide" : "View";
-  });
-
-  async function loadStatutorySetup() {
-    try {
-      const row = await apiFetch("/settings/statutory-setup");
-      if (row?.sss_table) {
-        renderSssTable(row.sss_table);
-      } else {
-        clearSssTable();
-      }
-      document.getElementById("sssSplitRule") && (document.getElementById("sssSplitRule").value = row.sss_split_rule ?? "monthly");
-      document.getElementById("sssEePercent") && (document.getElementById("sssEePercent").value = row.sss_ee_percent ?? 5);
-      document.getElementById("sssErPercent") && (document.getElementById("sssErPercent").value = row.sss_er_percent ?? 10);
-      document.getElementById("phEePercent") && (document.getElementById("phEePercent").value = row.ph_ee_percent ?? 5);
-      document.getElementById("phErPercent") && (document.getElementById("phErPercent").value = row.ph_er_percent ?? 10);
-      document.getElementById("phMinCap") && (document.getElementById("phMinCap").value = row.ph_min_cap ?? 0);
-      document.getElementById("phMaxCap") && (document.getElementById("phMaxCap").value = row.ph_max_cap ?? 0);
-      document.getElementById("phSplitRule") && (document.getElementById("phSplitRule").value = row.ph_split_rule ?? "monthly");
-      document.getElementById("piEePercentLow") && (document.getElementById("piEePercentLow").value = row.pi_ee_percent_low ?? 1);
-      document.getElementById("piEeThreshold") && (document.getElementById("piEeThreshold").value = row.pi_ee_threshold ?? 1500);
-      document.getElementById("piEePercent") && (document.getElementById("piEePercent").value = row.pi_ee_percent ?? 2);
-      document.getElementById("piErPercent") && (document.getElementById("piErPercent").value = row.pi_er_percent ?? 2);
-      document.getElementById("piCap") && (document.getElementById("piCap").value = row.pi_cap ?? 10000);
-      document.getElementById("piSplitRule") && (document.getElementById("piSplitRule").value = row.pi_split_rule ?? "monthly");
-    } catch (err) {
-      toast(err.message || "Failed to load Statutory Setup.", "error");
-    }
-  }
-
-  document.getElementById("statSave")?.addEventListener("click", async () => {
-    try {
-      await apiFetch("/settings/statutory-setup", {
-        method: "POST",
-        body: JSON.stringify({
-          sss_split_rule: document.getElementById("sssSplitRule")?.value || "monthly",
-          sss_ee_percent: Number(document.getElementById("sssEePercent")?.value || 0),
-          sss_er_percent: Number(document.getElementById("sssErPercent")?.value || 0),
-          ph_ee_percent: Number(document.getElementById("phEePercent")?.value || 0),
-          ph_er_percent: Number(document.getElementById("phErPercent")?.value || 0),
-          ph_min_cap: Number(document.getElementById("phMinCap")?.value || 0),
-          ph_max_cap: Number(document.getElementById("phMaxCap")?.value || 0),
-          ph_split_rule: document.getElementById("phSplitRule")?.value || "monthly",
-          pi_ee_percent_low: Number(document.getElementById("piEePercentLow")?.value || 0),
-          pi_ee_threshold: Number(document.getElementById("piEeThreshold")?.value || 0),
-          pi_ee_percent: Number(document.getElementById("piEePercent")?.value || 0),
-          pi_er_percent: Number(document.getElementById("piErPercent")?.value || 0),
-          pi_cap: Number(document.getElementById("piCap")?.value || 0),
-          pi_split_rule: document.getElementById("piSplitRule")?.value || "monthly",
-        }),
-      });
-      if (!showNotice(document.getElementById("statutoryNotice"), "Statutory setup saved.")) {
-        toast("Saved Statutory Setup.");
-      }
-      notifySettingsUpdated();
-    } catch (err) {
-      toast(err.message || "Failed to save Statutory Setup.", "error");
-    }
-  });
-
-  // ===== Withholding Tax dynamic UI + placeholder preview =====
-  const wtMethod = document.getElementById("wtMethod");
-  const wtFixedWrap = document.getElementById("wtFixedWrap");
-  const wtPercentWrap = document.getElementById("wtPercentWrap");
   const withholdingNotice = document.getElementById("withholdingNotice");
 
   function syncWtUI() {
@@ -796,7 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function parseNumber(raw) {
     if (raw == null) return null;
-    const cleaned = String(raw).replace(/[₱,%\s]/g, "").replace(/,/g, "");
+    const cleaned = String(raw).replace(/[?,%\s]/g, "").replace(/,/g, "");
     if (!cleaned) return null;
     const num = Number(cleaned);
     return Number.isFinite(num) ? num : null;
@@ -1046,7 +678,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const cells = [
             Number(r.bracket_from || 0).toLocaleString(),
             r.bracket_to == null ? "" : Number(r.bracket_to).toLocaleString(),
-            `₱ ${Number(r.base_tax || 0).toLocaleString()}`,
+            `? ${Number(r.base_tax || 0).toLocaleString()}`,
             `${Number(r.excess_percent || 0)}%`,
           ];
           cells.forEach((text) => {
@@ -1126,7 +758,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ===== Init =====
-  syncOtUI();
   syncWtUI();
   loadSalaryProration();
   loadStatutorySetup();
@@ -1134,6 +765,9 @@ document.addEventListener("DOMContentLoaded", () => {
   loadWithholdingTaxBrackets();
   loadCompanySetup();
   loadPayrollCalendar();
-  loadOvertimeRules();
-  initAttendanceCodes(toast, apiFetch, document.getElementById("attendanceNotice"), notifySettingsUpdated);
 });
+
+
+
+
+

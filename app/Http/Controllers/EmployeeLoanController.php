@@ -9,6 +9,7 @@ use App\Models\EmployeeLoanSchedule;
 use App\Models\Assignment;
 use App\Models\AreaPlace;
 use App\Models\LoanType;
+use App\Support\AssignmentResolver;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -32,7 +33,7 @@ class EmployeeLoanController extends Controller
 
         $grouped = [];
         foreach ($rows as $row) {
-            $parent = $row->parent_assignment ?? 'Field';
+            $parent = $row->parent_assignment ?? AssignmentResolver::fieldLabel();
             $grouped[$parent][] = $row->label;
         }
 

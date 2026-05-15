@@ -642,8 +642,7 @@ document.addEventListener("DOMContentLoaded", () => {
         bindAssignmentButtons();
       }
     } catch {
-      // Fallback: still render assignment filter options if filters endpoint fails.
-      const assignments = ["Davao", "Tagum", "Field"];
+      const assignments = [];
       areaPlaces = {};
 
       if (assignmentSeg) {

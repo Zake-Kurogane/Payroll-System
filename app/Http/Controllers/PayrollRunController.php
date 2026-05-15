@@ -24,6 +24,7 @@ use App\Models\SalaryProrationRule;
 use App\Models\TimekeepingRule;
 use App\Services\Attendance\AttendanceStatusRuleService;
 use App\Services\Payroll\PayrollCalculator;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -91,14 +92,15 @@ class PayrollRunController extends Controller
             'run_type' => ['required', Rule::in(['Internal', 'External'])],
             'assignment_filter' => ['required', Rule::in(array_merge($allowedAssignments, ['All']))],
             'area_place_filter' => [
-                $request->input('assignment_filter') === 'Field' ? 'required' : 'nullable',
+                AssignmentResolver::isField((string) $request->input('assignment_filter')) ? 'required' : 'nullable',
                 'string',
                 Rule::in($areaPlaceLabels),
             ],
         ]);
 
-        // External runs must target a specific assignment (not All)
-        if ($validated['run_type'] === 'External' && $validated['assignment_filter'] === 'All') {
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        $allowExternalAll = (bool) ($dedPolicy->external_runs_allow_all_assignments ?? false);
+        if (!$allowExternalAll && $validated['run_type'] === 'External' && $validated['assignment_filter'] === 'All') {
             return response()->json(['message' => 'External runs must target a specific assignment.'], 422);
         }
 
@@ -319,6 +321,9 @@ class PayrollRunController extends Controller
         $lateDaysAgg = collect();
         $timekeeping = TimekeepingRule::query()->first() ?? TimekeepingRule::create([]);
         $proration = SalaryProrationRule::query()->first() ?? SalaryProrationRule::create([]);
+        $dedPolicyForRows = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        $fieldDivisor = max(1, (int) ($dedPolicyForRows->field_daily_divisor ?? 30));
+        $nonFieldDivisor = max(1, (int) ($dedPolicyForRows->non_field_daily_divisor ?? 26));
         if (!empty($employeeIds) && !empty($run->period_month) && !empty($run->cutoff)) {
             $attendanceAgg = AttendanceSummary::query()
                 ->whereIn('employee_id', $employeeIds)
@@ -347,7 +352,7 @@ class PayrollRunController extends Controller
                     $date = $r->date instanceof \DateTimeInterface
                         ? Carbon::parse($r->date->format('Y-m-d'))
                         : Carbon::parse((string) $r->date);
-                    if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+                    if (AssignmentResolver::isField($assignmentType)) {
                         return true;
                     }
                     $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
@@ -359,16 +364,16 @@ class PayrollRunController extends Controller
         }
 
         $rows = $rawRows
-            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $lateDaysAgg, $timekeeping, $proration, $claimStatusByEmployee) {
+            ->map(function (PayrollRunRow $r) use ($overrides, $loanItems, $attendanceAgg, $lateDaysAgg, $timekeeping, $proration, $claimStatusByEmployee, $fieldDivisor, $nonFieldDivisor) {
                 $emp = $r->employee;
                 $name = $emp
                     ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                     : '';
                 $summary = $attendanceAgg->get($r->employee_id);
-                $isField = strcasecmp(trim((string) ($emp?->assignment_type ?? '')), 'Field') === 0;
+                $isField = AssignmentResolver::isField((string) ($emp?->assignment_type ?? ''));
                 $dailyRate = $isField
-                    ? round(((float) ($emp?->basic_pay ?? 0)) / 30, 2)
-                    : round(((float) ($emp?->basic_pay ?? 0)) / 26, 2);
+                    ? round(((float) ($emp?->basic_pay ?? 0)) / $fieldDivisor, 2)
+                    : round(((float) ($emp?->basic_pay ?? 0)) / $nonFieldDivisor, 2);
                 $attendanceBreakdown = $this->attendanceDeductionBreakdownFromSummary($summary, $dailyRate, $timekeeping, $proration);
                 $ov = null;
                 $rowOverride = $overrides->get($r->employee_id);
@@ -461,7 +466,7 @@ class PayrollRunController extends Controller
         foreach ($runRows as $r) {
             $emp = $r->employee;
             if (!$emp) continue;
-            if (strcasecmp((string) ($emp->assignment_type ?? ''), 'Field') !== 0) continue;
+            if (!AssignmentResolver::isField((string) ($emp->assignment_type ?? ''))) continue;
 
             $name = trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''));
             $employees[(int) $emp->id] = [
@@ -533,8 +538,9 @@ class PayrollRunController extends Controller
                 $areas[$area]['dates'][] = (string) $it['date'];
             }
 
-            // Field allocation uses a 30-day divisor.
-            $dailyRate = (float) ($emp->basic_pay ?? 0) / 30;
+            $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+            $fieldDivisor = max(1, (int) ($dedPolicy->field_daily_divisor ?? 30));
+            $dailyRate = (float) ($emp->basic_pay ?? 0) / $fieldDivisor;
 
             $allocs = [];
             foreach ($areas as $area => $a) {
@@ -1118,7 +1124,7 @@ class PayrollRunController extends Controller
     {
         $s = strtolower(trim($status));
         if ($s === '') return 0.0;
-        $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
+        $isField = AssignmentResolver::isField($assignmentType);
 
         static $cache = null;
         if ($cache === null) {
@@ -1157,8 +1163,16 @@ class PayrollRunController extends Controller
             ];
         }
 
-        // Field rule: RNR/Absent/Leave statuses are unpaid.
-        if ($isField && ($s === 'rnr' || isset($cache['absent'][$s]) || isset($cache['leave'][$s]))) {
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        $fieldUnpaidStatuses = collect($dedPolicy->field_unpaid_statuses ?? ['RNR'])
+            ->map(fn ($v) => strtolower(trim((string) $v)))
+            ->filter()
+            ->values()
+            ->all();
+        $fieldUnpaidAbsentLeave = (bool) ($dedPolicy->field_unpaid_absent_and_leave ?? true);
+        $isExplicitFieldUnpaid = in_array($s, $fieldUnpaidStatuses, true);
+        $isBucketFieldUnpaid = $fieldUnpaidAbsentLeave && (isset($cache['absent'][$s]) || isset($cache['leave'][$s]));
+        if ($isField && ($isExplicitFieldUnpaid || $isBucketFieldUnpaid)) {
             return 0.0;
         }
 

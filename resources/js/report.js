@@ -2079,7 +2079,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .catch(() => {
         areaPlaces = {};
-        buildAssignmentSeg(["Davao", "Tagum", "Field"]);
+        buildAssignmentSeg([]);
       });
   }
 

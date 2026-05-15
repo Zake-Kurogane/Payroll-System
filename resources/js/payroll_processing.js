@@ -310,18 +310,12 @@ document.addEventListener("DOMContentLoaded", () => {
       areaPlacesGrouped = grouped;
 
         if (assignmentFilterEnabled) {
-          if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field"];
-          }
           buildAssignmentSeg();
           bindAssignmentSeg();
           syncSegButtons();
         }
     } catch {
       if (assignmentFilterEnabled) {
-        if (!assignmentOptions.length) {
-          assignmentOptions = ["Davao", "Tagum", "Field"];
-        }
         areaPlacesGrouped = areaPlacesGrouped || {};
         buildAssignmentSeg();
         bindAssignmentSeg();
@@ -1738,7 +1732,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const isInternal = runType === "Internal";
     const allBtn = document.getElementById("assignAllBtn");
     if (allBtn) allBtn.style.display = isInternal ? "" : "none";
-    // External runs cannot use "All" — reset to Tagum if needed
+    // External runs cannot use "All" — reset to the first available assignment if needed
     if (assignmentFilterEnabled) {
       if (!isInternal && assignmentFilter === "All") {
         const firstAssign = segBtns.find(b => (b.dataset.assign || "") !== "All");

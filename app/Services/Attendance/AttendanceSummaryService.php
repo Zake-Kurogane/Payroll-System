@@ -7,6 +7,7 @@ use App\Models\AttendanceSummary;
 use App\Models\Employee;
 use App\Models\PayrollCalendarSetting;
 use App\Services\Attendance\AttendanceStatusRuleService;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 
 class AttendanceSummaryService
@@ -126,7 +127,7 @@ class AttendanceSummaryService
 
     private function isWorkdayForAssignment(Carbon $date, bool $workMonSat, string $assignmentType): bool
     {
-        if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+        if (AssignmentResolver::isField($assignmentType)) {
             return true;
         }
         $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun

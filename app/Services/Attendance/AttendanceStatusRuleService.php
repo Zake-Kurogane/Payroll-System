@@ -3,22 +3,11 @@
 namespace App\Services\Attendance;
 
 use App\Models\AttendanceCode;
+use App\Models\PayrollDeductionPolicy;
+use App\Support\AssignmentResolver;
 
 class AttendanceStatusRuleService
 {
-    private const CODE_STATUS_MAP = [
-        'P' => 'Present',
-        'L' => 'Late',
-        'A' => 'Absent',
-        'PL' => 'Paid Leave',
-        'HD' => 'Half-day',
-        'OFF' => 'Day Off',
-        'HOL' => 'Holiday',
-        'RNR' => 'RNR',
-        'LOA' => 'LOA',
-        'UL' => 'Absent',
-        'LWOP' => 'Absent',
-    ];
 
     private ?array $cachedBuckets = null;
 
@@ -103,7 +92,14 @@ class AttendanceStatusRuleService
         $absentSet = $this->toSet($buckets['absent']);
         $leaveSet = $this->toSet($buckets['leave']);
         $halfDaySet = $this->toSet($buckets['half_day']);
-        $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
+        $isField = AssignmentResolver::isField($assignmentType);
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        $fieldUnpaidStatuses = collect($dedPolicy->field_unpaid_statuses ?? ['RNR'])
+            ->map(fn ($v) => strtolower(trim((string) $v)))
+            ->filter()
+            ->values()
+            ->all();
+        $fieldUnpaidAbsentLeave = (bool) ($dedPolicy->field_unpaid_absent_and_leave ?? true);
 
         $presentDays = 0.0;
         $absentDays = 0.0;
@@ -134,29 +130,25 @@ class AttendanceStatusRuleService
 
             $key = $this->key($status);
             if ($key !== '') {
-                // Hard business rule: RNR is always unpaid and treated as absent.
-                if ($key === 'rnr') {
+                if (isset($lateSet[$key])) {
+                    $lateDays += 1.0;
+                } elseif (isset($presentSet[$key])) {
+                    $presentDays += isset($halfDaySet[$key]) ? 0.5 : 1.0;
+                }
+                if (isset($absentSet[$key])) {
                     $absentDays += 1.0;
-                } else {
-                    if (isset($lateSet[$key])) {
-                        $lateDays += 1.0;
-                    } elseif (isset($presentSet[$key])) {
-                        $presentDays += isset($halfDaySet[$key]) ? 0.5 : 1.0;
-                    }
-                    if (isset($absentSet[$key])) {
-                        $absentDays += 1.0;
-                    }
-                    if (isset($leaveSet[$key])) {
-                        $leaveDays += 1.0;
-                    }
-                    // Field rule: RNR/Absent/Leave statuses are always unpaid.
-                    $isUnpaidForField = $isField && (isset($absentSet[$key]) || isset($leaveSet[$key]));
-                    if (!$isUnpaidForField) {
-                        if (isset($halfDaySet[$key])) {
-                            $paidDays += 0.5;
-                        } elseif (isset($paidSet[$key])) {
-                            $paidDays += 1.0;
-                        }
+                }
+                if (isset($leaveSet[$key])) {
+                    $leaveDays += 1.0;
+                }
+                $isExplicitFieldUnpaid = in_array($key, $fieldUnpaidStatuses, true);
+                $isBucketFieldUnpaid = $fieldUnpaidAbsentLeave && (isset($absentSet[$key]) || isset($leaveSet[$key]));
+                $isUnpaidForField = $isField && ($isExplicitFieldUnpaid || $isBucketFieldUnpaid);
+                if (!$isUnpaidForField) {
+                    if (isset($halfDaySet[$key])) {
+                        $paidDays += 0.5;
+                    } elseif (isset($paidSet[$key])) {
+                        $paidDays += 1.0;
                     }
                 }
             }
@@ -184,8 +176,8 @@ class AttendanceStatusRuleService
         $codeKey = strtoupper(trim($code));
         $description = trim($description);
 
-        if ($codeKey !== '' && isset(self::CODE_STATUS_MAP[$codeKey])) {
-            $statuses[] = self::CODE_STATUS_MAP[$codeKey];
+        if ($codeKey !== '') {
+            $statuses[] = $description !== '' ? $description : $codeKey;
         }
         if ($description !== '') {
             $statuses[] = $description;

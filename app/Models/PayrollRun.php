@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\AssignmentResolver;
 
 /**
  * @property int $id
@@ -44,7 +45,7 @@ class PayrollRun extends Model
     public function displayLabel(): string
     {
         $loc = match(true) {
-            $this->assignment_filter === 'Field' && !!$this->area_place_filter
+            AssignmentResolver::isField((string) $this->assignment_filter) && !!$this->area_place_filter
                 => 'Area (' . $this->area_place_filter . ')',
             !empty($this->assignment_filter) && $this->assignment_filter !== 'All'
                 => $this->assignment_filter,

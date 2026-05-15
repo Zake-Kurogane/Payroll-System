@@ -15,6 +15,7 @@ use App\Models\PayrollCalendarSetting;
 use App\Models\PayrollRun;
 use App\Models\PayrollRunRow;
 use App\Models\User;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,7 +42,7 @@ class DashboardController extends Controller
 
         $grouped = [];
         foreach ($rows as $row) {
-            $parent = $row->parent_assignment ?? 'Field';
+            $parent = $row->parent_assignment ?? AssignmentResolver::fieldLabel();
             $grouped[$parent][] = $row->label;
         }
 

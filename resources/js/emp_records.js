@@ -787,7 +787,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function clearForm() {
     empForm?.reset();
     clearFormErrors();
-    if (f_assignmentType) f_assignmentType.value = "Davao";
+    if (f_assignmentType) f_assignmentType.value = f_assignmentType.options[0]?.value || "";
     if (f_areaPlace) f_areaPlace.value = "";
     if (f_dept) f_dept.value = "";
     if (f_basedLocation) f_basedLocation.value = "";
@@ -863,14 +863,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (f_assignmentType) {
       const assign = String(emp.assignmentType || "");
       const optionValues = Array.from(f_assignmentType.options).map(o => String(o.value || ""));
-      const legacyMap = {
-        "G5 Tagum": "Tagum",
-        "G5 Davao": "Davao",
-        "G5-Davao": "Davao",
-      };
-      const resolvedAssign = legacyMap[assign] || assign;
-      if (resolvedAssign && optionValues.includes(resolvedAssign)) {
-        f_assignmentType.value = resolvedAssign;
+      if (assign && optionValues.includes(assign)) {
+        f_assignmentType.value = assign;
       } else {
         f_assignmentType.value = f_assignmentType.value || optionValues[0] || "";
       }

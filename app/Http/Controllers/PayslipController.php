@@ -10,11 +10,13 @@ use App\Models\PayrollRun;
 use App\Models\PayrollRunLoanItem;
 use App\Models\PayrollRunRow;
 use App\Models\PayrollRunRowOverride;
+use App\Models\PayrollDeductionPolicy;
 use App\Models\Payslip;
 use App\Models\PayslipAdjustment;
 use App\Models\PayrollCalendarSetting;
 use App\Services\Attendance\AttendanceStatusRuleService;
 use App\Services\Payroll\PayrollCalculator;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -518,16 +520,20 @@ class PayslipController extends Controller
             ->get()
             ->groupBy('employee_id');
 
-        return $payslips->map(function (Payslip $p) use ($rows, $loanItems, $run, $attendance, $start, $end, $workMonSat) {
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        $fieldDivisor = max(1, (int) ($dedPolicy->field_daily_divisor ?? 30));
+        $nonFieldDivisor = max(1, (int) ($dedPolicy->non_field_daily_divisor ?? 26));
+
+        return $payslips->map(function (Payslip $p) use ($rows, $loanItems, $run, $attendance, $start, $end, $workMonSat, $fieldDivisor, $nonFieldDivisor) {
             $emp = $p->employee;
             $row = $rows->get($p->employee_id);
             $name = $emp
                 ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                 : '';
 
-            $isField = strcasecmp(trim((string) ($emp?->assignment_type ?? '')), 'Field') === 0;
+            $isField = AssignmentResolver::isField((string) ($emp?->assignment_type ?? ''));
             $dailyRate = $emp && $emp->basic_pay
-                ? ($isField ? ((float) $emp->basic_pay / 30) : ((float) $emp->basic_pay / 26))
+                ? ($isField ? ((float) $emp->basic_pay / $fieldDivisor) : ((float) $emp->basic_pay / $nonFieldDivisor))
                 : 0.0;
             $att = [
                 'paid_days' => 0.0,
@@ -666,7 +672,7 @@ class PayslipController extends Controller
         $d = $start->copy();
         while ($d->lte($end)) {
             $dow = (int) $d->dayOfWeekIso; // 1=Mon ... 7=Sun
-            $isField = strcasecmp(trim($assignmentType), 'Field') === 0;
+            $isField = AssignmentResolver::isField($assignmentType);
             $isWorkday = $isField ? true : ($workMonSat ? $dow <= 6 : $dow <= 5);
             if ($isWorkday) {
                 $key = $d->format('Y-m-d');

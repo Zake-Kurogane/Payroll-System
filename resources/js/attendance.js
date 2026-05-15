@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   let employees = [];
   let employeesById = new Map();
+  let fieldAssignmentLabel = "Field";
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
   async function apiFetch(url, options = {}) {
@@ -45,6 +46,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${emp.last_name}, ${emp.first_name}${emp.middle_name ? " " + emp.middle_name : ""}`;
   }
 
+  function isFieldAssignment(label) {
+    return String(label || "").trim().toLowerCase() === String(fieldAssignmentLabel || "Field").trim().toLowerCase();
+  }
+
   function mapEmployee(emp) {
     return {
       id: emp.id,
@@ -68,13 +73,23 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const data = await apiFetch("/employees/filters");
       assignmentOptions = Array.isArray(data?.assignments) ? data.assignments : [];
+      fieldAssignmentLabel = String(data?.field_assignment_label || "Field").trim() || "Field";
       const ap = data?.area_places;
       areaPlacesGrouped = (ap && typeof ap === "object" && !Array.isArray(ap)) ? ap : {};
-      areaPlaceOptions = Array.isArray(areaPlacesGrouped["Field"]) ? areaPlacesGrouped["Field"] : [];
+      areaPlaceOptions = Array.isArray(areaPlacesGrouped[fieldAssignmentLabel]) ? areaPlacesGrouped[fieldAssignmentLabel] : [];
+      assignmentStatusRules = Array.isArray(data?.assignment_status_rules) ? data.assignment_status_rules : [];
+      const locations = Array.isArray(data?.based_locations) ? data.based_locations : [];
+      basedLocationOrder = new Map(
+        locations
+          .map((v, i) => [String(v?.label ?? v ?? "").trim(), i + 1])
+          .filter(([label]) => !!label)
+      );
     } catch {
-      assignmentOptions = ["Davao", "Tagum", "Field"];
+      assignmentOptions = [];
       areaPlacesGrouped = {};
       areaPlaceOptions = [];
+      assignmentStatusRules = [];
+      basedLocationOrder = new Map();
     }
   }
 
@@ -84,6 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const statusFilter = document.getElementById("statusFilter");
   const bulkStatusSelectInline = document.getElementById("bulkStatusSelectInline");
   const f_status = document.getElementById("f_status");
+  let attendanceCodeMap = {};
 
   function buildStatusListFromCodes(codes) {
     const list = [];
@@ -98,15 +114,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function buildFallbackStatuses() {
-    const list = [];
-    const seen = new Set();
-    Object.values(CODE_MAP).forEach(v => {
-      const s = String(v.status || "").trim();
-      if (!s || seen.has(s)) return;
-      seen.add(s);
-      list.push(s);
+    return buildStatusListFromCodes(Object.values(attendanceCodeMap));
+  }
+
+  function buildCodeMapFromCodes(codes) {
+    const map = {};
+    (codes || []).forEach((row) => {
+      const code = String(row?.code || "").trim().toUpperCase();
+      const status = String(row?.description || row?.desc || "").trim();
+      if (!code || !status) return;
+      map[code] = {
+        status,
+        isPaid: !!row?.counts_as_paid,
+        countsAsPresent: !!row?.counts_as_present,
+      };
     });
-    return list;
+    // Backward-compatible aliases for old exports/imports.
+    if (!map.UL && map.A) map.UL = { ...map.A };
+    if (!map.LWOP && map.A) map.LWOP = { ...map.A };
+    return map;
   }
 
   function setStatusOptions(statuses) {
@@ -127,11 +153,13 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadAttendanceCodes() {
     try {
       const data = await apiFetch("/settings/attendance-codes");
+      attendanceCodeMap = buildCodeMapFromCodes(data?.codes || []);
       const statuses = buildStatusListFromCodes(data?.codes || []);
       const merged = statuses.length ? statuses : buildFallbackStatuses();
       if (!merged.includes("RNR")) merged.push("RNR");
       setStatusOptions(merged);
     } catch (err) {
+      attendanceCodeMap = {};
       const fallback = buildFallbackStatuses();
       if (!fallback.includes("RNR")) fallback.push("RNR");
       setStatusOptions(fallback);
@@ -157,37 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // ✅ ATTENDANCE CODE MAPPING
   // =========================================================
-  const CODE_MAP = {
-    // Present
-    "P":  { status: "Present", isPaid: true,  countsAsPresent: true },
-    "PR": { status: "Present", isPaid: true,  countsAsPresent: true },
-
-    // Late
-    "L":  { status: "Late",    isPaid: true,  countsAsPresent: true },
-    "LT": { status: "Late",    isPaid: true,  countsAsPresent: true },
-
-    // Absent
-    "A":  { status: "Absent",  isPaid: false, countsAsPresent: false },
-    "AB": { status: "Absent",  isPaid: false, countsAsPresent: false },
-
-    // Legacy aliases map to Absent
-    "UL":   { status: "Absent", isPaid: false, countsAsPresent: false },
-    "LWOP": { status: "Absent", isPaid: false, countsAsPresent: false },
-    "RNR":  { status: "RNR", isPaid: false, countsAsPresent: false },
-
-    // Paid Leave
-    "PL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
-    "VL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
-    "SL":  { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
-    "SPL": { status: "Paid Leave", isPaid: true,  countsAsPresent: true },
-
-    // Half-day / Off / Holiday / LOA
-    "HD":  { status: "Half-day", isPaid: true, countsAsPresent: true },
-    "OFF": { status: "Day Off", isPaid: false, countsAsPresent: false },
-    "HOL": { status: "Holiday", isPaid: true, countsAsPresent: true },
-    "LOA": { status: "LOA", isPaid: false, countsAsPresent: false },
-  };
-
   function normalizeCode(code) {
     return String(code || "").trim().toUpperCase();
   }
@@ -208,7 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (s === "LOA") return { status: "LOA", isPaid: false, countsAsPresent: false, code: "" };
       return { status: s, isPaid: true, countsAsPresent: true, code: "" };
     }
-    const mapped = CODE_MAP[c];
+    const mapped = attendanceCodeMap[c];
     if (mapped) return { ...mapped, code: c };
     return { status: fallbackStatus || "", isPaid: null, countsAsPresent: null, code: c };
   }
@@ -524,6 +521,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let assignmentOptions = [];
   let areaPlaceOptions = [];
   let areaPlacesGrouped = {};
+  let assignmentStatusRules = [];
+  let basedLocationOrder = new Map();
 
   const statTotal = document.getElementById("statTotal");
   const statTotalBtn = document.getElementById("statTotalBtn");
@@ -585,6 +584,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function clearErrors() {
     [errEmployee, errDate, errStatus, errAssignType, errAreaPlace].forEach(el => { if (el) el.textContent = ""; });
+  }
+
+  function ruleFor(assignmentType, status) {
+    const assignmentKey = String(assignmentType || "").trim().toLowerCase();
+    const statusKey = String(status || "").trim().toLowerCase();
+    if (!assignmentKey || !statusKey) return null;
+    return assignmentStatusRules.find((r) =>
+      String(r?.assignment_type || "").trim().toLowerCase() === assignmentKey &&
+      String(r?.status || "").trim().toLowerCase() === statusKey
+    ) || null;
+  }
+
+  function statusAllowedForAssignment(assignmentType, status) {
+    const rule = ruleFor(assignmentType, status);
+    if (!rule) return true;
+    return !!rule.is_allowed;
+  }
+
+  function statusRuleMessage(assignmentType, status, fallback = "Selected status is not allowed for this assignment.") {
+    const rule = ruleFor(assignmentType, status);
+    const msg = String(rule?.message || "").trim();
+    return msg || fallback;
   }
 
   // =========================================================
@@ -1402,29 +1423,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!ids.length || !newStatus) return;
 
     const updates = records.filter(r => ids.includes(r.id));
-    if (newStatus === "RNR") {
-      const invalid = updates.filter(r => String(r.assignType || "").trim().toLowerCase() !== "field");
+    {
+      const invalid = updates.filter(r => !statusAllowedForAssignment(r.assignType || "", newStatus));
       if (invalid.length) {
-        alert("RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.");
-        return;
-      }
-    }
-    if (newStatus === "Day Off") {
-      const invalid = updates.filter(r => {
-        const a = String(r.assignType || "").trim().toLowerCase();
-        return !(a === "davao" || a === "tagum");
-      });
-      if (invalid.length) {
-        alert("Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.");
+        alert(statusRuleMessage(invalid[0].assignType || "", newStatus));
         return;
       }
     }
     if (newStatus === "Paid Leave") {
-      const invalidField = updates.filter(r => String(r.assignType || "").trim().toLowerCase() === "field");
-      if (invalidField.length) {
-        alert("Paid Leave is not applicable for Field employees.");
-        return;
-      }
       const invalidNonRegular = updates.filter(r => String(r.employmentType || "").trim().toLowerCase() !== "regular");
       if (invalidNonRegular.length) {
         alert("Paid Leave is only allowed for Regular employees.");
@@ -1547,7 +1553,7 @@ document.addEventListener("DOMContentLoaded", () => {
       f_assignType.disabled = true;
     }
     if (f_areaPlace) {
-      if (emp.assignmentType === "Field") {
+      if (isFieldAssignment(emp.assignmentType)) {
         f_areaPlace.disabled = false;
         // only auto-resolve if empty (edit mode may already have a snapshot)
         if (!f_areaPlace.value) resolveAndPopulateArea();
@@ -1557,12 +1563,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (errAreaPlace) errAreaPlace.textContent = "";
       }
     }
-    if (areaWrap) areaWrap.hidden = emp.assignmentType !== "Field";
+    if (areaWrap) areaWrap.hidden = !isFieldAssignment(emp.assignmentType);
     if (f_status) {
-      const assignLower = String(emp.assignmentType || "").trim().toLowerCase();
-      const rnrAllowed = assignLower === "field";
-      const dayOffAllowed = assignLower === "davao" || assignLower === "tagum";
-      const paidLeaveAllowed = assignLower !== "field";
+      const rnrAllowed = statusAllowedForAssignment(emp.assignmentType || "", "RNR");
+      const dayOffAllowed = statusAllowedForAssignment(emp.assignmentType || "", "Day Off");
+      const paidLeaveAllowed = statusAllowedForAssignment(emp.assignmentType || "", "Paid Leave");
       const rnrOpt = Array.from(f_status.options).find(o => o.value === "RNR");
       const dayOffOpt = Array.from(f_status.options).find(o => o.value === "Day Off");
       const paidLeaveOpt = Array.from(f_status.options).find(o => o.value === "Paid Leave");
@@ -1663,7 +1668,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
 
       const emp = getEmpById(record.employeeId || "");
-      if (emp?.assignmentType === "Field") {
+      if (isFieldAssignment(emp?.assignmentType)) {
         if (areaWrap) areaWrap.hidden = false;
         if (f_areaPlace) f_areaPlace.disabled = false;
         if (record.areaPlace) {
@@ -1720,10 +1725,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
     const emp = getEmpById(employeeId);
-    if (emp?.assignmentType === "Field") {
+    if (isFieldAssignment(emp?.assignmentType)) {
       const area = String(f_areaPlace?.value || "").trim();
       if (!area) {
-        if (errAreaPlace) errAreaPlace.textContent = "Area Place is required for Field employees.";
+        if (errAreaPlace) errAreaPlace.textContent = `Area Place is required for ${fieldAssignmentLabel} employees.`;
         ok = false;
       }
     }
@@ -1731,17 +1736,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (errStatus) errStatus.textContent = "Paid Leave is only allowed for Regular employees.";
       ok = false;
     }
-    const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
-    if (status === "Paid Leave" && assignLower === "field") {
-      if (errStatus) errStatus.textContent = "Paid Leave is not applicable for Field employees.";
-      ok = false;
-    }
-    if (status === "RNR" && assignLower !== "field") {
-      if (errStatus) errStatus.textContent = "RNR is only allowed for Field employees. Use Day Off for Davao/Tagum.";
-      ok = false;
-    }
-    if (status === "Day Off" && !(assignLower === "davao" || assignLower === "tagum")) {
-      if (errStatus) errStatus.textContent = "Day Off is only allowed for Davao/Tagum employees. Use RNR for Field.";
+    if (!statusAllowedForAssignment(emp?.assignmentType || "", status)) {
+      if (errStatus) errStatus.textContent = statusRuleMessage(emp?.assignmentType || "", status);
       ok = false;
     }
 
@@ -1761,7 +1757,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   f_date && f_date.addEventListener("change", () => {
     const emp = getEmpById(f_employee?.value);
-    if (emp?.assignmentType === "Field") {
+    if (isFieldAssignment(emp?.assignmentType)) {
       if (f_areaPlace) f_areaPlace.value = "";
       if (errAreaPlace) errAreaPlace.textContent = "";
       resolveAndPopulateArea();
@@ -1856,8 +1852,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function assignmentPreviewText(r) {
-    if (r.areaPlace) return `${r.assignType || "—"} (${r.areaPlace})`;
-    return r.assignType || "—";
+    if (r.areaPlace) return `${r.assignType || "-"} (${r.areaPlace})`;
+    return r.assignType || "-";
+  }
+
+  function assignmentPreviewOrderKey(assignText) {
+    const label = String(assignText || "").trim();
+    if (!label) return Number.MAX_SAFE_INTEGER;
+    const base = label.includes("(") ? label.slice(0, label.indexOf("(")).trim() : label;
+    return basedLocationOrder.get(base) ?? Number.MAX_SAFE_INTEGER;
   }
 
   function openKpiPreview() {
@@ -1894,9 +1897,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const [aDate, aAssign] = a[0].split("||");
         const [bDate, bAssign] = b[0].split("||");
         if (aDate !== bDate) return String(bDate).localeCompare(String(aDate));
-        const order = { "G5-Davao": 1, "AYU Household": 2, "Agri-Farm": 3, "Stallion Farm": 4, "Auraland Property": 5, "AURA FORTUNE G5 TRADERS CORPORATION": 6 };
-        const ao = order[aAssign] || 99;
-        const bo = order[bAssign] || 99;
+        const ao = assignmentPreviewOrderKey(aAssign);
+        const bo = assignmentPreviewOrderKey(bAssign);
         if (ao !== bo) return ao - bo;
         return String(aAssign).localeCompare(String(bAssign));
       })
@@ -1997,8 +1999,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!isValidNumber(r.minutesUndertime)) issues.push(`Row ${r.rowNo}: Minutes Undertime must be a number`);
 
     const code = normalizeCode(r.code);
-    if (code && !CODE_MAP[code]) {
-      issues.push(`Row ${r.rowNo}: Unknown Code "${code}" (add it to CODE_MAP in attendance.js)`);
+    if (code && !attendanceCodeMap[code]) {
+      issues.push(`Row ${r.rowNo}: Unknown Code "${code}" (not found in Attendance Codes settings)`);
     }
 
     const hasCode = !!code;
@@ -2009,15 +2011,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapped = mapAttendanceCode(r.code, r.status);
     const finalStatus = mapped.status || (r.status || "");
     const emp = r.empId ? getEmpByNo(r.empId) : null;
-    const assignLower = String(emp?.assignmentType || "").trim().toLowerCase();
-    if (finalStatus === "Paid Leave" && assignLower === "field") {
-      issues.push(`Row ${r.rowNo}: Paid Leave is not applicable for Field employees`);
-    }
-    if (finalStatus === "RNR" && assignLower !== "field") {
-      issues.push(`Row ${r.rowNo}: RNR is only allowed for Field employees (use Day Off for Davao/Tagum)`);
-    }
-    if (finalStatus === "Day Off" && !(assignLower === "davao" || assignLower === "tagum")) {
-      issues.push(`Row ${r.rowNo}: Day Off is only allowed for Davao/Tagum employees (use RNR for Field)`);
+    if (!statusAllowedForAssignment(emp?.assignmentType || "", finalStatus)) {
+      issues.push(`Row ${r.rowNo}: ${statusRuleMessage(emp?.assignmentType || "", finalStatus)}`);
     }
 
     return issues;
@@ -2550,7 +2545,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const timeInDisplay = showStatus ? statusLabel : fmtTime(r.timeIn);
       const timeOutDisplay = showStatus ? "—" : fmtTime(r.timeOut);
 
-      const areaDisplay = r.assignType === "Field" ? (r.areaPlace || "—") : (r.assignType || "—");
+      const areaDisplay = isFieldAssignment(r.assignType) ? (r.areaPlace || "—") : (r.assignType || "—");
 
       const tr = document.createElement("tr");
       tr.innerHTML = `

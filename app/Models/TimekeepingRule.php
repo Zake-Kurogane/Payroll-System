@@ -16,5 +16,10 @@ class TimekeepingRule extends Model
         'undertime_rule_type',
         'undertime_penalty_per_minute',
         'work_minutes_per_day',
+        'assignment_schedules',
+    ];
+
+    protected $casts = [
+        'assignment_schedules' => 'array',
     ];
 }

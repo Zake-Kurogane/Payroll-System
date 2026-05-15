@@ -631,7 +631,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function buildFallbackAssignments() {
     if (!assignSeg) return;
-    const assignments = ["Davao", "Tagum", "Field"];
+    const assignments = [];
     assignSeg.innerHTML = "";
 
     const allBtn = document.createElement("button");

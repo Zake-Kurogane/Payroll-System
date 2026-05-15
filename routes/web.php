@@ -86,6 +86,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/attendance/records', [AttendanceController::class, 'store'])->name('attendance.records.store');
         Route::put('/attendance/records/{record}', [AttendanceController::class, 'update'])->name('attendance.records.update');
         Route::delete('/attendance/records/{record}', [AttendanceController::class, 'destroy'])->name('attendance.records.destroy');
+        Route::get('/settings/attendance-codes', [SettingsController::class, 'getAttendanceCodes'])->name('settings.attendance_codes.read');
 
         // Cash Advance transactions (used by Loans page)
         Route::get('/settings/cash-advances', [SettingsController::class, 'getCashAdvances'])->name('settings.cash_advance.list');
@@ -157,7 +158,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/payroll-calendar', [SettingsController::class, 'savePayrollCalendar'])->name('settings.payroll_calendar.save');
         Route::get('/settings/overtime-rules', [SettingsController::class, 'getOvertimeRules'])->name('settings.overtime.get');
         Route::post('/settings/overtime-rules', [SettingsController::class, 'saveOvertimeRules'])->name('settings.overtime.save');
-        Route::get('/settings/attendance-codes', [SettingsController::class, 'getAttendanceCodes'])->name('settings.attendance_codes.get');
         Route::post('/settings/attendance-codes', [SettingsController::class, 'saveAttendanceCodes'])->name('settings.attendance_codes.save');
 
         // Create and manage accounts

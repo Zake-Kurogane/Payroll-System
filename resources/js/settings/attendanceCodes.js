@@ -17,15 +17,25 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
   const presentField = document.getElementById("presentField");
   const paidField = document.getElementById("paidField");
   const deductField = document.getElementById("deductField");
+  const noTimeField = document.getElementById("noTimeField");
+  const timeTrackedField = document.getElementById("timeTrackedField");
   const codeDrawerTitle = document.getElementById("codeDrawerTitle");
 
   const defaultNoLogCode = document.getElementById("defaultNoLogCode");
   const defaultSundayCode = document.getElementById("defaultSundayCode");
+  const paidLeaveCapDays = document.getElementById("paidLeaveCapDays");
 
   let editCodeKey = null;
 
   let codes = [];
-  let defaults = { default_no_log_code: "", default_sunday_code: "" };
+  let defaults = {
+    default_no_log_code: "",
+    default_sunday_code: "",
+    paid_leave_cap_days: 5,
+    template_codes: [],
+    no_time_statuses: [],
+    time_tracked_statuses: [],
+  };
 
   if (codeDrawer && codeDrawer.parentElement !== document.body) {
     document.body.appendChild(codeDrawer);
@@ -56,7 +66,9 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
         <td><input type="checkbox" ${row.present ? "checked" : ""} disabled></td>
         <td><input type="checkbox" ${row.paid ? "checked" : ""} disabled></td>
         <td><input type="checkbox" ${row.deduct ? "checked" : ""} disabled></td>
-        <td>${esc(row.notes || "—")}</td>
+        <td><input type="checkbox" ${row.noTime ? "checked" : ""} disabled></td>
+        <td><input type="checkbox" ${row.timeTracked ? "checked" : ""} disabled></td>
+        <td>${esc(row.notes || "-")}</td>
         <td>
           <div class="miniRow">
             <button class="miniBtn" data-act="edit" data-code="${esc(row.code)}" aria-label="Edit">
@@ -84,7 +96,7 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
       codes.forEach((c) => {
         const opt = document.createElement("option");
         opt.value = c.code;
-        opt.textContent = `${c.code} — ${c.desc}`;
+        opt.textContent = `${c.code} - ${c.desc}`;
         sel.appendChild(opt);
       });
       if (chosen) sel.value = chosen;
@@ -94,10 +106,21 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
     makeOpts(defaultSundayCode, defaults.default_sunday_code || (codes[0]?.code || ""));
   }
 
+  function fillPolicySelectors() {
+    if (paidLeaveCapDays) {
+      paidLeaveCapDays.value = Number(defaults.paid_leave_cap_days || 5);
+    }
+  }
+
   async function loadCodes() {
     if (!apiFetch) return;
     try {
       const data = await apiFetch("/settings/attendance-codes");
+      const noTimeStatuses = Array.isArray(data?.defaults?.no_time_statuses) ? data.defaults.no_time_statuses : [];
+      const timeTrackedStatuses = Array.isArray(data?.defaults?.time_tracked_statuses)
+        ? data.defaults.time_tracked_statuses
+        : [];
+
       codes = Array.isArray(data?.codes)
         ? data.codes.map((c) => ({
             code: c.code,
@@ -106,14 +129,22 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
             paid: !!c.counts_as_paid,
             deduct: !!c.affects_deductions,
             notes: c.notes || "",
+            noTime: noTimeStatuses.includes(c.description),
+            timeTracked: timeTrackedStatuses.includes(c.description),
           }))
         : [];
+
       defaults = {
         default_no_log_code: data?.defaults?.default_no_log_code || "",
         default_sunday_code: data?.defaults?.default_sunday_code || "",
+        paid_leave_cap_days: Number(data?.defaults?.paid_leave_cap_days || 5),
+        template_codes: Array.isArray(data?.defaults?.template_codes) ? data.defaults.template_codes : [],
+        no_time_statuses: noTimeStatuses,
+        time_tracked_statuses: timeTrackedStatuses,
       };
       renderCodes();
       fillCodeDefaults();
+      fillPolicySelectors();
     } catch (err) {
       toast(err.message || "Failed to load attendance codes.", "error");
     }
@@ -136,6 +167,10 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
           defaults: {
             default_no_log_code: defaultNoLogCode?.value || "",
             default_sunday_code: defaultSundayCode?.value || "",
+            paid_leave_cap_days: Number(paidLeaveCapDays?.value || 5),
+            template_codes: codes.map((c) => c.code).filter(Boolean),
+            no_time_statuses: codes.map((c) => (c.noTime ? c.desc : "")).filter(Boolean),
+            time_tracked_statuses: codes.map((c) => (c.timeTracked ? c.desc : "")).filter(Boolean),
           },
         }),
       });
@@ -150,6 +185,8 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
     editCodeKey = null;
     if (codeDrawerTitle) codeDrawerTitle.textContent = "Add Attendance Code";
     codeForm?.reset();
+    if (noTimeField) noTimeField.checked = false;
+    if (timeTrackedField) timeTrackedField.checked = false;
     drawer?.open();
   }
 
@@ -165,6 +202,8 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
     presentField.checked = !!row.present;
     paidField.checked = !!row.paid;
     deductField.checked = !!row.deduct;
+    if (noTimeField) noTimeField.checked = !!row.noTime;
+    if (timeTrackedField) timeTrackedField.checked = !!row.timeTracked;
 
     drawer?.open();
   }
@@ -183,6 +222,7 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
       codes = codes.filter((x) => x.code !== code);
       renderCodes();
       fillCodeDefaults();
+      fillPolicySelectors();
       saveCodes();
       if (!showNotice("Attendance code deleted.")) {
         toast("Code deleted.");
@@ -223,6 +263,8 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
       present: !!presentField.checked,
       paid: !!paidField.checked,
       deduct: !!deductField.checked,
+      noTime: !!noTimeField?.checked,
+      timeTracked: !!timeTrackedField?.checked,
     };
 
     if (!editCodeKey) {
@@ -243,8 +285,10 @@ export function initAttendanceCodes(toast, apiFetch, noticeEl, onChange) {
 
   defaultNoLogCode?.addEventListener("change", () => saveCodes());
   defaultSundayCode?.addEventListener("change", () => saveCodes());
+  paidLeaveCapDays?.addEventListener("change", () => saveCodes());
 
   renderCodes();
   fillCodeDefaults();
+  fillPolicySelectors();
   loadCodes();
 }

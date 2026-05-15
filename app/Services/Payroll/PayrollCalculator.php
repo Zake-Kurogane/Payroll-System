@@ -18,6 +18,7 @@ use App\Models\TimekeepingRule;
 use App\Models\WithholdingTaxBracket;
 use App\Models\WithholdingTaxPolicy;
 use App\Services\Attendance\AttendanceStatusRuleService;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -110,15 +111,14 @@ class PayrollCalculator
     public function computeForEmployee(Employee $emp, Carbon $start, Carbon $end, string $cutoff, ?Collection $overrides, TimekeepingRule $timekeeping, SalaryProrationRule $proration, OvertimeRule $overtime, StatutorySetup $statutory, WithholdingTaxPolicy $wtPolicy, Collection $wtBrackets, ?CashAdvancePolicy $cashPolicy, PayrollDeductionPolicy $dedPolicy, Collection $summaries, Collection $cashAdvances, Collection $loanSchedules, Collection $lateDaysByEmployee, string $runType = 'External'): array
     {
         $isFirstCutoff = $this->isFirstCutoff($cutoff);
-        $isField = strcasecmp(trim((string) ($emp->assignment_type ?? '')), 'Field') === 0;
+        $isField = AssignmentResolver::isField((string) ($emp->assignment_type ?? ''));
         $employmentType = strtolower(trim((string) ($emp->employment_type ?? '')));
         $isRegular = $employmentType === 'regular';
 
         $summary = $this->summaryFromAggregate($summaries->get($emp->id));
         $lateDays = (float) ($lateDaysByEmployee->get($emp->id) ?? 0);
-        $workdaysInMonth = 26;
-        $fieldDaysInMonth = 30;
-        // Field uses a 30-day divisor; non-Field keeps 26-day divisor.
+        $workdaysInMonth = $this->nonFieldDailyDivisor($dedPolicy);
+        $fieldDaysInMonth = $this->fieldDailyDivisor($dedPolicy);
         $dailyRate = $isField
             ? ((float) $emp->basic_pay / $fieldDaysInMonth)
             : ((float) $emp->basic_pay / $workdaysInMonth);
@@ -150,8 +150,7 @@ class PayrollCalculator
             $timekeeping,
             $proration
         );
-        if ($isField) {
-            // For Field, unpaid days are already excluded via paid_days-based salary.
+        if ($isField && $this->fieldAbsentDeductionExempt($dedPolicy)) {
             $attendanceParts['absent'] = 0.0;
         }
         $attendanceDeduction = ($attendanceParts['late'] ?? 0.0)
@@ -344,9 +343,8 @@ class PayrollCalculator
                 ->orWhereRaw('LOWER(status) NOT IN (?, ?)', ['inactive', 'resigned']);
         });
 
-        // If the run targets "All" assignments, include both regular and non-regular employees.
-        // (Users expect "All" to mean full headcount, not split by run type.)
-        if ($assignment !== 'All') {
+        $dedPolicy = PayrollDeductionPolicy::query()->first() ?? PayrollDeductionPolicy::create([]);
+        if ($assignment !== 'All' && $this->splitEmployeesByRunTypeWhenAssignmentSpecific($dedPolicy)) {
             if ($runType === 'External') {
                 $q->whereRaw("LOWER(TRIM(COALESCE(employment_type, ''))) = 'regular'");
             } else {
@@ -358,7 +356,7 @@ class PayrollCalculator
         if ($assignment !== 'All') {
             $q->where('assignment_type', $assignment);
         }
-        if ($assignment === 'Field' && $area) {
+        if (AssignmentResolver::isField($assignment) && $area) {
             $q->where('area_place', $area);
         }
 
@@ -524,7 +522,7 @@ class PayrollCalculator
 
     private function isWorkdayForAssignment(Carbon $date, bool $workMonSat, string $assignmentType): bool
     {
-        if (strcasecmp(trim($assignmentType), 'Field') === 0) {
+        if (AssignmentResolver::isField($assignmentType)) {
             return true;
         }
         $dow = (int) $date->dayOfWeekIso; // 1=Mon ... 7=Sun
@@ -1174,6 +1172,28 @@ class PayrollCalculator
 
         // Business rule: no TIN -> no withholding tax deduction.
         return $this->hasGovId($emp->tin);
+    }
+
+    private function fieldDailyDivisor(PayrollDeductionPolicy $policy): int
+    {
+        $n = (int) ($policy->field_daily_divisor ?? 30);
+        return $n > 0 ? $n : 30;
+    }
+
+    private function nonFieldDailyDivisor(PayrollDeductionPolicy $policy): int
+    {
+        $n = (int) ($policy->non_field_daily_divisor ?? 26);
+        return $n > 0 ? $n : 26;
+    }
+
+    private function fieldAbsentDeductionExempt(PayrollDeductionPolicy $policy): bool
+    {
+        return (bool) ($policy->field_absent_deduction_exempt ?? true);
+    }
+
+    private function splitEmployeesByRunTypeWhenAssignmentSpecific(PayrollDeductionPolicy $policy): bool
+    {
+        return (bool) ($policy->split_employees_by_run_type_when_assignment_specific ?? true);
     }
 
     private function taxableGrossForWithholding(float $gross, float $allowanceCutoff): float

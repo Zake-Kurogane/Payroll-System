@@ -18,6 +18,7 @@ use App\Models\Employee;
 use App\Models\PayrollDeductionPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class SettingsController extends Controller
@@ -88,6 +89,15 @@ class SettingsController extends Controller
         if (!$row) {
             $row = TimekeepingRule::create([]);
         }
+        $defaults = [
+            'davao' => ['start' => '07:45', 'end' => '17:00'],
+            'tagum' => ['start' => '07:30', 'end' => '17:00'],
+            'field' => ['start' => '06:30', 'end' => '17:30'],
+            'mebatas' => ['start' => '07:00', 'end' => '19:00'],
+        ];
+        $saved = is_array($row->assignment_schedules) ? $row->assignment_schedules : [];
+        $row->assignment_schedules = array_replace_recursive($defaults, $saved);
+        $row->grace_minutes = 0;
         return response()->json($row);
     }
 
@@ -103,7 +113,27 @@ class SettingsController extends Controller
             'undertime_rule_type' => ['required', Rule::in(['rate_based', 'flat_penalty'])],
             'undertime_penalty_per_minute' => ['required', 'numeric', 'min:0'],
             'work_minutes_per_day' => ['required', 'integer', 'min:1'],
+            'assignment_schedules' => ['nullable', 'array'],
+            'assignment_schedules.davao.start' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.davao.end' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.tagum.start' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.tagum.end' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.field.start' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.field.end' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.mebatas.start' => ['nullable', 'date_format:H:i'],
+            'assignment_schedules.mebatas.end' => ['nullable', 'date_format:H:i'],
         ]);
+        $validated['grace_minutes'] = 0;
+        $defaultSchedules = [
+            'davao' => ['start' => '07:45', 'end' => '17:00'],
+            'tagum' => ['start' => '07:30', 'end' => '17:00'],
+            'field' => ['start' => '06:30', 'end' => '17:30'],
+            'mebatas' => ['start' => '07:00', 'end' => '19:00'],
+        ];
+        $validated['assignment_schedules'] = array_replace_recursive(
+            $defaultSchedules,
+            is_array($validated['assignment_schedules'] ?? null) ? $validated['assignment_schedules'] : []
+        );
 
         $row = TimekeepingRule::query()->first();
         if (!$row) {
@@ -319,7 +349,15 @@ class SettingsController extends Controller
     {
         $row = PayrollDeductionPolicy::query()->first();
         if (!$row) {
-            $row = PayrollDeductionPolicy::create([]);
+            $row = PayrollDeductionPolicy::create([
+                'field_daily_divisor' => 30,
+                'non_field_daily_divisor' => 26,
+                'field_unpaid_statuses' => ['RNR'],
+                'field_unpaid_absent_and_leave' => true,
+                'field_absent_deduction_exempt' => true,
+                'external_runs_allow_all_assignments' => false,
+                'split_employees_by_run_type_when_assignment_specific' => true,
+            ]);
         }
         return response()->json($row);
     }
@@ -334,7 +372,27 @@ class SettingsController extends Controller
             'cap_cash_advance_to_net_pay' => ['required', 'boolean'],
             'loans_before_charges' => ['required', 'boolean'],
             'charges_before_cash_advance' => ['required', 'boolean'],
+            'field_daily_divisor' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'non_field_daily_divisor' => ['nullable', 'integer', 'min:1', 'max:366'],
+            'field_unpaid_statuses' => ['nullable', 'array'],
+            'field_unpaid_statuses.*' => ['nullable', 'string', 'max:255'],
+            'field_unpaid_absent_and_leave' => ['nullable', 'boolean'],
+            'field_absent_deduction_exempt' => ['nullable', 'boolean'],
+            'external_runs_allow_all_assignments' => ['nullable', 'boolean'],
+            'split_employees_by_run_type_when_assignment_specific' => ['nullable', 'boolean'],
         ]);
+
+        $validated['field_daily_divisor'] = (int) ($validated['field_daily_divisor'] ?? 30);
+        $validated['non_field_daily_divisor'] = (int) ($validated['non_field_daily_divisor'] ?? 26);
+        $validated['field_unpaid_statuses'] = collect($validated['field_unpaid_statuses'] ?? ['RNR'])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->values()
+            ->all();
+        $validated['field_unpaid_absent_and_leave'] = (bool) ($validated['field_unpaid_absent_and_leave'] ?? true);
+        $validated['field_absent_deduction_exempt'] = (bool) ($validated['field_absent_deduction_exempt'] ?? true);
+        $validated['external_runs_allow_all_assignments'] = (bool) ($validated['external_runs_allow_all_assignments'] ?? false);
+        $validated['split_employees_by_run_type_when_assignment_specific'] = (bool) ($validated['split_employees_by_run_type_when_assignment_specific'] ?? true);
 
         $row = PayrollDeductionPolicy::query()->first();
         if (!$row) {
@@ -620,6 +678,11 @@ class SettingsController extends Controller
 
     public function getAttendanceCodes()
     {
+        $hasPolicyCols = Schema::hasColumn('attendance_code_settings', 'paid_leave_cap_days')
+            && Schema::hasColumn('attendance_code_settings', 'template_codes')
+            && Schema::hasColumn('attendance_code_settings', 'no_time_statuses')
+            && Schema::hasColumn('attendance_code_settings', 'time_tracked_statuses');
+
         if (AttendanceCode::query()->count() === 0) {
             AttendanceCode::query()->insert([
                 [
@@ -677,22 +740,68 @@ class SettingsController extends Controller
             ->whereRaw('LOWER(description) = ?', ['rest day'])
             ->update(['description' => 'Day-off']);
 
+        $codesList = AttendanceCode::query()->orderBy('code')->get();
+
         $defaults = AttendanceCodeSetting::query()->first();
         if (!$defaults) {
-            $defaults = AttendanceCodeSetting::create([
-                'default_no_log_code' => 'A',
-                'default_sunday_code' => 'OFF',
-            ]);
+            $absentCode = (string) ($codesList->firstWhere('description', 'Absent')->code ?? $codesList->first()->code ?? '');
+            $dayOffCode = (string) ($codesList->firstWhere('description', 'Day-off')->code ?? $codesList->first()->code ?? '');
+            $templateCodes = $codesList->pluck('code')->map(fn ($v) => strtoupper((string) $v))->values()->all();
+            $noTimeStatuses = $codesList
+                ->filter(fn ($c) => !$c->counts_as_present && !$c->counts_as_paid)
+                ->pluck('description')
+                ->map(fn ($v) => trim((string) $v))
+                ->filter(fn ($v) => $v !== '')
+                ->values()
+                ->all();
+            $allStatuses = $codesList->pluck('description')->map(fn ($v) => trim((string) $v))->filter(fn ($v) => $v !== '')->values()->all();
+            $timeTracked = array_values(array_diff($allStatuses, $noTimeStatuses));
+            $createData = [
+                'default_no_log_code' => $absentCode !== '' ? strtoupper($absentCode) : null,
+                'default_sunday_code' => $dayOffCode !== '' ? strtoupper($dayOffCode) : null,
+            ];
+            if ($hasPolicyCols) {
+                $createData['paid_leave_cap_days'] = 5;
+                $createData['template_codes'] = $templateCodes;
+                $createData['no_time_statuses'] = $noTimeStatuses;
+                $createData['time_tracked_statuses'] = $timeTracked;
+            }
+            $defaults = AttendanceCodeSetting::create($createData);
         } else {
             $changed = false;
             $noLog = strtoupper((string) ($defaults->default_no_log_code ?? ''));
             $sun = strtoupper((string) ($defaults->default_sunday_code ?? ''));
             if (in_array($noLog, ['UL', 'LWOP'], true)) {
-                $defaults->default_no_log_code = 'A';
+                $absentCode = (string) ($codesList->firstWhere('description', 'Absent')->code ?? $codesList->first()->code ?? '');
+                $defaults->default_no_log_code = $absentCode !== '' ? strtoupper($absentCode) : null;
                 $changed = true;
             }
             if (in_array($sun, ['UL', 'LWOP'], true)) {
-                $defaults->default_sunday_code = 'OFF';
+                $dayOffCode = (string) ($codesList->firstWhere('description', 'Day-off')->code ?? $codesList->first()->code ?? '');
+                $defaults->default_sunday_code = $dayOffCode !== '' ? strtoupper($dayOffCode) : null;
+                $changed = true;
+            }
+            if ($hasPolicyCols && empty($defaults->paid_leave_cap_days)) {
+                $defaults->paid_leave_cap_days = 5;
+                $changed = true;
+            }
+            if ($hasPolicyCols && !is_array($defaults->template_codes)) {
+                $defaults->template_codes = $codesList->pluck('code')->map(fn ($v) => strtoupper((string) $v))->values()->all();
+                $changed = true;
+            }
+            if ($hasPolicyCols && !is_array($defaults->no_time_statuses)) {
+                $defaults->no_time_statuses = $codesList
+                    ->filter(fn ($c) => !$c->counts_as_present && !$c->counts_as_paid)
+                    ->pluck('description')
+                    ->map(fn ($v) => trim((string) $v))
+                    ->filter(fn ($v) => $v !== '')
+                    ->values()
+                    ->all();
+                $changed = true;
+            }
+            if ($hasPolicyCols && !is_array($defaults->time_tracked_statuses)) {
+                $allStatuses = $codesList->pluck('description')->map(fn ($v) => trim((string) $v))->filter(fn ($v) => $v !== '')->values()->all();
+                $defaults->time_tracked_statuses = array_values(array_diff($allStatuses, (array) $defaults->no_time_statuses));
                 $changed = true;
             }
             if ($changed) {
@@ -701,13 +810,23 @@ class SettingsController extends Controller
         }
 
         return response()->json([
-            'codes' => AttendanceCode::query()->orderBy('code')->get(),
-            'defaults' => $defaults,
+            'codes' => $codesList,
+            'defaults' => array_merge($defaults->toArray(), [
+                'paid_leave_cap_days' => $hasPolicyCols ? (int) ($defaults->paid_leave_cap_days ?? 5) : 5,
+                'template_codes' => $hasPolicyCols ? (array) ($defaults->template_codes ?? []) : [],
+                'no_time_statuses' => $hasPolicyCols ? (array) ($defaults->no_time_statuses ?? []) : [],
+                'time_tracked_statuses' => $hasPolicyCols ? (array) ($defaults->time_tracked_statuses ?? []) : [],
+            ]),
         ]);
     }
 
     public function saveAttendanceCodes(Request $request)
     {
+        $hasPolicyCols = Schema::hasColumn('attendance_code_settings', 'paid_leave_cap_days')
+            && Schema::hasColumn('attendance_code_settings', 'template_codes')
+            && Schema::hasColumn('attendance_code_settings', 'no_time_statuses')
+            && Schema::hasColumn('attendance_code_settings', 'time_tracked_statuses');
+
         $validated = $request->validate([
             'codes' => ['required', 'array', 'min:1'],
             'codes.*.code' => ['required', 'string', 'max:10'],
@@ -718,6 +837,13 @@ class SettingsController extends Controller
             'codes.*.notes' => ['nullable', 'string'],
             'defaults.default_no_log_code' => ['nullable', 'string', 'max:10'],
             'defaults.default_sunday_code' => ['nullable', 'string', 'max:10'],
+            'defaults.paid_leave_cap_days' => $hasPolicyCols ? ['nullable', 'integer', 'min:1', 'max:365'] : ['nullable'],
+            'defaults.template_codes' => $hasPolicyCols ? ['nullable', 'array'] : ['nullable'],
+            'defaults.template_codes.*' => $hasPolicyCols ? ['nullable', 'string', 'max:10'] : ['nullable'],
+            'defaults.no_time_statuses' => $hasPolicyCols ? ['nullable', 'array'] : ['nullable'],
+            'defaults.no_time_statuses.*' => $hasPolicyCols ? ['nullable', 'string', 'max:255'] : ['nullable'],
+            'defaults.time_tracked_statuses' => $hasPolicyCols ? ['nullable', 'array'] : ['nullable'],
+            'defaults.time_tracked_statuses.*' => $hasPolicyCols ? ['nullable', 'string', 'max:255'] : ['nullable'],
         ]);
 
         $codes = array_values(array_filter($validated['codes'], function ($c) {
@@ -737,14 +863,45 @@ class SettingsController extends Controller
         $defaults = $validated['defaults'] ?? [];
         $noLog = strtoupper((string) ($defaults['default_no_log_code'] ?? ''));
         $sun = strtoupper((string) ($defaults['default_sunday_code'] ?? ''));
+        $codeSet = collect($codes)->map(fn ($c) => strtoupper((string) ($c['code'] ?? '')))->filter()->values();
+        $statusSet = collect($codes)->map(fn ($c) => trim((string) ($c['description'] ?? '')))->filter()->values();
+        $firstCode = (string) ($codeSet->first() ?? '');
+        $firstStatus = (string) ($statusSet->first() ?? '');
         if (in_array($noLog, ['UL', 'LWOP'], true)) {
-            $defaults['default_no_log_code'] = 'A';
+            $defaults['default_no_log_code'] = $firstCode !== '' ? $firstCode : null;
         }
         if (in_array($sun, ['UL', 'LWOP'], true)) {
-            $defaults['default_sunday_code'] = 'OFF';
+            $defaults['default_sunday_code'] = $firstCode !== '' ? $firstCode : null;
+        }
+        if ($hasPolicyCols && (!isset($defaults['paid_leave_cap_days']) || (int) $defaults['paid_leave_cap_days'] < 1)) {
+            $defaults['paid_leave_cap_days'] = 5;
+        }
+        if ($hasPolicyCols) {
+            $templateCodes = collect($defaults['template_codes'] ?? [])->map(fn ($v) => strtoupper(trim((string) $v)))->filter()->values();
+            if ($templateCodes->isEmpty()) {
+                $templateCodes = $codeSet;
+            }
+            $defaults['template_codes'] = $templateCodes->all();
+            $noTimeStatuses = collect($defaults['no_time_statuses'] ?? [])->map(fn ($v) => trim((string) $v))->filter()->values();
+            if ($noTimeStatuses->isEmpty()) {
+                $noTimeStatuses = collect($codes)
+                    ->filter(fn ($c) => !($c['counts_as_present'] ?? false) && !($c['counts_as_paid'] ?? false))
+                    ->map(fn ($c) => trim((string) ($c['description'] ?? '')))
+                    ->filter()
+                    ->values();
+            }
+            $defaults['no_time_statuses'] = $noTimeStatuses->all();
+            $timeTrackedStatuses = collect($defaults['time_tracked_statuses'] ?? [])->map(fn ($v) => trim((string) $v))->filter()->values();
+            if ($timeTrackedStatuses->isEmpty()) {
+                $timeTrackedStatuses = $statusSet->reject(fn ($s) => in_array($s, $defaults['no_time_statuses'], true))->values();
+            }
+            if ($timeTrackedStatuses->isEmpty() && $firstStatus !== '') {
+                $timeTrackedStatuses = collect([$firstStatus]);
+            }
+            $defaults['time_tracked_statuses'] = $timeTrackedStatuses->all();
         }
 
-        DB::transaction(function () use ($codes, $defaults) {
+        DB::transaction(function () use ($codes, $defaults, $hasPolicyCols) {
             AttendanceCode::query()->delete();
             $rows = array_map(function ($c) {
                 $code = strtoupper((string) ($c['code'] ?? ''));
@@ -765,15 +922,29 @@ class SettingsController extends Controller
 
             $settings = AttendanceCodeSetting::query()->first();
             if (!$settings) {
-                AttendanceCodeSetting::create([
+                $createData = [
                     'default_no_log_code' => $defaults['default_no_log_code'] ?? null,
                     'default_sunday_code' => $defaults['default_sunday_code'] ?? null,
-                ]);
+                ];
+                if ($hasPolicyCols) {
+                    $createData['paid_leave_cap_days'] = (int) ($defaults['paid_leave_cap_days'] ?? 5);
+                    $createData['template_codes'] = $defaults['template_codes'] ?? [];
+                    $createData['no_time_statuses'] = $defaults['no_time_statuses'] ?? [];
+                    $createData['time_tracked_statuses'] = $defaults['time_tracked_statuses'] ?? [];
+                }
+                AttendanceCodeSetting::create($createData);
             } else {
-                $settings->update([
+                $updateData = [
                     'default_no_log_code' => $defaults['default_no_log_code'] ?? null,
                     'default_sunday_code' => $defaults['default_sunday_code'] ?? null,
-                ]);
+                ];
+                if ($hasPolicyCols) {
+                    $updateData['paid_leave_cap_days'] = (int) ($defaults['paid_leave_cap_days'] ?? 5);
+                    $updateData['template_codes'] = $defaults['template_codes'] ?? [];
+                    $updateData['no_time_statuses'] = $defaults['no_time_statuses'] ?? [];
+                    $updateData['time_tracked_statuses'] = $defaults['time_tracked_statuses'] ?? [];
+                }
+                $settings->update($updateData);
             }
         });
 

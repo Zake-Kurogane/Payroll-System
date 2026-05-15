@@ -9,6 +9,7 @@ use App\Models\EmployeeAreaHistory;
 use App\Models\EmploymentStatus;
 use App\Models\EmploymentType;
 use App\Models\Assignment;
+use App\Models\AttendanceAssignmentStatusRule;
 use App\Models\AreaPlace;
 use App\Models\AttendanceCode;
 use App\Models\Department;
@@ -16,6 +17,7 @@ use App\Models\BasedLocation;
 use App\Models\ExternalCompany;
 use App\Models\ExternalPosition;
 use App\Models\Position;
+use App\Support\AssignmentResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -208,7 +210,7 @@ class EmployeeController extends Controller
             ->get(['label', 'parent_assignment']);
         $grouped = [];
         foreach ($rows as $row) {
-            $parent = $row->parent_assignment ?? 'Field';
+            $parent = $row->parent_assignment ?? AssignmentResolver::fieldLabel();
             $grouped[$parent][] = $row->label;
         }
         // Sort by assignment sort_order
@@ -307,7 +309,7 @@ class EmployeeController extends Controller
                 ->get(['label', 'parent_assignment']);
             $grouped = [];
             foreach ($rows as $row) {
-                $parent = $row->parent_assignment ?? 'Field';
+                $parent = $row->parent_assignment ?? AssignmentResolver::fieldLabel();
                 $grouped[$parent][] = $row->label;
             }
             $ordered = [];
@@ -363,6 +365,11 @@ class EmployeeController extends Controller
             'positions' => $positions,
             'external_positions' => $externalPositions,
             'external_companies' => $externalCompanies,
+            'assignment_status_rules' => AttendanceAssignmentStatusRule::query()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get(['assignment_type', 'status', 'is_allowed', 'message', 'default_sunday_status']),
+            'field_assignment_label' => AssignmentResolver::fieldLabel(),
         ]);
     }
 
@@ -755,7 +762,6 @@ class EmployeeController extends Controller
             $validated['basic_pay'] = 0;
             $validated['allowance'] = 0;
         }
-        $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
             unset($validated['force_statutory_premiums']);
         }
@@ -765,7 +771,7 @@ class EmployeeController extends Controller
             $employee->positions()->sync($positionIds);
         }
 
-        if (($validated['assignment_type'] ?? '') === 'Field' && !empty($validated['area_place'])) {
+        if (AssignmentResolver::isField((string) ($validated['assignment_type'] ?? '')) && !empty($validated['area_place'])) {
             EmployeeAreaHistory::create([
                 'employee_id'    => $employee->id,
                 'area_place'     => $validated['area_place'],
@@ -819,7 +825,6 @@ class EmployeeController extends Controller
         if (!$canViewComp) {
             unset($validated['basic_pay'], $validated['allowance']);
         }
-        $validated = $this->applyRefinersAssignmentRule($validated);
         if (!Schema::hasColumn('employees', 'force_statutory_premiums')) {
             unset($validated['force_statutory_premiums']);
         }
@@ -830,7 +835,7 @@ class EmployeeController extends Controller
             $employee->positions()->sync($positionIds);
         }
 
-        if (($validated['assignment_type'] ?? '') === 'Field'
+        if (AssignmentResolver::isField((string) ($validated['assignment_type'] ?? ''))
             && !empty($validated['area_place'])
             && $validated['area_place'] !== $oldAreaPlace
         ) {
@@ -890,7 +895,7 @@ class EmployeeController extends Controller
         if ($assignment !== '') {
             $areaPlacesQuery = AreaPlace::where('is_active', true);
             // Keep consistent with filters()/view() where NULL parent_assignment is treated as "Field"
-            if ($assignment === 'Field') {
+            if (AssignmentResolver::isField((string) $assignment)) {
                 $areaPlacesQuery->where(function ($q) use ($assignment) {
                     $q->where('parent_assignment', $assignment)->orWhereNull('parent_assignment');
                 });
@@ -919,7 +924,7 @@ class EmployeeController extends Controller
             'area_place' => $areaPlace,
         ];
 
-        if ($assignment === 'Field' && $areaPlace) {
+        if (AssignmentResolver::isField((string) $assignment) && $areaPlace) {
             $today = now()->toDateString();
             $userId = Auth::id();
             $now = now();
@@ -1048,7 +1053,7 @@ class EmployeeController extends Controller
         if ($assignment !== '') {
             $areaPlacesQuery = AreaPlace::where('is_active', true);
             // Keep consistent with filters()/view() where NULL parent_assignment is treated as "Field"
-            if ($assignment === 'Field') {
+            if (AssignmentResolver::isField((string) $assignment)) {
                 $areaPlacesQuery->where(function ($q) use ($assignment) {
                     $q->where('parent_assignment', $assignment)->orWhereNull('parent_assignment');
                 });
@@ -1284,17 +1289,6 @@ class EmployeeController extends Controller
         }
 
         return $columns;
-    }
-
-    private function applyRefinersAssignmentRule(array $validated): array
-    {
-        $department = strtolower(trim((string) ($validated['department'] ?? '')));
-        if ($department === 'operations-refiners') {
-            $validated['assignment_type'] = 'Tagum';
-            $validated['area_place'] = 'G5 Refinery';
-            $validated['based_location'] = 'G5 Refinery';
-        }
-        return $validated;
     }
 
     private function applyProbationDueFilter($query): void
