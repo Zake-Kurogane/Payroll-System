@@ -2166,6 +2166,27 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
+  function setBtnLoading(btn, isLoading, loadingText) {
+    if (!btn) return;
+    if (isLoading) {
+      if (!btn.dataset.prevText) {
+        btn.dataset.prevText = btn.textContent || "";
+      }
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      btn.textContent = loadingText;
+      btn.classList.add("is-loading");
+      return;
+    }
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    if (btn.dataset.prevText) {
+      btn.textContent = btn.dataset.prevText;
+      delete btn.dataset.prevText;
+    }
+    btn.classList.remove("is-loading");
+  }
+
   async function uploadImportFile() {
     const file = importFile?.files?.[0];
     if (!file) {
@@ -2186,6 +2207,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (dateOverride) fd.append("date", dateOverride);
     fd.append("file", file);
 
+    setBtnLoading(previewImportBtn, true, "Importing...");
     try {
       const res = await fetch("/attendance/import", {
         method: "POST",
@@ -2224,11 +2246,14 @@ document.addEventListener("DOMContentLoaded", () => {
       notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Import failed.");
+    } finally {
+      setBtnLoading(previewImportBtn, false, "Importing...");
     }
   }
 
   async function saveImport() {
     const clean = importRows.filter(r => !r.isError);
+    setBtnLoading(saveImportBtn, true, "Saving...");
     try {
       for (const r of clean) {
         const emp = getEmpByNo(r.empId);
@@ -2253,6 +2278,8 @@ document.addEventListener("DOMContentLoaded", () => {
       notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to import attendance.");
+    } finally {
+      setBtnLoading(saveImportBtn, false, "Saving...");
     }
   }
 

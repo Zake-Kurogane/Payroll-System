@@ -370,7 +370,7 @@ class AttendanceController extends Controller
         $assignment = $v['assignment'] ?? 'All';
         $area = $v['area'] ?? null;
 
-        $employees = $this->employeesForFilters($assignment, $area);
+        $employees = $this->employeesForFilters($assignment, $area, $date->toDateString());
 
         $spreadsheet = new Spreadsheet();
         $spreadsheet->removeSheetByIndex(0);
@@ -447,12 +447,11 @@ class AttendanceController extends Controller
 
             $sheet->getCell("J{$row}")->setDataValidation($dv);
 
-            $schedule = $this->timeScheduleForAssignment((string) ($e->assignment_type ?? ''));
+            $schedule = $this->timeScheduleForAssignment((string) ($e->assignment_type ?? ''), (string) ($e->area_place ?? ''));
             $start = $schedule['start'] ?? '07:30';
             $end = $schedule['end'] ?? '17:00';
             [$startH, $startM] = $this->splitTimeParts($start);
             [$endH, $endM] = $this->splitTimeParts($end);
-
             // No grace period: late starts immediately after assignment start time.
             $sheet->setCellValue("J{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(%d,%d,0),"P","L"))', $row, $row, $startH, $startM));
 
@@ -628,7 +627,8 @@ class AttendanceController extends Controller
                 $under = $this->parseNumberCell($underCell, $errors, "{$sheetName} row {$r}: minutes_undertime must be a number.");
 
                 $sheetAssignment = trim((string) $sheet->getCell("D{$r}")->getValue());
-                $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut, $sheetAssignment);
+                $sheetArea = trim((string) $sheet->getCell("E{$r}")->getValue());
+                $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut, $sheetAssignment, $sheetArea);
 
                 // Normalize undertime from clock_out when available so values are always consistent.
                 if ($underFromClockOut !== null) {
@@ -655,13 +655,14 @@ class AttendanceController extends Controller
                     'date' => $workDate->toDateString(),
                     'emp_no' => $empNo,
                     '_src' => "{$sheetName} row {$r}",
-                    'status' => $status ?: '',
+                    'status' => $this->normalizeStatusForStorage($status ?: ''),
                     'area_place' => $areaVal !== '' ? $areaVal : null,
-                    'clock_in' => $clockIn ?: null,
-                    'clock_out' => $clockOut ?: null,
+                    'clock_in' => $this->sanitizeTimeForStorage($clockIn),
+                    'clock_out' => $this->sanitizeTimeForStorage($clockOut),
                     'minutes_late' => (int) ($late ?? 0),
                     'minutes_undertime' => (int) ($under ?? 0),
                     '_sheet_assignment' => $sheetAssignment,
+                    '_sheet_area' => $sheetArea,
                 ];
             }
         }
@@ -726,13 +727,14 @@ class AttendanceController extends Controller
                 $emp = $employeesByNo[$empNo] ?? null;
                 if ($emp) {
                     $assignmentType = (string) ($emp->assignment_type ?? ($row['_sheet_assignment'] ?? ''));
+                    $areaPlace = (string) ($row['area_place'] ?? ($row['_sheet_area'] ?? ''));
                     if (in_array((string) ($row['status'] ?? ''), $this->timeTrackedStatuses(), true)) {
-                        $computedLate = $this->computeLateMinutes((string) ($row['clock_in'] ?? ''), $assignmentType);
+                        $computedLate = $this->computeLateMinutes((string) ($row['clock_in'] ?? ''), $assignmentType, $areaPlace);
                         if ($computedLate !== null) {
                             $row['minutes_late'] = (int) $computedLate;
                         }
                     }
-                    $computedUnder = $this->computeUndertimeMinutesFromClockOut((string) ($row['clock_out'] ?? ''), $assignmentType);
+                    $computedUnder = $this->computeUndertimeMinutesFromClockOut((string) ($row['clock_out'] ?? ''), $assignmentType, $areaPlace);
                     if ($computedUnder !== null) {
                         $row['minutes_undertime'] = (int) $computedUnder;
                     }
@@ -863,9 +865,12 @@ class AttendanceController extends Controller
 
     private function normalizeComputedFields(array $record): array
     {
-        $status = (string) ($record['status'] ?? '');
-        $clockIn = (string) ($record['clock_in'] ?? '');
-        $clockOut = (string) ($record['clock_out'] ?? '');
+        $status = $this->normalizeStatusForStorage((string) ($record['status'] ?? ''));
+        $clockIn = (string) ($this->sanitizeTimeForStorage((string) ($record['clock_in'] ?? '')) ?? '');
+        $clockOut = (string) ($this->sanitizeTimeForStorage((string) ($record['clock_out'] ?? '')) ?? '');
+        $record['status'] = $status;
+        $record['clock_in'] = $clockIn !== '' ? $clockIn : null;
+        $record['clock_out'] = $clockOut !== '' ? $clockOut : null;
 
         if (in_array($status, $this->noTimeStatuses(), true)) {
             $record['clock_in'] = null;
@@ -878,8 +883,9 @@ class AttendanceController extends Controller
 
         $employee = !empty($record['employee_id']) ? Employee::find((int) $record['employee_id']) : null;
         $assignmentType = (string) ($employee?->assignment_type ?? '');
-        $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn, $assignmentType) ?? 0);
-        $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut, $assignmentType) ?? 0);
+        $areaPlace = (string) ($record['area_place'] ?? $employee?->area_place ?? '');
+        $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn, $assignmentType, $areaPlace) ?? 0);
+        $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut, $assignmentType, $areaPlace) ?? 0);
         $record['ot_hours'] = 0;
 
         return $record;
@@ -1088,7 +1094,7 @@ class AttendanceController extends Controller
         return [$start, $end];
     }
 
-    private function employeesForFilters(string $assignment, ?string $area)
+    private function employeesForFilters(string $assignment, ?string $area, ?string $forDate = null)
     {
         if (is_string($area) && trim(strtolower($area)) === 'all') {
             $area = null;
@@ -1112,6 +1118,13 @@ class AttendanceController extends Controller
         if ($area) {
             $q->where('area_place', $area);
         }
+        if ($forDate) {
+            // Exclude employees hired after the selected attendance date.
+            $q->where(function ($qq) use ($forDate) {
+                $qq->whereNull('date_hired')
+                   ->orWhereDate('date_hired', '<=', $forDate);
+            });
+        }
 
         return $q->orderBy('last_name')->orderBy('first_name')->get();
     }
@@ -1129,10 +1142,35 @@ class AttendanceController extends Controller
         }
         foreach ($this->statusValues() as $status) {
             if (strcasecmp($raw, $status) === 0) {
-                return $status;
+                return $this->normalizeStatusForStorage($status);
             }
         }
         return null;
+    }
+
+    private function normalizeStatusForStorage(string $status): string
+    {
+        $s = trim($status);
+        if (strcasecmp($s, 'Day-off') === 0) {
+            return 'Day Off';
+        }
+        return $s;
+    }
+
+    private function sanitizeTimeForStorage(?string $time): ?string
+    {
+        $t = trim((string) $time);
+        if ($t === '') {
+            return null;
+        }
+        if (!preg_match('/^\d{1,2}:\d{2}$/', $t)) {
+            return null;
+        }
+        [$h, $m] = array_map('intval', explode(':', $t, 2));
+        if ($h < 0 || $h > 23 || $m < 0 || $m > 59) {
+            return null;
+        }
+        return str_pad((string) $h, 2, '0', STR_PAD_LEFT) . ':' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
     }
 
     private function parseNumberCell($cell, array &$errors, string $message): ?float
@@ -1163,14 +1201,41 @@ class AttendanceController extends Controller
     private function readTimeCell($cell, ?string $context = null): string
     {
         $raw = $cell->getValue();
+        $rawInput = trim((string) $raw);
+
+        // Parse raw typed text first so "5:30" keeps user intent (no meridiem),
+        // independent of Excel's display format (which may show AM by default).
+        if (is_string($raw) && preg_match('/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i', $rawInput, $mRaw)) {
+            $hh = (int) $mRaw[1];
+            $mm = str_pad((string) ((int) $mRaw[2]), 2, '0', STR_PAD_LEFT);
+            $meridiem = strtoupper((string) ($mRaw[3] ?? ''));
+            if ($meridiem === '') {
+                $hh = $this->normalizeAmbiguousHourWithoutMeridiem($hh, $context);
+            } elseif ($meridiem === 'AM' && $hh === 12) {
+                $hh = 0;
+            } elseif ($meridiem === 'PM' && $hh < 12) {
+                $hh += 12;
+            }
+            $hh = max(0, min(23, $hh));
+            return str_pad((string) $hh, 2, '0', STR_PAD_LEFT) . ":{$mm}";
+        }
+
         if (is_numeric($raw)) {
             try {
-                return ExcelDate::excelToDateTimeObject($raw)->format('H:i');
+                $time = ExcelDate::excelToDateTimeObject($raw)->format('H:i');
+                // Numeric Excel time has no AM/PM marker; apply context defaults.
+                if (preg_match('/^(\d{1,2}):(\d{2})$/', $time, $m)) {
+                    $hh = $this->normalizeAmbiguousHourWithoutMeridiem((int) $m[1], $context);
+                    $mm = str_pad((string) ((int) $m[2]), 2, '0', STR_PAD_LEFT);
+                    return str_pad((string) max(0, min(23, $hh)), 2, '0', STR_PAD_LEFT) . ":{$mm}";
+                }
+                return $time;
             } catch (\Throwable $e) {
                 return '';
             }
         }
 
+        $hasExplicitMeridiemInRaw = preg_match('/\b(?:AM|PM)\b/i', $rawInput) === 1;
         $formatted = trim((string) $cell->getFormattedValue());
         if ($formatted === '') {
             return '';
@@ -1184,6 +1249,16 @@ class AttendanceController extends Controller
             } elseif ($meridiem === 'AM' && $hh === 12) {
                 $hh = 0;
             } elseif ($meridiem === 'PM' && $hh < 12) {
+                $hh += 12;
+            }
+
+            // For clock_out, default to PM unless user explicitly typed AM in the source value.
+            if (
+                $context === 'clock_out'
+                && !$hasExplicitMeridiemInRaw
+                && $hh >= 1
+                && $hh <= 11
+            ) {
                 $hh += 12;
             }
             $hh = max(0, min(23, $hh));
@@ -1232,13 +1307,13 @@ class AttendanceController extends Controller
         return in_array($clockInMinutes, [12 * 60, 13 * 60], true); // in at 12:00 PM or 1:00 PM
     }
 
-    private function computeLateMinutes(string $clockIn, string $assignmentType = ''): ?int
+    private function computeLateMinutes(string $clockIn, string $assignmentType = '', string $areaPlace = ''): ?int
     {
         $minutesIn = $this->parseTimeToMinutes($clockIn);
         if ($minutesIn === null) {
             return null;
         }
-        $schedule = $this->timeScheduleForAssignment($assignmentType);
+        $schedule = $this->timeScheduleForAssignment($assignmentType, $areaPlace);
         $start = $this->parseTimeToMinutes((string) ($schedule['start'] ?? '07:30'));
         if ($start === null) {
             $start = (7 * 60) + 30;
@@ -1246,7 +1321,7 @@ class AttendanceController extends Controller
         return max(0, $minutesIn - $start);
     }
 
-    private function computeUndertimeMinutesFromClockOut(string $clockOut, string $assignmentType = ''): ?int
+    private function computeUndertimeMinutesFromClockOut(string $clockOut, string $assignmentType = '', string $areaPlace = ''): ?int
     {
         if ($clockOut === '') {
             return null;
@@ -1255,7 +1330,7 @@ class AttendanceController extends Controller
         if ($minutesOut === null) {
             return null;
         }
-        $schedule = $this->timeScheduleForAssignment($assignmentType);
+        $schedule = $this->timeScheduleForAssignment($assignmentType, $areaPlace);
         $endOfWork = $this->parseTimeToMinutes((string) ($schedule['end'] ?? '17:00'));
         if ($endOfWork === null) {
             $endOfWork = 17 * 60;
@@ -1266,7 +1341,7 @@ class AttendanceController extends Controller
         return max(0, $endOfWork - $minutesOut);
     }
 
-    private function timeScheduleForAssignment(string $assignmentType): array
+    private function timeScheduleForAssignment(string $assignmentType, string $areaPlace = ''): array
     {
         $rule = TimekeepingRule::query()->first();
         $defaults = [
@@ -1278,21 +1353,27 @@ class AttendanceController extends Controller
         $saved = is_array($rule?->assignment_schedules) ? $rule->assignment_schedules : [];
         $schedules = array_replace_recursive($defaults, $saved);
 
-        $key = $this->scheduleKeyForAssignment($assignmentType);
+        $key = $this->scheduleKeyForAssignment($assignmentType, $areaPlace);
         return is_array($schedules[$key] ?? null) ? $schedules[$key] : $defaults[$key];
     }
 
-    private function scheduleKeyForAssignment(string $assignmentType): string
+    private function scheduleKeyForAssignment(string $assignmentType, string $areaPlace = ''): string
     {
-        $v = strtolower(trim($assignmentType));
-        if (str_contains($v, 'mebatas')) {
-            return 'mebatas';
+        $a = strtolower(trim($assignmentType));
+        $p = strtolower(trim($areaPlace));
+        // Field areas use Field schedule, except Mebatas which has its own schedule.
+        if (str_contains($a, 'field')) {
+            return str_contains($p, 'mebatas') ? 'mebatas' : 'field';
         }
-        if (str_contains($v, 'field')) {
-            return 'field';
-        }
-        if (str_contains($v, 'davao')) {
+
+        if (str_contains($a, 'davao')) {
             return 'davao';
+        }
+        if (str_contains($a, 'tagum')) {
+            return 'tagum';
+        }
+        if (str_contains($a, 'mebatas') || str_contains($p, 'mebatas')) {
+            return 'mebatas';
         }
         return 'tagum';
     }
