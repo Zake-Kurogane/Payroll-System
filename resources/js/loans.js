@@ -902,6 +902,15 @@ document.addEventListener("DOMContentLoaded", () => {
   saveLoanBtn && saveLoanBtn.addEventListener("click", () => {
     saveLoan().catch(err => alert(err.message || "Failed to save loan."));
   });
+  loanDrawer && loanDrawer.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const target = e.target;
+    if (target && (target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    if (!loanDrawer.classList.contains("is-open")) return;
+    if (!saveLoanBtn || saveLoanBtn.disabled) return;
+    e.preventDefault();
+    saveLoanBtn.click();
+  });
 
   loanTbody && loanTbody.addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-action]");

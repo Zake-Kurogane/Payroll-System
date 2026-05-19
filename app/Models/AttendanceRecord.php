@@ -11,6 +11,7 @@ class AttendanceRecord extends Model
         'employee_id',
         'date',
         'status',
+        'paid_leave_units',
         'area_place',
         'clock_in',
         'clock_out',
@@ -21,6 +22,7 @@ class AttendanceRecord extends Model
 
     protected $casts = [
         'date' => 'date',
+        'paid_leave_units' => 'decimal:2',
         'ot_hours' => 'decimal:2',
     ];
 

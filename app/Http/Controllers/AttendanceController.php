@@ -35,7 +35,7 @@ class AttendanceController extends Controller
             return response()->json(['area_place' => null]);
         }
 
-        return response()->json(['area_place' => $employee->resolveAreaForDate($v['date'])]);
+        return response()->json(['area_place' => $employee->area_place]);
     }
 
     public function index(Request $request)
@@ -112,6 +112,7 @@ class AttendanceController extends Controller
 
         $recordsTable = (new AttendanceRecord())->getTable();
         $employeesTable = (new Employee())->getTable();
+        $employmentStatusesTable = (new \App\Models\EmploymentStatus())->getTable();
 
         $records = AttendanceRecord::query()
             ->from($recordsTable)
@@ -120,6 +121,7 @@ class AttendanceController extends Controller
                 "{$recordsTable}.employee_id",
                 "{$recordsTable}.date",
                 "{$recordsTable}.status",
+                "{$recordsTable}.paid_leave_units",
                 "{$recordsTable}.area_place",
                 "{$recordsTable}.clock_in",
                 "{$recordsTable}.clock_out",
@@ -127,6 +129,15 @@ class AttendanceController extends Controller
                 "{$recordsTable}.minutes_undertime",
             ])
             ->leftJoin($employeesTable, "{$employeesTable}.id", '=', "{$recordsTable}.employee_id")
+            ->leftJoin("{$employmentStatusesTable} as es", "es.id", '=', "{$employeesTable}.employment_status_id")
+            // Exclude inactive/resigned employees from attendance records and KPI counts.
+            ->whereRaw('LOWER(TRIM(COALESCE(es.label, ""))) NOT IN (?, ?)', ['inactive', 'resigned'])
+            ->whereRaw('LOWER(TRIM(COALESCE(' . $employeesTable . '.status, ""))) NOT IN (?, ?)', ['inactive', 'resigned'])
+            // Exclude attendance that predates employee hire date.
+            ->where(function ($q) use ($employeesTable, $recordsTable) {
+                $q->whereNull("{$employeesTable}.date_hired")
+                  ->orWhereColumn("{$employeesTable}.date_hired", '<=', "{$recordsTable}.date");
+            })
             ->with(['employee:id,emp_no,first_name,middle_name,last_name,department,position,assignment_type,area_place'])
             ->when($sort === 'date', function ($q) use ($recordsTable, $dir) {
                 $q->orderBy("{$recordsTable}.date", $dir)->orderBy("{$recordsTable}.id", $dir);
@@ -143,7 +154,7 @@ class AttendanceController extends Controller
                   ->orderBy("{$recordsTable}.id", 'desc');
             })
             ->when($sort === 'area', function ($q) use ($recordsTable, $dir, $employeesTable) {
-                $q->orderBy("{$recordsTable}.area_place", $dir)
+                $q->orderBy("{$employeesTable}.area_place", $dir)
                   ->orderBy("{$employeesTable}.last_name", $dir)
                   ->orderBy("{$employeesTable}.first_name", $dir)
                   ->orderBy("{$recordsTable}.date", 'desc')
@@ -180,7 +191,7 @@ class AttendanceController extends Controller
             $records->whereHas('employee', fn ($q) => $q->where('assignment_type', $assignment));
         }
         if ($area && trim(strtolower((string) $area)) !== 'all') {
-            $records->where("{$recordsTable}.area_place", $area);
+            $records->where("{$employeesTable}.area_place", $area);
         }
 
         if (!empty($v['employee_id'])) {
@@ -193,13 +204,18 @@ class AttendanceController extends Controller
         }
 
         $date = $v['date'] ?? null;
+        $autoFilledMissing = 0;
+        if ($date) {
+            $autoFilledMissing = $this->ensureDailyRosterRecords($date, (string) $assignment, $area);
+        }
         if ($date) {
             $records->whereDate("{$recordsTable}.date", $date);
         }
 
         $status = $v['status'] ?? null;
         if ($status && strtolower($status) !== 'all') {
-            $records->where("{$recordsTable}.status", $status);
+            $normalizedStatus = $this->normalizeStatusForStorage((string) $status);
+            $records->where("{$recordsTable}.status", $normalizedStatus);
         }
 
         $q = trim((string) ($v['q'] ?? ''));
@@ -222,7 +238,7 @@ class AttendanceController extends Controller
         }
 
         $baseQuery = clone $records;
-        $leaveSet = ['Leave', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
+        $leaveSet = ['Leave', 'Unpaid Leave', 'RNR', 'Paid Leave', 'LOA', 'Holiday', 'Day Off'];
         $stats = [
             'total' => (int) (clone $baseQuery)->count(),
             'present' => (int) (clone $baseQuery)->whereIn("{$recordsTable}.status", ['Present', 'Half-day'])->count(),
@@ -239,9 +255,8 @@ class AttendanceController extends Controller
              $name = $emp
                  ? trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : ''))
                  : '';
-            $recordArea = is_string($r->area_place) ? trim($r->area_place) : '';
             $employeeArea = is_string($emp?->area_place) ? trim((string) $emp?->area_place) : '';
-            $areaPlace = $recordArea !== '' ? $recordArea : ($employeeArea !== '' ? $employeeArea : null);
+            $areaPlace = $employeeArea !== '' ? $employeeArea : null;
              return [
                  'id' => (string) $r->id,
                  'employee_id' => $r->employee_id,
@@ -256,6 +271,7 @@ class AttendanceController extends Controller
                  'area_place' => $areaPlace,
                  'date' => $r->date?->format('Y-m-d'),
                  'status' => $r->status,
+                 'paid_leave_units' => (float) ($r->paid_leave_units ?? 0),
                  'clock_in' => $r->clock_in,
                  'clock_out' => $r->clock_out,
                  'minutes_late' => $r->minutes_late ?? 0,
@@ -271,8 +287,57 @@ class AttendanceController extends Controller
                 'total' => $paginator->total(),
                 'total_pages' => $paginator->lastPage(),
                 'stats' => $stats,
+                'auto_filled_missing' => $autoFilledMissing,
             ],
         ]);
+    }
+
+    private function ensureDailyRosterRecords(string $date, string $assignment, ?string $area): int
+    {
+        $workDate = Carbon::parse($date)->toDateString();
+        $employees = $this->employeesForFilters($assignment, $area, $workDate);
+        if ($employees->isEmpty()) {
+            return 0;
+        }
+
+        $employeeIds = $employees->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $existingIds = AttendanceRecord::query()
+            ->whereDate('date', $workDate)
+            ->whereIn('employee_id', $employeeIds)
+            ->pluck('employee_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $existingMap = array_fill_keys($existingIds, true);
+
+        $isSunday = Carbon::parse($workDate)->dayOfWeek === Carbon::SUNDAY;
+        $now = now();
+        $rows = [];
+        foreach ($employees as $emp) {
+            $empId = (int) $emp->id;
+            if (isset($existingMap[$empId])) {
+                continue;
+            }
+            $defaultStatus = $isSunday
+                ? ($this->defaultSundayStatusForAssignment((string) ($emp->assignment_type ?? '')) ?: 'Absent')
+                : 'Absent';
+            $rows[] = [
+                'employee_id' => $empId,
+                'date' => $workDate,
+                'status' => $defaultStatus,
+                'area_place' => (string) ($emp->area_place ?? ''),
+                'clock_in' => null,
+                'clock_out' => null,
+                'minutes_late' => 0,
+                'minutes_undertime' => 0,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if (!empty($rows)) {
+            AttendanceRecord::insert($rows);
+        }
+        return count($rows);
     }
 
     public function store(Request $request)
@@ -285,8 +350,9 @@ class AttendanceController extends Controller
                 abort(422, $restDayError);
             }
         }
-        if (($validated['status'] ?? '') === 'Paid Leave') {
-            $this->checkPLBalance($validated['employee_id'], $validated['date']);
+        $paidLeaveUnits = (float) ($validated['paid_leave_units'] ?? 0);
+        if ($paidLeaveUnits > 0) {
+            $this->checkPLBalance($validated['employee_id'], $validated['date'], null, $paidLeaveUnits);
         }
         $record = AttendanceRecord::create($validated);
         (new AttendanceSummaryService())->refreshForEmployeeDate(
@@ -309,8 +375,9 @@ class AttendanceController extends Controller
                 abort(422, $restDayError);
             }
         }
-        if (($validated['status'] ?? '') === 'Paid Leave') {
-            $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id);
+        $paidLeaveUnits = (float) ($validated['paid_leave_units'] ?? 0);
+        if ($paidLeaveUnits > 0) {
+            $this->checkPLBalance($validated['employee_id'], $validated['date'], $record->id, $paidLeaveUnits);
         }
         $record->update($validated);
         $svc = new AttendanceSummaryService();
@@ -320,7 +387,7 @@ class AttendanceController extends Controller
         return response()->json(['updated' => true]);
     }
 
-    private function checkPLBalance(int $employeeId, string $date, ?int $excludeId = null): void
+    private function checkPLBalance(int $employeeId, string $date, ?int $excludeId = null, float $requestedUnits = 1.0): void
     {
         $employee = Employee::find($employeeId);
         if (!$employee) {
@@ -338,14 +405,17 @@ class AttendanceController extends Controller
         }
 
         $year = Carbon::parse($date)->year;
-        $used = AttendanceRecord::where('employee_id', $employeeId)
-            ->where('status', 'Paid Leave')
+        $usedRow = AttendanceRecord::where('employee_id', $employeeId)
             ->whereYear('date', $year)
             ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
-            ->count();
+            ->selectRaw("COALESCE(SUM(CASE WHEN paid_leave_units IS NULL OR paid_leave_units = 0 THEN (CASE WHEN status = 'Paid Leave' THEN 1 ELSE 0 END) ELSE paid_leave_units END), 0) as used_units")
+            ->first();
+        $used = (float) ($usedRow?->used_units ?? 0);
         $cap = $this->paidLeaveCapDays();
-        if ($used >= $cap) {
-            abort(422, "Paid Leave balance exhausted (0 of {$cap} days remaining for {$year}).");
+        $remaining = max(0.0, $cap - $used);
+        if ($remaining + 1e-9 < $requestedUnits) {
+            $remainingFmt = rtrim(rtrim(number_format($remaining, 2, '.', ''), '0'), '.');
+            abort(422, "Paid Leave balance exhausted ({$remainingFmt} of {$cap} days remaining for {$year}).");
         }
     }
 
@@ -628,6 +698,13 @@ class AttendanceController extends Controller
 
                 $sheetAssignment = trim((string) $sheet->getCell("D{$r}")->getValue());
                 $sheetArea = trim((string) $sheet->getCell("E{$r}")->getValue());
+                [$status, $paidLeaveUnits] = $this->applyPaidLeaveWorkedTimeRule(
+                    (string) ($status ?? ''),
+                    $clockIn,
+                    $clockOut,
+                    $sheetAssignment,
+                    $sheetArea
+                );
                 $underFromClockOut = $this->computeUndertimeMinutesFromClockOut($clockOut, $sheetAssignment, $sheetArea);
 
                 // Normalize undertime from clock_out when available so values are always consistent.
@@ -656,6 +733,7 @@ class AttendanceController extends Controller
                     'emp_no' => $empNo,
                     '_src' => "{$sheetName} row {$r}",
                     'status' => $this->normalizeStatusForStorage($status ?: ''),
+                    'paid_leave_units' => (float) ($paidLeaveUnits ?? 0),
                     'area_place' => $areaVal !== '' ? $areaVal : null,
                     'clock_in' => $this->sanitizeTimeForStorage($clockIn),
                     'clock_out' => $this->sanitizeTimeForStorage($clockOut),
@@ -678,6 +756,7 @@ class AttendanceController extends Controller
             ->keyBy('emp_no');
 
         $existingStatusByEmployeeDate = [];
+        $existingPaidLeaveUnitsByEmployeeDate = [];
         if (!empty($rowsToUpsert) && $employeesByNo->isNotEmpty()) {
             $employeeIds = $employeesByNo->pluck('id')->map(fn ($id) => (int) $id)->all();
             $dates = array_values(array_unique(array_map(
@@ -690,13 +769,17 @@ class AttendanceController extends Controller
                 $existingRecords = AttendanceRecord::query()
                     ->whereIn('employee_id', $employeeIds)
                     ->whereIn('date', $dates)
-                    ->get(['employee_id', 'date', 'status']);
+                    ->get(['employee_id', 'date', 'status', 'paid_leave_units']);
 
                 foreach ($existingRecords as $existing) {
                     $dateStr = $existing->date instanceof \DateTimeInterface
                         ? $existing->date->format('Y-m-d')
                         : Carbon::parse((string) $existing->date)->format('Y-m-d');
                     $existingStatusByEmployeeDate[((int) $existing->employee_id) . '|' . $dateStr] = (string) ($existing->status ?? '');
+                    $existingPaidLeaveUnitsByEmployeeDate[((int) $existing->employee_id) . '|' . $dateStr] = $this->effectivePaidLeaveUnits(
+                        (string) ($existing->status ?? ''),
+                        $existing->paid_leave_units
+                    );
                 }
             }
         }
@@ -706,8 +789,7 @@ class AttendanceController extends Controller
             $employeeIds = $employeesByNo->pluck('id')->map(fn ($id) => (int) $id)->all();
             $plUsedRows = AttendanceRecord::query()
                 ->whereIn('employee_id', $employeeIds)
-                ->where('status', 'Paid Leave')
-                ->selectRaw('employee_id, YEAR(date) as year_key, COUNT(*) as used_count')
+                ->selectRaw("employee_id, YEAR(date) as year_key, COALESCE(SUM(CASE WHEN paid_leave_units IS NULL OR paid_leave_units = 0 THEN (CASE WHEN status = 'Paid Leave' THEN 1 ELSE 0 END) ELSE paid_leave_units END), 0) as used_count")
                 ->groupBy('employee_id', 'year_key')
                 ->get();
 
@@ -738,13 +820,23 @@ class AttendanceController extends Controller
                     if ($computedUnder !== null) {
                         $row['minutes_undertime'] = (int) $computedUnder;
                     }
-                    $status = (string) ($row['status'] ?? '');
+                    [$status, $paidLeaveUnits] = $this->applyPaidLeaveWorkedTimeRule(
+                        (string) ($row['status'] ?? ''),
+                        (string) ($row['clock_in'] ?? ''),
+                        (string) ($row['clock_out'] ?? ''),
+                        $assignmentType,
+                        $areaPlace
+                    );
+                    $row['status'] = $this->normalizeStatusForStorage($status);
+                    $row['paid_leave_units'] = (float) ($paidLeaveUnits ?? ($row['paid_leave_units'] ?? 0));
                     $ruleErr = $this->validateRestDayStatusForEmployee($emp, $status);
                     if ($ruleErr) {
                         $src = (string) ($row['_src'] ?? 'Row');
                         $errors[] = "{$src}: {$ruleErr}";
                     }
-                    if ($status === 'Paid Leave') {
+                    $requestedPaidLeaveUnits = $this->effectivePaidLeaveUnits($status, $row['paid_leave_units'] ?? null);
+                    $row['paid_leave_units'] = $requestedPaidLeaveUnits;
+                    if ($requestedPaidLeaveUnits > 0) {
                         $fullEmp = Employee::find((int) $emp->id);
                         $isRegular = strtolower(trim((string) ($fullEmp?->employment_type ?? ''))) === 'regular';
                         $hasAssignment = !empty($fullEmp?->assignment_type);
@@ -764,22 +856,20 @@ class AttendanceController extends Controller
                         $workYear = Carbon::parse($workDate)->year;
                         $usageKey = ((int) $emp->id) . '|' . $workYear;
                         $employeeDateKey = ((int) $emp->id) . '|' . $workDate;
-                        $existingStatus = (string) ($existingStatusByEmployeeDate[$employeeDateKey] ?? '');
-                        $alreadyPaidLeaveForDate = $existingStatus === 'Paid Leave';
-                        $used = (int) ($plUsageByEmployeeYear[$usageKey] ?? 0);
+                        $existingUnits = (float) ($existingPaidLeaveUnitsByEmployeeDate[$employeeDateKey] ?? 0.0);
+                        $used = (float) ($plUsageByEmployeeYear[$usageKey] ?? 0.0);
+                        $delta = max(0.0, $requestedPaidLeaveUnits - $existingUnits);
 
-                        // Importing a new Paid Leave day is blocked once balance reaches zero.
                         $cap = $this->paidLeaveCapDays();
-                        if (!$alreadyPaidLeaveForDate && $used >= $cap) {
+                        if ($used + $delta > $cap + 1e-9) {
                             $src = (string) ($row['_src'] ?? 'Row');
-                            $errors[] = "{$src}: Paid Leave balance exhausted (0 of {$cap} days remaining for {$workYear}).";
+                            $remaining = max(0.0, $cap - $used);
+                            $remainingFmt = rtrim(rtrim(number_format($remaining, 2, '.', ''), '0'), '.');
+                            $errors[] = "{$src}: Paid Leave balance exhausted ({$remainingFmt} of {$cap} days remaining for {$workYear}).";
                             continue;
                         }
 
-                        // Reserve this paid leave slot during validation so subsequent rows can't exceed 5.
-                        if (!$alreadyPaidLeaveForDate) {
-                            $plUsageByEmployeeYear[$usageKey] = $used + 1;
-                        }
+                        $plUsageByEmployeeYear[$usageKey] = $used + $delta;
                     }
                 }
             }
@@ -806,6 +896,7 @@ class AttendanceController extends Controller
                     ['employee_id' => $emp->id, 'date' => $row['date']],
                     [
                         'status' => $row['status'],
+                        'paid_leave_units' => (float) ($row['paid_leave_units'] ?? 0),
                         'area_place' => $row['area_place'],
                         'clock_in' => $row['clock_in'],
                         'clock_out' => $row['clock_out'],
@@ -851,16 +942,21 @@ class AttendanceController extends Controller
 
     private function validateRecord(Request $request): array
     {
-        return $request->validate([
+        $payload = $request->all();
+        if (array_key_exists('status', $payload)) {
+            $payload['status'] = $this->normalizeStatusAlias((string) $payload['status']);
+        }
+        return Validator::make($payload, [
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
             'date' => ['required', 'date'],
-            'status' => ['required', Rule::in($this->statusValues())],
+            'status' => ['required', Rule::in($this->statusValuesWithAliases())],
+            'paid_leave_units' => ['nullable', 'regex:/^(0|0\\.5|1(?:\\.0+)?)$/'],
             'area_place' => ['nullable', 'string', 'max:255'],
             'clock_in' => ['nullable', 'date_format:H:i'],
             'clock_out' => ['nullable', 'date_format:H:i'],
             'minutes_late' => ['nullable', 'integer', 'min:0'],
             'minutes_undertime' => ['nullable', 'integer', 'min:0'],
-        ]);
+        ])->validate();
     }
 
     private function normalizeComputedFields(array $record): array
@@ -868,11 +964,19 @@ class AttendanceController extends Controller
         $status = $this->normalizeStatusForStorage((string) ($record['status'] ?? ''));
         $clockIn = (string) ($this->sanitizeTimeForStorage((string) ($record['clock_in'] ?? '')) ?? '');
         $clockOut = (string) ($this->sanitizeTimeForStorage((string) ($record['clock_out'] ?? '')) ?? '');
+        $employee = !empty($record['employee_id']) ? Employee::find((int) $record['employee_id']) : null;
+        $assignmentType = (string) ($employee?->assignment_type ?? '');
+        $areaPlace = (string) ($record['area_place'] ?? $employee?->area_place ?? '');
+        [$status, $paidLeaveUnits] = $this->applyPaidLeaveWorkedTimeRule($status, $clockIn, $clockOut, $assignmentType, $areaPlace);
         $record['status'] = $status;
+        $record['paid_leave_units'] = $this->effectivePaidLeaveUnits($status, $paidLeaveUnits ?? ($record['paid_leave_units'] ?? null));
         $record['clock_in'] = $clockIn !== '' ? $clockIn : null;
         $record['clock_out'] = $clockOut !== '' ? $clockOut : null;
 
         if (in_array($status, $this->noTimeStatuses(), true)) {
+            if ($status !== 'Paid Leave') {
+                $record['paid_leave_units'] = 0.0;
+            }
             $record['clock_in'] = null;
             $record['clock_out'] = null;
             $record['minutes_late'] = 0;
@@ -881,14 +985,66 @@ class AttendanceController extends Controller
             return $record;
         }
 
-        $employee = !empty($record['employee_id']) ? Employee::find((int) $record['employee_id']) : null;
-        $assignmentType = (string) ($employee?->assignment_type ?? '');
-        $areaPlace = (string) ($record['area_place'] ?? $employee?->area_place ?? '');
         $record['minutes_late'] = (int) ($this->computeLateMinutes($clockIn, $assignmentType, $areaPlace) ?? 0);
         $record['minutes_undertime'] = (int) ($this->computeUndertimeMinutesFromClockOut($clockOut, $assignmentType, $areaPlace) ?? 0);
         $record['ot_hours'] = 0;
 
         return $record;
+    }
+
+    private function effectivePaidLeaveUnits(string $status, $rawUnits): float
+    {
+        $normalizedStatus = $this->normalizeStatusForStorage($status);
+        $hasProvidedUnits = $rawUnits !== null && trim((string) $rawUnits) !== '';
+        $units = $hasProvidedUnits ? (float) $rawUnits : null;
+
+        if ($normalizedStatus === 'Paid Leave') {
+            return $units !== null ? max(0.0, min(1.0, $units)) : 1.0;
+        }
+
+        if ($normalizedStatus === 'Half-day') {
+            if ($units === null) {
+                return 0.0;
+            }
+            // Half-day can only consume half-day paid leave.
+            return $units >= 0.5 ? 0.5 : 0.0;
+        }
+
+        return 0.0;
+    }
+
+    private function applyPaidLeaveWorkedTimeRule(string $status, string $clockIn, string $clockOut, string $assignmentType = '', string $areaPlace = ''): array
+    {
+        $normalizedStatus = $this->normalizeStatusForStorage($status);
+        if ($normalizedStatus !== 'Paid Leave') {
+            return [$normalizedStatus, null];
+        }
+
+        $workedMinutes = $this->workedMinutesFromTimeRange($clockIn, $clockOut);
+        if ($workedMinutes === null) {
+            return ['Paid Leave', 1.0];
+        }
+
+        // Paid leave with worked time becomes either half-day leave or a worked day.
+        if ($workedMinutes < 360) {
+            return ['Half-day', 0.5];
+        }
+
+        $late = (int) ($this->computeLateMinutes($clockIn, $assignmentType, $areaPlace) ?? 0);
+        return [$late > 0 ? 'Late' : 'Present', 0.0];
+    }
+
+    private function workedMinutesFromTimeRange(string $clockIn, string $clockOut): ?int
+    {
+        $in = $this->parseTimeToMinutes($clockIn);
+        $out = $this->parseTimeToMinutes($clockOut);
+        if ($in === null || $out === null) {
+            return null;
+        }
+        if ($out <= $in) {
+            return null;
+        }
+        return max(0, $out - $in);
     }
 
     private function attendanceCodes()
@@ -911,6 +1067,28 @@ class AttendanceController extends Controller
             ->values()
             ->all();
         return count($values) ? $values : ['Present'];
+    }
+
+    private function statusValuesWithAliases(): array
+    {
+        $values = $this->statusValues();
+        $aliases = [];
+        foreach ($values as $status) {
+            $n = $this->normalizeStatusAlias((string) $status);
+            if ($n !== '' && !in_array($n, $values, true)) {
+                $aliases[] = $n;
+            }
+        }
+        return array_values(array_unique(array_merge($values, $aliases)));
+    }
+
+    private function normalizeStatusAlias(string $status): string
+    {
+        $s = trim($status);
+        if (preg_match('/^day[\s-]*off$/i', $s)) {
+            return 'Day-off';
+        }
+        return $s;
     }
 
     private function statusCodeMap(): array

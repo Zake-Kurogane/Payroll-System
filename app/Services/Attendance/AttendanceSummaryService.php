@@ -34,7 +34,7 @@ class AttendanceSummaryService
         $calendar = PayrollCalendarSetting::query()->first() ?? PayrollCalendarSetting::create([]);
         $workMonSat = (bool) ($calendar->work_mon_sat ?? true);
 
-        $records = $query->get(['date', 'status', 'minutes_late', 'minutes_undertime', 'ot_hours'])
+        $records = $query->get(['date', 'status', 'paid_leave_units', 'minutes_late', 'minutes_undertime', 'ot_hours'])
             ->filter(function ($r) use ($workMonSat, $employee) {
                 $date = $r->date instanceof \DateTimeInterface
                     ? Carbon::parse($r->date->format('Y-m-d'))

@@ -2185,6 +2185,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
   cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
+  drawer && drawer.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const target = e.target;
+    if (target && (target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    if (!drawer.classList.contains("is-open")) return;
+    if (saveBtn?.disabled) return;
+    e.preventDefault();
+    if (empForm && typeof empForm.requestSubmit === "function") empForm.requestSubmit();
+    else saveBtn?.click();
+  });
   closeHistoryDrawerBtn && closeHistoryDrawerBtn.addEventListener("click", closeHistoryDrawer);
   historyDrawerOverlay && historyDrawerOverlay.addEventListener("click", closeHistoryDrawer);
   closeAttendanceYearBtn && closeAttendanceYearBtn.addEventListener("click", closeAttendanceYearDrawer);

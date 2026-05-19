@@ -473,7 +473,7 @@ class PayrollCalculator
             ->pluck('assignment_type', 'id');
 
         $records = $query
-            ->get(['employee_id', 'date', 'status', 'minutes_late', 'minutes_undertime', 'ot_hours']);
+            ->get(['employee_id', 'date', 'status', 'paid_leave_units', 'minutes_late', 'minutes_undertime', 'ot_hours']);
         $hasAttendanceData = $records->isNotEmpty();
         $recordsByEmp = $records->groupBy('employee_id');
         $ruleService = new AttendanceStatusRuleService();

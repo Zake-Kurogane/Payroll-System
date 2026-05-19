@@ -100,12 +100,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const bulkStatusSelectInline = document.getElementById("bulkStatusSelectInline");
   const f_status = document.getElementById("f_status");
   let attendanceCodeMap = {};
+  function normalizeStatusLabel(status) {
+    const raw = String(status || "").trim();
+    if (!raw) return "";
+    if (/^day[\s-]*off$/i.test(raw)) return "Day Off";
+    return raw;
+  }
 
   function buildStatusListFromCodes(codes) {
     const list = [];
     const seen = new Set();
     (codes || []).forEach(c => {
-      const desc = String(c.description || c.desc || "").trim();
+      const desc = normalizeStatusLabel(c.description || c.desc);
       if (!desc || seen.has(desc)) return;
       seen.add(desc);
       list.push(desc);
@@ -121,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const map = {};
     (codes || []).forEach((row) => {
       const code = String(row?.code || "").trim().toUpperCase();
-      const status = String(row?.description || row?.desc || "").trim();
+      const status = normalizeStatusLabel(row?.description || row?.desc);
       if (!code || !status) return;
       map[code] = {
         status,
@@ -192,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function mapAttendanceCode(code, fallbackStatus) {
     const c = normalizeCode(code);
     if (!c) {
-      const s = String(fallbackStatus || "").trim();
+      const s = normalizeStatusLabel(fallbackStatus);
       if (!s) return { status: "Present", isPaid: true, countsAsPresent: true, code: "" };
       if (s === "Absent") return { status: "Absent", isPaid: false, countsAsPresent: false, code: "" };
       if (s === "Leave") return { status: "Leave", isPaid: false, countsAsPresent: false, code: "" };
@@ -469,7 +475,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     const dateVal = dateInput?.value || "";
     if (dateVal) qs.set("date", dateVal);
-    const statusVal = statusFilter?.value || "All";
+    const statusVal = normalizeStatusLabel(statusFilter?.value || "All");
     if (statusVal && statusVal !== "All") qs.set("status", statusVal);
     const q = String(searchInput?.value || "").trim();
     if (q) qs.set("q", q);
@@ -487,7 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (Array.isArray(res)) {
       records = res.map(mapRecordApi);
-      serverMeta = { page: 1, per_page: records.length, total: records.length, total_pages: 1, stats: null };
+      serverMeta = { page: 1, per_page: records.length, total: records.length, total_pages: 1, stats: null, auto_filled_missing: 0 };
       return;
     }
 
@@ -501,8 +507,15 @@ document.addEventListener("DOMContentLoaded", () => {
       total: Number(meta.total || records.length),
       total_pages: totalPages,
       stats: meta.stats || null,
+      auto_filled_missing: Number(meta.auto_filled_missing || 0),
     };
     pageState.page = currentPage;
+    const autoFilledMissing = Number(meta.auto_filled_missing || 0);
+    const alertKey = [dateVal || "", assignmentFilter || "All", areaSubFilter || "", autoFilledMissing].join("|");
+    if (autoFilledMissing > 0 && alertKey !== lastAutoFillAlertKey) {
+      alert(`${autoFilledMissing} employee(s) had no attendance record for ${dateVal || "the selected date"} and were auto-added. Please review.`);
+      lastAutoFillAlertKey = alertKey;
+    }
   }
 
   // =========================================================
@@ -581,9 +594,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const errStatus = document.getElementById("errStatus");
   const errAssignType = document.getElementById("errAssignType");
   const errAreaPlace = document.getElementById("errAreaPlace");
+  const NO_TIME_STATUSES = new Set([
+    "Absent",
+    "Leave",
+    "RNR",
+    "Day Off",
+    "Holiday",
+    "LOA",
+  ]);
 
   function clearErrors() {
     [errEmployee, errDate, errStatus, errAssignType, errAreaPlace].forEach(el => { if (el) el.textContent = ""; });
+  }
+
+  function applyStatusTimeRules() {
+    const status = normalizeStatusLabel(f_status?.value || "");
+    const noTime = NO_TIME_STATUSES.has(status);
+    if (f_clockIn) {
+      if (noTime) f_clockIn.value = "";
+      f_clockIn.disabled = noTime;
+    }
+    if (f_clockOut) {
+      if (noTime) f_clockOut.value = "";
+      f_clockOut.disabled = noTime;
+    }
   }
 
   function ruleFor(assignmentType, status) {
@@ -666,6 +700,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const empTbody = document.getElementById("empTbody");
 
   const empSumTotal = document.getElementById("empSumTotal");
+  const empSumWorkingDays = document.getElementById("empSumWorkingDays");
   const empSumHours = document.getElementById("empSumHours");
 
   const empCutoffMonthInput = document.getElementById("empCutoffMonth");
@@ -686,7 +721,9 @@ document.addEventListener("DOMContentLoaded", () => {
     total: 0,
     total_pages: 1,
     stats: null,
+    auto_filled_missing: 0,
   };
+  let lastAutoFillAlertKey = "";
   // default sorting (hoisted early to avoid TDZ when render runs during init)
   let sortState = { key: "name", dir: "asc" };
   let pageState = { page: 1, rows: 20 };
@@ -910,6 +947,31 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${h12}:${m} ${ampm}`;
   }
 
+  function toApiTime(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const normalized = raw.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+    const m24 = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(normalized);
+    if (m24) {
+      return `${String(Number(m24[1])).padStart(2, "0")}:${m24[2]}`;
+    }
+    const m12 = /^(0?[1-9]|1[0-2]):([0-5]\d)(?::([0-5]\d))?\s*([AaPp][Mm])$/.exec(normalized);
+    if (m12) {
+      let h = Number(m12[1]);
+      const mm = m12[2];
+      const ap = m12[4].toUpperCase();
+      if (ap === "AM") h = h === 12 ? 0 : h;
+      if (ap === "PM") h = h === 12 ? 12 : h + 12;
+      return `${String(h).padStart(2, "0")}:${mm}`;
+    }
+    // Last fallback: allow Date parsing for unusual locale time strings.
+    const d = new Date(`1970-01-01 ${normalized}`);
+    if (!Number.isNaN(d.getTime())) {
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    }
+    return normalized;
+  }
+
   function selectedIds() {
     return Array.from(document.querySelectorAll(".rowCheck:checked")).map(cb => cb.dataset.id);
   }
@@ -1040,7 +1102,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (statLate) statLate.textContent = filtered.filter(r => r.status === "Late").length;
       if (statAbsent) statAbsent.textContent = filtered.filter(r => r.status === "Absent").length;
       if (statLeave) {
-        const leaveSet = new Set(["Leave", "RNR", "Paid Leave", "LOA", "Holiday", "Day Off"]);
+        const leaveSet = new Set(["Leave", "Unpaid Leave", "RNR", "Paid Leave", "LOA", "Holiday", "Day Off"]);
         statLeave.textContent = filtered.filter(r => leaveSet.has(r.status)).length;
       }
     }
@@ -1584,6 +1646,7 @@ document.addEventListener("DOMContentLoaded", () => {
         f_status.value = "";
       }
     }
+    applyStatusTimeRules();
     syncPLBalance();
   }
 
@@ -1641,6 +1704,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (f_clockOut) f_clockOut.value = "";
       if (areaWrap) areaWrap.hidden = true;
       syncAssignmentFromEmployee();
+      applyStatusTimeRules();
     } else {
       drawerTitle.textContent = "Edit Attendance";
       drawerSub.textContent = `Record: ${record.empId} • ${record.date}`;
@@ -1665,6 +1729,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       syncAssignmentFromEmployee();
+      applyStatusTimeRules();
       return;
 
       const emp = getEmpById(record.employeeId || "");
@@ -1748,6 +1813,15 @@ document.addEventListener("DOMContentLoaded", () => {
   closeDrawerBtn && closeDrawerBtn.addEventListener("click", closeDrawer);
   cancelBtn && cancelBtn.addEventListener("click", closeDrawer);
   drawerOverlay && drawerOverlay.addEventListener("click", closeDrawer);
+  drawer && drawer.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const target = e.target;
+    if (target && (target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+    if (!drawer.classList.contains("is-open")) return;
+    if (!saveBtn || saveBtn.disabled) return;
+    e.preventDefault();
+    saveBtn.click();
+  });
 
   f_employee && f_employee.addEventListener("change", () => {
     if (f_areaPlace) f_areaPlace.value = "";
@@ -1765,8 +1839,13 @@ document.addEventListener("DOMContentLoaded", () => {
     syncPLBalance();
   });
 
+  f_status && f_status.addEventListener("change", () => {
+    applyStatusTimeRules();
+  });
+
   // ✅ Save button now updates table immediately
   saveBtn && saveBtn.addEventListener("click", async () => {
+    if (saveBtn.disabled) return;
     if (!validateForm()) return;
 
     if (f_status?.value === "Paid Leave" && currentPLRemaining !== null && currentPLRemaining <= 0) {
@@ -1783,12 +1862,15 @@ document.addEventListener("DOMContentLoaded", () => {
       date: f_date.value,
       status: mapped.status,
       area_place: f_areaPlace?.value || null,
-      clock_in:  f_clockIn?.value  || null,
-      clock_out: f_clockOut?.value || null,
+      clock_in:  toApiTime(f_clockIn?.value),
+      clock_out: toApiTime(f_clockOut?.value),
       minutes_late: 0,
       minutes_undertime: 0,
     };
 
+    const prevText = saveBtn.textContent || "Save";
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
     try {
       if (!id) {
         await apiFetch("/attendance/records", {
@@ -1807,6 +1889,9 @@ document.addEventListener("DOMContentLoaded", () => {
       notifyAttendanceUpdated();
     } catch (err) {
       alert(err.message || "Failed to save attendance.");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = prevText;
     }
   });
 
@@ -2552,6 +2637,7 @@ document.addEventListener("DOMContentLoaded", () => {
     empTbody.innerHTML = "";
 
     let totalHours = 0;
+    let totalWorkingDays = 0;
 
     const noTimeStatuses = new Set([
       "Absent",
@@ -2566,6 +2652,12 @@ document.addEventListener("DOMContentLoaded", () => {
     list.forEach(r => {
       const hrs = computeTotalHours(r);
       totalHours += hrs;
+      const status = String(r.status || "").trim();
+      if (status === "Half-day") {
+        totalWorkingDays += 0.5;
+      } else if (hrs > 0) {
+        totalWorkingDays += 1;
+      }
 
       const statusLabel = String(r.status || "").toUpperCase();
       const showStatus = noTimeStatuses.has(r.status);
@@ -2592,6 +2684,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (empSumTotal) empSumTotal.textContent = String(list.length);
+    if (empSumWorkingDays) empSumWorkingDays.textContent = String(Number(totalWorkingDays.toFixed(2)));
     if (empSumHours) empSumHours.textContent = formatHours(totalHours);
   }
 

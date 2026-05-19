@@ -455,6 +455,10 @@
                     <div class="sumLbl">Total Records</div>
                 </div>
                 <div class="sumCard">
+                    <div class="sumVal" id="empSumWorkingDays">0</div>
+                    <div class="sumLbl">Total Working Days</div>
+                </div>
+                <div class="sumCard">
                     <div class="sumVal" id="empSumHours">0</div>
                     <div class="sumLbl">Total Hours</div>
                 </div>

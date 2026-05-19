@@ -115,18 +115,22 @@ class AttendanceStatusRuleService
             $late = 0;
             $under = 0;
             $ot = 0.0;
+            $paidLeaveUnits = 0.0;
 
             if (is_array($row)) {
                 $status = (string) ($row['status'] ?? '');
                 $late = (int) ($row['minutes_late'] ?? 0);
                 $under = (int) ($row['minutes_undertime'] ?? 0);
                 $ot = (float) ($row['ot_hours'] ?? 0);
+                $paidLeaveUnits = (float) ($row['paid_leave_units'] ?? 0);
             } else {
                 $status = (string) ($row->status ?? '');
                 $late = (int) ($row->minutes_late ?? 0);
                 $under = (int) ($row->minutes_undertime ?? 0);
                 $ot = (float) ($row->ot_hours ?? 0);
+                $paidLeaveUnits = (float) ($row->paid_leave_units ?? 0);
             }
+            $paidLeaveUnits = max(0.0, min(1.0, $paidLeaveUnits));
 
             $key = $this->key($status);
             if ($key !== '') {
@@ -138,7 +142,9 @@ class AttendanceStatusRuleService
                 if (isset($absentSet[$key])) {
                     $absentDays += 1.0;
                 }
-                if (isset($leaveSet[$key])) {
+                if ($paidLeaveUnits > 0) {
+                    $leaveDays += $paidLeaveUnits;
+                } elseif (isset($leaveSet[$key])) {
                     $leaveDays += 1.0;
                 }
                 $isExplicitFieldUnpaid = in_array($key, $fieldUnpaidStatuses, true);
@@ -146,7 +152,9 @@ class AttendanceStatusRuleService
                 $isUnpaidForField = $isField && ($isExplicitFieldUnpaid || $isBucketFieldUnpaid);
                 if (!$isUnpaidForField) {
                     if (isset($halfDaySet[$key])) {
-                        $paidDays += 0.5;
+                        $paidDays += min(1.0, 0.5 + $paidLeaveUnits);
+                    } elseif (isset($leaveSet[$key]) && $paidLeaveUnits > 0) {
+                        $paidDays += $paidLeaveUnits;
                     } elseif (isset($paidSet[$key])) {
                         $paidDays += 1.0;
                     }
