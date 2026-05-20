@@ -121,6 +121,8 @@ class AttendanceController extends Controller
                 "{$recordsTable}.employee_id",
                 "{$recordsTable}.date",
                 "{$recordsTable}.status",
+                "{$recordsTable}.half_day_part",
+                "{$recordsTable}.half_day_type",
                 "{$recordsTable}.paid_leave_units",
                 "{$recordsTable}.area_place",
                 "{$recordsTable}.clock_in",
@@ -204,6 +206,9 @@ class AttendanceController extends Controller
         }
 
         $date = $v['date'] ?? null;
+        if ($date) {
+            $date = Carbon::parse((string) $date)->toDateString();
+        }
         $autoFilledMissing = 0;
         if ($date) {
             $autoFilledMissing = $this->ensureDailyRosterRecords($date, (string) $assignment, $area);
@@ -271,6 +276,8 @@ class AttendanceController extends Controller
                  'area_place' => $areaPlace,
                  'date' => $r->date?->format('Y-m-d'),
                  'status' => $r->status,
+                 'half_day_part' => $r->half_day_part,
+                 'half_day_type' => $r->half_day_type,
                  'paid_leave_units' => (float) ($r->paid_leave_units ?? 0),
                  'clock_in' => $r->clock_in,
                  'clock_out' => $r->clock_out,
@@ -446,8 +453,8 @@ class AttendanceController extends Controller
         $spreadsheet->removeSheetByIndex(0);
 
         $statusListFormula = '"' . implode(',', $this->templateCodes()) . '"';
-        $noTimeFormula = 'OR($J{row}="A",$J{row}="PL",$J{row}="OFF",$J{row}="HOL",$J{row}="LOA",$J{row}="RNR")';
-        $timeRequiredFormula = 'OR($J{row}="P",$J{row}="L",$J{row}="HD")';
+        $noTimeFormula = 'OR($F{row}="A",$F{row}="PL",$F{row}="OFF",$F{row}="HOL",$F{row}="LOA",$F{row}="RNR")';
+        $timeRequiredFormula = 'OR($F{row}="P",$F{row}="L",$F{row}="HD")';
 
         $sheet = $spreadsheet->createSheet();
         $sheet->setTitle($date->format('Y-m-d'));
@@ -458,14 +465,16 @@ class AttendanceController extends Controller
             'dept',
             'assignment',
             'area',
+            'status',
+            'half_day_part',
+            'half_day_type',
             'clock_in',
             'clock_out',
             'minutes_late',
             'minutes_undertime',
-            'status',
         ];
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:J1')->applyFromArray([
+        $sheet->getStyle('A1:L1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => '7A1530'],
@@ -499,11 +508,13 @@ class AttendanceController extends Controller
                 $e->department ?? '',
                 $e->assignment_type ?? '',
                 $e->area_place ?? '',
-                '',
-                '',
-                '',
-                '',
                 $defaultStatus,
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
             ], null, "A{$row}");
 
             $dv = new DataValidation();
@@ -515,7 +526,27 @@ class AttendanceController extends Controller
             $dv->setErrorTitle('Invalid status');
             $dv->setError('Choose from the dropdown list.');
 
-            $sheet->getCell("J{$row}")->setDataValidation($dv);
+            $sheet->getCell("F{$row}")->setDataValidation($dv);
+
+            $dvPart = new DataValidation();
+            $dvPart->setType(DataValidation::TYPE_LIST);
+            $dvPart->setErrorStyle(DataValidation::STYLE_STOP);
+            $dvPart->setAllowBlank(true);
+            $dvPart->setShowDropDown(true);
+            $dvPart->setFormula1('"First half,Second half"');
+            $dvPart->setErrorTitle('Invalid half_day_part');
+            $dvPart->setError('Choose First half or Second half.');
+            $sheet->getCell("G{$row}")->setDataValidation($dvPart);
+
+            $dvType = new DataValidation();
+            $dvType->setType(DataValidation::TYPE_LIST);
+            $dvType->setErrorStyle(DataValidation::STYLE_STOP);
+            $dvType->setAllowBlank(true);
+            $dvType->setShowDropDown(true);
+            $dvType->setFormula1('"Absent,Paid Leave,Unpaid Leave,Holiday,Day-off,RNR"');
+            $dvType->setErrorTitle('Invalid half_day_type');
+            $dvType->setError('Choose from the dropdown list.');
+            $sheet->getCell("H{$row}")->setDataValidation($dvType);
 
             $schedule = $this->timeScheduleForAssignment((string) ($e->assignment_type ?? ''), (string) ($e->area_place ?? ''));
             $start = $schedule['start'] ?? '07:30';
@@ -523,32 +554,32 @@ class AttendanceController extends Controller
             [$startH, $startM] = $this->splitTimeParts($start);
             [$endH, $endM] = $this->splitTimeParts($end);
             // No grace period: late starts immediately after assignment start time.
-            $sheet->setCellValue("J{$row}", sprintf('=IF($F%d="","",IF($F%d<=TIME(%d,%d,0),"P","L"))', $row, $row, $startH, $startM));
+            $sheet->setCellValue("F{$row}", sprintf('=IF($I%d="","",IF($I%d<=TIME(%d,%d,0),"P","L"))', $row, $row, $startH, $startM));
 
             // Minutes late: compute after assignment start, otherwise 0.
             $lateFormula = sprintf(
-                '=IF($F%d="","",MAX(0,ROUND(($F%d-TIME(%d,%d,0))*1440,0)))',
+                '=IF($I%d="","",MAX(0,ROUND(($I%d-TIME(%d,%d,0))*1440,0)))',
                 $row,
                 $row,
                 $startH,
                 $startM
             );
-            $sheet->setCellValue("H{$row}", $lateFormula);
+            $sheet->setCellValue("K{$row}", $lateFormula);
 
             // Minutes undertime: compute when clock_out is before assignment end time.
             $underFormula = sprintf(
-                '=IF($G%d="","",MAX(0,ROUND((TIME(%d,%d,0)-$G%d)*1440,0)))',
+                '=IF($J%d="","",MAX(0,ROUND((TIME(%d,%d,0)-$J%d)*1440,0)))',
                 $row,
                 $endH,
                 $endM,
                 $row
             );
-            $sheet->setCellValue("I{$row}", $underFormula);
+            $sheet->setCellValue("L{$row}", $underFormula);
 
             // Validation: block time/undertime inputs for no-time statuses
             $rowFormula = str_replace('{row}', (string) $row, $noTimeFormula);
 
-            foreach (['F', 'G'] as $col) {
+            foreach (['I', 'J'] as $col) {
                 $dvTime = new DataValidation();
                 $dvTime->setType(DataValidation::TYPE_CUSTOM);
                 $dvTime->setErrorStyle(DataValidation::STYLE_STOP);
@@ -561,7 +592,7 @@ class AttendanceController extends Controller
 
             // Require time for Present / Late / Half-day
             $reqFormula = str_replace('{row}', (string) $row, $timeRequiredFormula);
-            foreach (['F', 'G'] as $col) {
+            foreach (['I', 'J'] as $col) {
                 $dvReq = new DataValidation();
                 $dvReq->setType(DataValidation::TYPE_CUSTOM);
                 $dvReq->setErrorStyle(DataValidation::STYLE_STOP);
@@ -572,7 +603,7 @@ class AttendanceController extends Controller
                 $sheet->getCell("{$col}{$row}")->setDataValidation($dvReq);
             }
 
-            foreach (['H', 'I'] as $col) {
+            foreach (['K', 'L'] as $col) {
                 $dvNum = new DataValidation();
                 $dvNum->setType(DataValidation::TYPE_CUSTOM);
                 $dvNum->setErrorStyle(DataValidation::STYLE_STOP);
@@ -585,12 +616,12 @@ class AttendanceController extends Controller
             $row++;
         }
 
-        foreach (range('A', 'J') as $col) {
+        foreach (range('A', 'L') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Show AM/PM for time columns
-        $sheet->getStyle("F2:G{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
+        $sheet->getStyle("I2:J{$row}")->getNumberFormat()->setFormatCode('h:mm AM/PM');
         $label = $area ? "{$assignment} - {$area}" : $assignment;
         $filename = "{$label} ATTENDANCE {$date->format('Y-m-d')}.xlsx";
 
@@ -622,11 +653,13 @@ class AttendanceController extends Controller
             'dept',
             'assignment',
             'area',
+            'status',
+            'half_day_part',
+            'half_day_type',
             'clock_in',
             'clock_out',
             'minutes_late',
             'minutes_undertime',
-            'status',
         ];
 
         // Daily import: read all sheets; each sheet name must be a valid YYYY-MM-DD date
@@ -643,7 +676,7 @@ class AttendanceController extends Controller
             }
 
             $header = [];
-            foreach (range('A', 'J') as $col) {
+            foreach (range('A', 'L') as $col) {
                 $header[] = trim((string) $sheet->getCell("{$col}1")->getValue());
             }
             if ($header !== $expectedHeader) {
@@ -654,17 +687,20 @@ class AttendanceController extends Controller
             $highestRow = $sheet->getHighestDataRow();
             for ($r = 2; $r <= $highestRow; $r++) {
                 $empNo = trim((string) $sheet->getCell("A{$r}")->getValue());
-                $statusCell = $sheet->getCell("J{$r}");
+                $statusCell = $sheet->getCell("F{$r}");
                 $rawStatus = $statusCell->isFormula()
                     ? (string) $statusCell->getCalculatedValue()
                     : (string) $statusCell->getValue();
                 $rawStatus = trim($rawStatus);
 
-                $clockIn = $this->readTimeCell($sheet->getCell("F{$r}"), 'clock_in');
-                $clockOut = $this->readTimeCell($sheet->getCell("G{$r}"), 'clock_out');
+                $halfDayPart = trim((string) $sheet->getCell("G{$r}")->getValue());
+                $halfDayType = trim((string) $sheet->getCell("H{$r}")->getValue());
 
-                $lateCell = $sheet->getCell("H{$r}");
-                $underCell = $sheet->getCell("I{$r}");
+                $clockIn = $this->readTimeCell($sheet->getCell("I{$r}"), 'clock_in');
+                $clockOut = $this->readTimeCell($sheet->getCell("J{$r}"), 'clock_out');
+
+                $lateCell = $sheet->getCell("K{$r}");
+                $underCell = $sheet->getCell("L{$r}");
 
                 // Skip unfilled rows: status blank and no clock data entered.
                 // This handles pre-populated template rows (emp_no set, but row not filled in).
@@ -733,6 +769,8 @@ class AttendanceController extends Controller
                     'emp_no' => $empNo,
                     '_src' => "{$sheetName} row {$r}",
                     'status' => $this->normalizeStatusForStorage($status ?: ''),
+                    'half_day_part' => $halfDayPart !== '' ? $halfDayPart : null,
+                    'half_day_type' => $halfDayType !== '' ? $halfDayType : null,
                     'paid_leave_units' => (float) ($paidLeaveUnits ?? 0),
                     'area_place' => $areaVal !== '' ? $areaVal : null,
                     'clock_in' => $this->sanitizeTimeForStorage($clockIn),
@@ -828,6 +866,26 @@ class AttendanceController extends Controller
                         $areaPlace
                     );
                     $row['status'] = $this->normalizeStatusForStorage($status);
+                    $part = trim((string) ($row['half_day_part'] ?? ''));
+                    $type = trim((string) ($row['half_day_type'] ?? ''));
+                    if (preg_match('/^day[\s-]*off$/i', $type)) {
+                        $type = 'Day-off';
+                    }
+                    if ($row['status'] === 'Half-day') {
+                        if (!in_array($part, ['First half', 'Second half'], true)) {
+                            $src = (string) ($row['_src'] ?? 'Row');
+                            $errors[] = "{$src}: half_day_part must be First half or Second half for Half-day status.";
+                        }
+                        if (!in_array($type, ['Absent', 'Paid Leave', 'Unpaid Leave', 'Holiday', 'Day-off', 'RNR'], true)) {
+                            $src = (string) ($row['_src'] ?? 'Row');
+                            $errors[] = "{$src}: half_day_type must be one of Absent, Paid Leave, Unpaid Leave, Holiday, Day-off, RNR for Half-day status.";
+                        }
+                        $row['half_day_part'] = $part !== '' ? $part : null;
+                        $row['half_day_type'] = $type !== '' ? $type : null;
+                    } else {
+                        $row['half_day_part'] = null;
+                        $row['half_day_type'] = null;
+                    }
                     $row['paid_leave_units'] = (float) ($paidLeaveUnits ?? ($row['paid_leave_units'] ?? 0));
                     $ruleErr = $this->validateRestDayStatusForEmployee($emp, $status);
                     if ($ruleErr) {
@@ -896,6 +954,8 @@ class AttendanceController extends Controller
                     ['employee_id' => $emp->id, 'date' => $row['date']],
                     [
                         'status' => $row['status'],
+                        'half_day_part' => $row['half_day_part'] ?? null,
+                        'half_day_type' => $row['half_day_type'] ?? null,
                         'paid_leave_units' => (float) ($row['paid_leave_units'] ?? 0),
                         'area_place' => $row['area_place'],
                         'clock_in' => $row['clock_in'],
@@ -950,6 +1010,8 @@ class AttendanceController extends Controller
             'employee_id' => ['required', 'integer', 'exists:employees,id'],
             'date' => ['required', 'date'],
             'status' => ['required', Rule::in($this->statusValuesWithAliases())],
+            'half_day_part' => ['nullable', Rule::in(['First half', 'Second half'])],
+            'half_day_type' => ['nullable', Rule::in(['Absent', 'Paid Leave', 'Unpaid Leave', 'Holiday', 'Day-off', 'RNR'])],
             'paid_leave_units' => ['nullable', 'regex:/^(0|0\\.5|1(?:\\.0+)?)$/'],
             'area_place' => ['nullable', 'string', 'max:255'],
             'clock_in' => ['nullable', 'date_format:H:i'],
@@ -969,9 +1031,28 @@ class AttendanceController extends Controller
         $areaPlace = (string) ($record['area_place'] ?? $employee?->area_place ?? '');
         [$status, $paidLeaveUnits] = $this->applyPaidLeaveWorkedTimeRule($status, $clockIn, $clockOut, $assignmentType, $areaPlace);
         $record['status'] = $status;
+        $record['half_day_part'] = isset($record['half_day_part']) ? trim((string) $record['half_day_part']) : null;
+        $record['half_day_type'] = isset($record['half_day_type']) ? trim((string) $record['half_day_type']) : null;
         $record['paid_leave_units'] = $this->effectivePaidLeaveUnits($status, $paidLeaveUnits ?? ($record['paid_leave_units'] ?? null));
         $record['clock_in'] = $clockIn !== '' ? $clockIn : null;
         $record['clock_out'] = $clockOut !== '' ? $clockOut : null;
+
+        if ($status === 'Half-day') {
+            if (!in_array($record['half_day_part'], ['First half', 'Second half'], true)) {
+                abort(422, 'Worked Part is required for Half-day.');
+            }
+            if (!in_array($record['half_day_type'], ['Absent', 'Paid Leave', 'Unpaid Leave', 'Holiday', 'Day-off', 'RNR'], true)) {
+                abort(422, 'Other Half is required for Half-day.');
+            }
+            if ($record['half_day_type'] === 'Paid Leave') {
+                $record['paid_leave_units'] = 0.5;
+            } elseif ($record['paid_leave_units'] > 0.5) {
+                $record['paid_leave_units'] = 0.5;
+            }
+        } else {
+            $record['half_day_part'] = null;
+            $record['half_day_type'] = null;
+        }
 
         if (in_array($status, $this->noTimeStatuses(), true)) {
             if ($status !== 'Paid Leave') {
@@ -1087,6 +1168,9 @@ class AttendanceController extends Controller
         $s = trim($status);
         if (preg_match('/^day[\s-]*off$/i', $s)) {
             return 'Day-off';
+        }
+        if (preg_match('/^rest\s+and\s+recreation$/i', $s)) {
+            return 'RNR';
         }
         return $s;
     }

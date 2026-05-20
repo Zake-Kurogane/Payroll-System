@@ -472,6 +472,7 @@ class EmployeeController extends Controller
     public function paidLeaveBalances(Request $request)
     {
         $year = $request->integer('year', now()->year);
+        $cap = 5.0;
 
         $employees = Employee::query()
             ->whereNotNull('assignment_type')
@@ -483,39 +484,42 @@ class EmployeeController extends Controller
             })
             ->orderBy('last_name')
             ->orderBy('first_name')
-            ->get(['id', 'emp_no', 'first_name', 'middle_name', 'last_name', 'assignment_type']);
+            ->get(['id', 'emp_no', 'first_name', 'middle_name', 'last_name', 'assignment_type', 'employment_type', 'date_hired']);
 
         $usedCounts = \App\Models\AttendanceRecord::whereIn('employee_id', $employees->pluck('id'))
-            ->where('status', 'Paid Leave')
             ->whereYear('date', $year)
             ->groupBy('employee_id')
-            ->selectRaw('employee_id, COUNT(*) as used')
+            ->selectRaw("employee_id, COALESCE(SUM(CASE WHEN paid_leave_units IS NULL OR paid_leave_units = 0 THEN (CASE WHEN status = 'Paid Leave' THEN 1 ELSE 0 END) ELSE paid_leave_units END), 0) as used")
             ->pluck('used', 'employee_id');
 
-        return response()->json($employees->map(fn($emp) => [
-            'emp_no'          => $emp->emp_no,
-            'name'            => trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : '')),
-            'assignment_type' => $emp->assignment_type,
-            'total'           => 5,
-            'used'            => (int) ($usedCounts[$emp->id] ?? 0),
-            'remaining'       => max(0, 5 - (int) ($usedCounts[$emp->id] ?? 0)),
-        ]));
+        return response()->json($employees->map(function ($emp) use ($usedCounts, $cap) {
+            $eligible = $this->isPaidLeaveEligible($emp);
+            $used = (float) ($usedCounts[$emp->id] ?? 0);
+            return [
+                'emp_no' => $emp->emp_no,
+                'name' => trim($emp->last_name . ', ' . $emp->first_name . ($emp->middle_name ? ' ' . $emp->middle_name : '')),
+                'assignment_type' => $emp->assignment_type,
+                'applicable' => $eligible,
+                'total' => $eligible ? $cap : 0,
+                'used' => $eligible ? $used : 0,
+                'remaining' => $eligible ? max(0, $cap - $used) : 0,
+            ];
+        }));
     }
 
     public function paidLeaveBalance(string $empNo, Request $request)
     {
         $employee = Employee::where('emp_no', $empNo)->firstOrFail();
-        $isRegular = strtolower((string) ($employee->employment_type ?? '')) === 'regular';
-        $hasAssignment = !empty($employee->assignment_type);
-        if (!$isRegular || !$hasAssignment) {
+        if (!$this->isPaidLeaveEligible($employee)) {
             return response()->json(['applicable' => false]);
         }
         $year  = $request->integer('year', now()->year);
-        $total = 5;
+        $total = 5.0;
         $used  = \App\Models\AttendanceRecord::where('employee_id', $employee->id)
-            ->where('status', 'Paid Leave')
             ->whereYear('date', $year)
-            ->count();
+            ->selectRaw("COALESCE(SUM(CASE WHEN paid_leave_units IS NULL OR paid_leave_units = 0 THEN (CASE WHEN status = 'Paid Leave' THEN 1 ELSE 0 END) ELSE paid_leave_units END), 0) as used_units")
+            ->value('used_units');
+        $used = (float) ($used ?? 0);
         return response()->json([
             'applicable' => true,
             'total'      => $total,
@@ -572,6 +576,8 @@ class EmployeeController extends Controller
             ->get([
                 'date',
                 'status',
+                'paid_leave_units',
+                'half_day_type',
                 'area_place',
                 'clock_in',
                 'clock_out',
@@ -593,6 +599,7 @@ class EmployeeController extends Controller
 
         $statusTotals = [];
         $paidLeaveDates = [];
+        $plUsedUnits = 0.0;
         $recordMap = [];
         $recordRows = [];
 
@@ -614,7 +621,13 @@ class EmployeeController extends Controller
             $isLate = $code === 'L' || str_contains($statusKey, 'late');
             $isDayOff = in_array($code, ['OFF', 'DO'], true) || str_contains($statusKey, 'day off');
             $isRnr = $code === 'RNR';
-            $isPaidLeave = in_array($code, ['PL', 'PAID LEAVE'], true) || $statusKey === 'paid leave';
+            $isPaidLeave = in_array($code, ['PL', 'PAID LEAVE'], true)
+                || $statusKey === 'paid leave'
+                || ($status === 'Half-day' && trim((string) ($record->half_day_type ?? '')) === 'Paid Leave');
+            $recordPlUnits = (float) ($record->paid_leave_units ?? 0);
+            if ($recordPlUnits <= 0 && $status === 'Paid Leave') {
+                $recordPlUnits = 1.0;
+            }
 
             $countsAsPresent = $matchedCodeRow ? (bool) $matchedCodeRow->counts_as_present : false;
             $countsAsPaid = $matchedCodeRow ? (bool) $matchedCodeRow->counts_as_paid : false;
@@ -645,6 +658,7 @@ class EmployeeController extends Controller
             if ($isPaidLeave) {
                 $paidLeaveDates[] = $date;
             }
+            $plUsedUnits += max(0.0, $recordPlUnits);
 
             if (!isset($statusTotals[$status])) {
                 $statusTotals[$status] = 0.0;
@@ -696,11 +710,9 @@ class EmployeeController extends Controller
             ];
         }
 
-        $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
-        $hasAssignment = !empty($employee->assignment_type);
-        $plTotal = 5;
-        $plUsed = count($paidLeaveDates);
-        $plApplicable = $isRegular && $hasAssignment;
+        $plTotal = 5.0;
+        $plUsed = $plUsedUnits;
+        $plApplicable = $this->isPaidLeaveEligible($employee);
 
         $statusTotalsRows = [];
         foreach ($statusTotals as $status => $count) {
@@ -730,6 +742,17 @@ class EmployeeController extends Controller
                 'dates' => $paidLeaveDates,
             ],
         ]);
+    }
+
+    private function isPaidLeaveEligible(Employee $employee): bool
+    {
+        $isRegular = strtolower(trim((string) ($employee->employment_type ?? ''))) === 'regular';
+        $hasAssignment = !empty($employee->assignment_type);
+        if (!$isRegular || !$hasAssignment || empty($employee->date_hired)) {
+            return false;
+        }
+        $hired = Carbon::parse((string) $employee->date_hired)->startOfDay();
+        return $hired->lte(now()->startOfDay()->subYear());
     }
 
     public function store(Request $request)

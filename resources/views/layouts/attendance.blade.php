@@ -261,6 +261,31 @@
                 <small id="plBalanceInfo" style="font-weight:500;"></small>
             </div>
 
+            <div class="grid2" id="halfDayFields" hidden>
+                <div class="field">
+                    <label>Worked Part *</label>
+                    <small class="att-hint">Which half of the day was worked.</small>
+                    <select id="f_halfDayPart">
+                        <option value="">--</option>
+                        <option value="First half">First half</option>
+                        <option value="Second half">Second half</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Other Half *</label>
+                    <small class="att-hint">Reason/type for the other half-day.</small>
+                    <select id="f_halfDayType">
+                        <option value="">--</option>
+                        <option value="Absent">Absent</option>
+                        <option value="Paid Leave">Paid Leave</option>
+                        <option value="Unpaid Leave">Unpaid Leave</option>
+                        <option value="Holiday">Holiday</option>
+                        <option value="Day-off">Day-off</option>
+                        <option value="RNR">RNR</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="field" id="areaWrap" hidden>
                 <label>Area Place</label>
                 <small class="att-hint">Required for Field employees.</small>
@@ -459,8 +484,12 @@
                     <div class="sumLbl">Total Working Days</div>
                 </div>
                 <div class="sumCard">
-                    <div class="sumVal" id="empSumHours">0</div>
-                    <div class="sumLbl">Total Hours</div>
+                    <div class="sumVal" id="empSumPaidDays">0</div>
+                    <div class="sumLbl">Total Paid Days</div>
+                </div>
+                <div class="sumCard">
+                    <div class="sumVal" id="empSumUnpaidDays">0</div>
+                    <div class="sumLbl">Total Unpaid Days</div>
                 </div>
             </div>
 
@@ -473,7 +502,6 @@
                             <th>Area</th>
                             <th>Time In</th>
                             <th>Time Out</th>
-                            <th class="num">Total Hours</th>
                         </tr>
                     </thead>
                     <tbody id="empTbody"></tbody>

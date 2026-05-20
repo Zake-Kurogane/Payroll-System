@@ -11,6 +11,8 @@ class AttendanceRecord extends Model
         'employee_id',
         'date',
         'status',
+        'half_day_part',
+        'half_day_type',
         'paid_leave_units',
         'area_place',
         'clock_in',

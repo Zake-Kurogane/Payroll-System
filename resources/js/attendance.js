@@ -104,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const raw = String(status || "").trim();
     if (!raw) return "";
     if (/^day[\s-]*off$/i.test(raw)) return "Day Off";
+    if (/^rest\s+and\s+recreation$/i.test(raw)) return "RNR";
     return raw;
   }
 
@@ -442,6 +443,9 @@ document.addEventListener("DOMContentLoaded", () => {
       timeOut: r.clock_out || "",
       totalHours: 0,
       status: r.status || "",
+      halfDayPart: r.half_day_part || "",
+      halfDayType: r.half_day_type || "",
+      paidLeaveUnits: Number(r.paid_leave_units || 0),
       assignType: assignType,
       areaPlace: areaPlace,
       minutesLate: Number(r.minutes_late || 0),
@@ -455,6 +459,8 @@ document.addEventListener("DOMContentLoaded", () => {
       employee_id: Number(record.employeeId),
       date: record.date,
       status: overrideStatus || record.status,
+      half_day_part: record.halfDayPart || null,
+      half_day_type: record.halfDayType || null,
       clock_in: record.timeIn || null,
       clock_out: record.timeOut || null,
       minutes_late: Number(record.minutesLate || 0),
@@ -582,6 +588,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const areaPlaceHint = document.getElementById("areaPlaceHint");
   const f_clockIn  = document.getElementById("f_clockIn");
   const f_clockOut = document.getElementById("f_clockOut");
+  const halfDayFields = document.getElementById("halfDayFields");
+  const f_halfDayPart = document.getElementById("f_halfDayPart");
+  const f_halfDayType = document.getElementById("f_halfDayType");
   const f_notes = document.getElementById("f_notes");
   const editingId = document.getElementById("editingId");
   const plBalanceWrap = document.getElementById("plBalanceWrap");
@@ -610,6 +619,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function applyStatusTimeRules() {
     const status = normalizeStatusLabel(f_status?.value || "");
     const noTime = NO_TIME_STATUSES.has(status);
+    const isHalfDay = status === "Half-day";
+    if (halfDayFields) halfDayFields.hidden = !isHalfDay;
+    if (!isHalfDay) {
+      if (f_halfDayPart) f_halfDayPart.value = "";
+      if (f_halfDayType) f_halfDayType.value = "";
+    }
     if (f_clockIn) {
       if (noTime) f_clockIn.value = "";
       f_clockIn.disabled = noTime;
@@ -701,7 +716,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const empSumTotal = document.getElementById("empSumTotal");
   const empSumWorkingDays = document.getElementById("empSumWorkingDays");
-  const empSumHours = document.getElementById("empSumHours");
+  const empSumPaidDays = document.getElementById("empSumPaidDays");
+  const empSumUnpaidDays = document.getElementById("empSumUnpaidDays");
 
   const empCutoffMonthInput = document.getElementById("empCutoffMonth");
   const empCutoffSelect = document.getElementById("empCutoffSelect");
@@ -929,12 +945,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function assignmentText(r) {
     if (r.areaPlace) return `${r.assignType || "—"} (${r.areaPlace})`;
     return r.assignType || "—";
-  }
-
-  function formatHours(h) {
-    const n = Number(h);
-    if (!isFinite(n) || n <= 0) return "0";
-    return n.toFixed(2);
   }
 
   function fmtTime(t) {
@@ -1697,6 +1707,8 @@ document.addEventListener("DOMContentLoaded", () => {
       f_employee.value = "";
       f_date.value = activeCutoff ? toYMD(activeCutoff.range.start) : toYMD(new Date());
       f_status.value = "";
+      if (f_halfDayPart) f_halfDayPart.value = "";
+      if (f_halfDayType) f_halfDayType.value = "";
       if (f_assignType) f_assignType.value = "";
       if (f_areaPlace) f_areaPlace.value = "";
       f_notes.value = "";
@@ -1713,6 +1725,8 @@ document.addEventListener("DOMContentLoaded", () => {
       f_employee.value = record.employeeId || "";
       f_date.value = record.date;
       f_status.value = record.status;
+      if (f_halfDayPart) f_halfDayPart.value = record.halfDayPart || "";
+      if (f_halfDayType) f_halfDayType.value = record.halfDayType || "";
       f_notes.value = record.notes || "";
       if (f_clockIn)  f_clockIn.value  = record.timeIn  || "";
       if (f_clockOut) f_clockOut.value = record.timeOut || "";
@@ -1789,6 +1803,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!status) { if (errStatus) errStatus.textContent = "Status is required."; ok = false; }
+    if (status === "Half-day") {
+      if (!String(f_halfDayPart?.value || "").trim()) {
+        if (errStatus) errStatus.textContent = "Worked Part is required for Half-day.";
+        ok = false;
+      }
+      if (!String(f_halfDayType?.value || "").trim()) {
+        if (errStatus) errStatus.textContent = "Other Half is required for Half-day.";
+        ok = false;
+      }
+    }
     const emp = getEmpById(employeeId);
     if (isFieldAssignment(emp?.assignmentType)) {
       const area = String(f_areaPlace?.value || "").trim();
@@ -1861,6 +1885,8 @@ document.addEventListener("DOMContentLoaded", () => {
       employee_id: Number(employeeId),
       date: f_date.value,
       status: mapped.status,
+      half_day_part: f_halfDayPart?.value || null,
+      half_day_type: f_halfDayType?.value || null,
       area_place: f_areaPlace?.value || null,
       clock_in:  toApiTime(f_clockIn?.value),
       clock_out: toApiTime(f_clockOut?.value),
@@ -2470,42 +2496,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // EMPLOYEE DRAWER
   // =========================================================
-  function toMinutes(t) {
-    const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(t || ""));
-    if (!m) return null;
-    const hh = Number(m[1]);
-    const mm = Number(m[2]);
-    const ss = Number(m[3] || 0);
-    if (!isFinite(hh) || !isFinite(mm)) return null;
-    if (hh < 0 || hh > 23 || mm < 0 || mm > 59 || ss < 0 || ss > 59) return null;
-    return hh * 60 + mm + (ss / 60);
-  }
-
-  function computeTotalHours(r) {
-    if (Number(r.totalHours) > 0) return Number(r.totalHours);
-    const a = toMinutes(r.timeIn);
-    let b = toMinutes(r.timeOut);
-    if (a == null || b == null) return 0;
-    if (b <= a) {
-      b += 12 * 60;
-    }
-    if (b <= a) return 0;
-
-    const work1Start = 8 * 60;
-    const work1End = 12 * 60;
-    const work2Start = 13 * 60;
-    const work2End = 17 * 60;
-
-    const overlap = (start, end, winStart, winEnd) => {
-      const s = Math.max(start, winStart);
-      const e = Math.min(end, winEnd);
-      return e > s ? (e - s) : 0;
-    };
-
-    const mins = overlap(a, b, work1Start, work1End) + overlap(a, b, work2Start, work2End);
-    return mins > 0 ? mins / 60 : 0;
-  }
-
   function renderEmpDrawerMeta(emp, positionText, assignmentTextValue) {
     if (!empDrawerSub) return;
     const employmentType = String(emp?.employmentType || "").trim().toLowerCase();
@@ -2636,8 +2626,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     empTbody.innerHTML = "";
 
-    let totalHours = 0;
     let totalWorkingDays = 0;
+    let totalPaidDays = 0;
+    let totalUnpaidDays = 0;
 
     const noTimeStatuses = new Set([
       "Absent",
@@ -2650,14 +2641,31 @@ document.addEventListener("DOMContentLoaded", () => {
     ]);
 
     list.forEach(r => {
-      const hrs = computeTotalHours(r);
-      totalHours += hrs;
       const status = String(r.status || "").trim();
       if (status === "Half-day") {
         totalWorkingDays += 0.5;
-      } else if (hrs > 0) {
+      } else if (!noTimeStatuses.has(status)) {
         totalWorkingDays += 1;
       }
+
+      let paidDays = 0;
+      if (status === "Half-day") {
+        paidDays = 0.5;
+        const otherHalf = String(r.halfDayType || "").trim();
+        if (otherHalf === "Paid Leave" || otherHalf === "Holiday") {
+          paidDays += 0.5;
+        }
+      } else if (status === "Present" || status === "Late" || status === "Paid Leave" || status === "Holiday") {
+        paidDays = 1.0;
+      } else if (status === "Day Off") {
+        paidDays = 0.0;
+      } else if (status === "RNR" || status === "Absent" || status === "Leave" || status === "Unpaid Leave" || status === "LOA") {
+        paidDays = 0.0;
+      } else {
+        paidDays = 0.0;
+      }
+      totalPaidDays += paidDays;
+      totalUnpaidDays += Math.max(0, 1 - paidDays);
 
       const statusLabel = String(r.status || "").toUpperCase();
       const showStatus = noTimeStatuses.has(r.status);
@@ -2672,20 +2680,20 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${escapeHtml(areaDisplay)}</td>
         <td>${escapeHtml(timeInDisplay)}</td>
         <td>${escapeHtml(timeOutDisplay)}</td>
-        <td class="num">${escapeHtml(formatHours(hrs))}</td>
       `;
       empTbody.appendChild(tr);
     });
 
     if (!list.length) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="5" class="muted small">No attendance records found.</td>`;
+      tr.innerHTML = `<td colspan="4" class="muted small">No attendance records found.</td>`;
       empTbody.appendChild(tr);
     }
 
     if (empSumTotal) empSumTotal.textContent = String(list.length);
     if (empSumWorkingDays) empSumWorkingDays.textContent = String(Number(totalWorkingDays.toFixed(2)));
-    if (empSumHours) empSumHours.textContent = formatHours(totalHours);
+    if (empSumPaidDays) empSumPaidDays.textContent = String(Number(totalPaidDays.toFixed(2)));
+    if (empSumUnpaidDays) empSumUnpaidDays.textContent = String(Number(totalUnpaidDays.toFixed(2)));
   }
 
   // =========================================================
@@ -2693,3 +2701,4 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   render();
 });
+

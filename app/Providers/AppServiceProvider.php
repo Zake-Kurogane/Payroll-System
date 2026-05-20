@@ -170,9 +170,13 @@ class AppServiceProvider extends ServiceProvider
                         })
                         ->get(['first_name', 'middle_name', 'last_name', 'date_hired', 'employment_type'])
                         ->filter(function ($employee) use ($now) {
-                            // Probationary/Trainee term is 6 months.
-                            // Start notifying one month ahead and keep active while type is unchanged.
-                            $notifyStart = Carbon::parse($employee->date_hired)->addMonthsNoOverflow(5)->startOfDay();
+                            // Unified pre-filter for status-change notifications:
+                            // notify starts one month before term end and remains active while type is unchanged.
+                            // - Probationary: 6-month term (notify from month 5)
+                            // - Trainee: 3-month term (notify from month 2)
+                            $type = strtolower(trim((string) ($employee->employment_type ?? '')));
+                            $notifyOffsetMonths = str_contains($type, 'trainee') ? 2 : 5;
+                            $notifyStart = Carbon::parse($employee->date_hired)->addMonthsNoOverflow($notifyOffsetMonths)->startOfDay();
                             return $notifyStart->lessThanOrEqualTo($now);
                         });
 
