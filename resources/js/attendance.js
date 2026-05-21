@@ -2310,6 +2310,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const fd = new FormData();
     fd.append("assignment", f.assignment);
     fd.append("area", f.area);
+    if (csrfToken) fd.append("_token", csrfToken);
 
     // Only override import date when the user explicitly selected a date,
     // otherwise prefer the date embedded in the template filename to avoid accidental mismatches.
@@ -2322,6 +2323,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const res = await fetch("/attendance/import", {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           Accept: "application/json",
           ...(csrfToken ? { "X-CSRF-TOKEN": csrfToken } : {}),
